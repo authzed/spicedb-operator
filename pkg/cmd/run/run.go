@@ -2,19 +2,15 @@ package run
 
 import (
 	"github.com/spf13/cobra"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	kscheme "k8s.io/client-go/kubernetes/scheme"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/cluster"
 	"github.com/authzed/spicedb-operator/pkg/manager"
 )
@@ -83,35 +79,8 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return err
 	}
 
-	restConfig, err := f.ToRESTConfig()
-	if err != nil {
-		return err
-	}
-
-	mapper, err := f.ToRESTMapper()
-	if err != nil {
-		return err
-	}
-
-	scheme := runtime.NewScheme()
-	if err := kscheme.AddToScheme(scheme); err != nil {
-		return nil
-	}
-	if err := v1alpha1.AddToScheme(scheme); err != nil {
-		return nil
-	}
-
-	cclient, err := client.New(restConfig, client.Options{
-		Mapper: mapper,
-		Scheme: scheme,
-	})
-	if err != nil {
-		return err
-	}
-
 	ctx := genericapiserver.SetupSignalContext()
-
-	ctrl, err := cluster.NewController(ctx, dclient, kclient, cclient)
+	ctrl, err := cluster.NewController(ctx, dclient, kclient)
 	if err != nil {
 		return err
 	}

@@ -2,16 +2,21 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -24,37 +29,40 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	controllerhealthz "k8s.io/controller-manager/pkg/healthz"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/manager"
+	"github.com/authzed/spicedb-operator/pkg/util"
 )
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen rbac:roleName=authzed-operator paths="../../pkg/..." output:rbac:dir=../../config/rbac
 
-// +kubebuilder:rbac:groups="authzed.com",resources=stacks,verbs=get;watch;list;create;update;delete
+// +kubebuilder:rbac:groups="authzed.com",resources=authzedenterpriseclusters,verbs=get;watch;list;create;update;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch;
 
 var (
 	// OwnedResources are always synced unless they're marked unmanaged
 	OwnedResources = []schema.GroupVersionResource{
-		v1alpha1.SchemeGroupVersion.WithResource("stacks"),
+		v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName),
 	}
 
 	// ExternalResources are not synced unless they're marked as managed
 	ExternalResources = []schema.GroupVersionResource{
 		appsv1.SchemeGroupVersion.WithResource("deployments"),
 		corev1.SchemeGroupVersion.WithResource("secrets"),
+		batchv1.SchemeGroupVersion.WithResource("jobs"),
 	}
 )
 
 const OwningClusterIndex = "owning-cluster"
 
+type RequeueableError error
+
 type Controller struct {
 	queue          workqueue.RateLimitingInterface
 	dependentQueue workqueue.RateLimitingInterface
-	client         client.Client
+	client         dynamic.Interface
 	informers      map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
 	recorder       record.EventRecorder
 	kclient        kubernetes.Interface
@@ -62,10 +70,10 @@ type Controller struct {
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, cclient client.Client) (*Controller, error) {
+func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
-		client:         cclient,
+		client:         dclient,
 		queue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 		dependentQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_components_queue"),
 		informers:      make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
@@ -76,7 +84,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
-			options.LabelSelector = NotUnmanagedSelector.String()
+			options.LabelSelector = util.NotPausedSelector.String()
 		},
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
@@ -101,7 +109,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	for _, gvr := range ExternalResources {
 		gvr := gvr
 		inf := externalInformerFactory.ForResource(gvr).Informer()
-		if err := inf.AddIndexers(cache.Indexers{OwningClusterIndex: GetStackKeyFromLabel}); err != nil {
+		if err := inf.AddIndexers(cache.Indexers{OwningClusterIndex: GetClusterKeyFromLabel}); err != nil {
 			return nil, err
 		}
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -126,8 +134,10 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer c.queue.ShutDown()
 	defer c.dependentQueue.ShutDown()
 
-	klog.Info("Starting Stack controller")
-	defer klog.Info("Shutting down Stack controller")
+	for _, gvr := range OwnedResources {
+		klog.Info(fmt.Sprintf("Starting %s controller", gvr.Resource))
+		defer klog.Info(fmt.Sprintf("Stopping %s controller", gvr.Resource))
+	}
 
 	for i := 0; i < numThreads; i++ {
 		go wait.Until(func() { c.startWorker(ctx, c.queue, c.syncOwnedResource) }, time.Second, ctx.Done())
@@ -138,7 +148,7 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 }
 
 func (c *Controller) Name() string {
-	return "cluster"
+	return v1alpha1.AuthzedEnterpriseClusterResourceName
 }
 
 func (c *Controller) DebuggingHandler() http.Handler {
@@ -167,8 +177,9 @@ func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIn
 	return factory.ForResource(gvr).Informer()
 }
 
-func (c *Controller) getOwnedObjects(cluster *v1alpha1.AuthzedEnterpriseCluster, gvr schema.GroupVersionResource) ([]interface{}, error) {
-	return c.informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, cluster.Namespace+"/"+cluster.Name)
+// TODO: generics
+func (c *Controller) getOwnedObjects(nn types.NamespacedName, gvr schema.GroupVersionResource) ([]interface{}, error) {
+	return c.informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, nn.String())
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, obj interface{}) {
@@ -202,11 +213,18 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		return true
 	}
 
-	if err := sync(ctx, *gvr, namespace, name); err != nil {
+	var rerr RequeueableError
+	err = sync(ctx, *gvr, namespace, name)
+	if err == nil {
+		queue.Forget(key)
+		return true
+	}
+	if errors.As(err, &rerr) {
 		utilruntime.HandleError(fmt.Errorf("failed to sync %q, err: %w", key, err))
 		queue.AddRateLimited(key)
 		return true
 	}
+
 	queue.Forget(key)
 	return true
 }
@@ -224,19 +242,24 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return err
 	}
 
-	stack, ok := obj.(*v1alpha1.AuthzedEnterpriseCluster)
+	u, ok := obj.(*unstructured.Unstructured)
 	if !ok {
-		return fmt.Errorf("syncOwnedResource called with invalid object %T", stack)
+		return fmt.Errorf("syncOwnedResource called with invalid object %T", obj)
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, stack.ObjectMeta)
-	return c.syncCluster(ctx, stack.DeepCopy())
+	var cluster v1alpha1.AuthzedEnterpriseCluster
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
+		return fmt.Errorf("syncOwnedResource called with invalid object: %w", err)
+	}
+
+	klog.V(4).Infof("syncing %s %s", gvr, cluster.ObjectMeta)
+	return c.syncCluster(ctx, &cluster)
 }
 
 // syncExternalResource is called when a dependent resource is updated;
 // It queues the owning Stack for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
-// machine for Stacks with an entrypoint in syncCluster
+// machine for AuthzedEnterpriseClusters with an entrypoint in syncCluster
 func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error {
 	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
 	if err != nil {
