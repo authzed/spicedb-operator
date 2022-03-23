@@ -4,11 +4,17 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=authzed-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
 
+const (
+	AuthzedEnterpriseClusterResourceName = "authzedenterpriseclusters"
+	AuthzedEnterpriseClusterKind         = "AuthzedEnterpriseCluster"
+)
+
 // AuthzedEnterpriseCluster defines a full Authzed Enterprise cluster
 //
 // +crd
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:subresource:status
 type AuthzedEnterpriseCluster struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
@@ -45,6 +51,9 @@ type ClusterStatus struct {
 
 	// SecretHash is a digest of the last applied secret
 	SecretHash string `json:"secretHash,omitempty"`
+
+	// CurrentMigrationName
+	CurrentMigrationName string `json:"currentMigrationName,omitempty"`
 
 	// Conditions for the current state of the Stack.
 	// +optional

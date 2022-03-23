@@ -5,40 +5,14 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/cache"
+
+	"github.com/authzed/spicedb-operator/pkg/util"
 )
 
-const UnmanagedSelectorKey = "authzed.com/unmanaged"
-
-var (
-	NotUnmanagedSelector     = MustParseSelector("!" + UnmanagedSelectorKey)
-	ManagedDependentSelector = MustParseSelector("authzed.com/managed-by=operator")
-)
-
-func IsUnmanaged(object runtime.Object) bool {
-	objMeta, err := meta.Accessor(object)
-	if err != nil {
-		return false
-	}
-	objLabels := objMeta.GetLabels()
-	if objLabels == nil {
-		return false
-	}
-
-	_, ok := objLabels[UnmanagedSelectorKey]
-	return ok
-}
-
-func MustParseSelector(selector string) labels.Selector {
-	s, err := labels.Parse(selector)
-	if err != nil {
-		panic(err)
-	}
-	return s
-}
+var ManagedDependentSelector = util.MustParseSelector("authzed.com/managed-by=operator")
 
 func GVRMetaNamespaceKeyer(gvr schema.GroupVersionResource, key string) string {
 	return fmt.Sprintf("%s.%s.%s::%s", gvr.Resource, gvr.Version, gvr.Group, key)
@@ -70,7 +44,7 @@ func SplitGVRMetaNamespaceKey(key string) (gvr *schema.GroupVersionResource, nam
 	return
 }
 
-func GetStackKeyFromLabel(in interface{}) ([]string, error) {
+func GetClusterKeyFromLabel(in interface{}) ([]string, error) {
 	obj := in.(runtime.Object)
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {

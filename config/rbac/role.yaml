@@ -29,7 +29,7 @@ rules:
 - apiGroups:
   - authzed.com
   resources:
-  - stacks
+  - authzedenterpriseclusters
   verbs:
   - create
   - delete

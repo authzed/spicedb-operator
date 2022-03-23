@@ -119,6 +119,9 @@ spec:
                   - type
                   type: object
                 type: array
+              currentMigrationName:
+                description: CurrentMigrationName
+                type: string
               observedGeneration:
                 description: ObservedGeneration represents the .metadata.generation
                   that has been seen by the controller.
@@ -132,6 +135,8 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""
