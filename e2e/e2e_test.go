@@ -1,10 +1,12 @@
+//go:build e2e
+
 package e2e
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/go-logr/zapr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gexec"
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,14 +38,20 @@ import (
 	kind "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/fs"
 
 	"github.com/authzed/spicedb-operator/pkg/cluster"
 )
 
+func listsep(c rune) bool {
+	return c == ','
+}
+
 var (
-	archives      = flag.String("archives", "", "list of archives to load into kind")
-	provision     = flag.Bool("provision", true, "provision a kind cluster to run tests in")
-	apiserverOnly = flag.Bool("apiserver-only", false, "run apiserver and etcd binaries instead of a kube cluster")
+	apiserverOnly = os.Getenv("APISERVER_ONLY") == "true"
+	provision     = os.Getenv("PROVISION") == "true"
+	archives      = strings.FieldsFunc(os.Getenv("ARCHIVES"), listsep)
+	images        = strings.FieldsFunc(os.Getenv("IMAGES"), listsep)
 
 	restConfig *rest.Config
 )
@@ -71,7 +80,7 @@ var _ = BeforeSuite(func() {
 		ControlPlaneStopTimeout: 3 * time.Minute,
 	}
 
-	if *apiserverOnly {
+	if apiserverOnly {
 		ConfigureApiserver()
 	} else {
 		ConfigureKube()
@@ -174,7 +183,7 @@ func ConfigureKube() {
 	restConfig, err = config.GetConfig()
 
 	// if no kubeconfig or explictly told to provision, provision a cluster
-	if err != nil || *provision == true {
+	if err != nil || provision {
 		kubeconfigPath, cleanup, err := Provision()
 		Expect(err).To(Succeed())
 		DeferCleanup(cleanup)
@@ -232,31 +241,50 @@ func Provision() (string, func(), error) {
 		kind.CreateWithKubeconfigPath(kubeconfig),
 	)
 	if err != nil {
-		err = fmt.Errorf("failed to create kind cluster: %s", err.Error())
+		err = fmt.Errorf("failed to create kind cluster: %w", err)
 		return kubeconfig, deprovision, err
 	}
 
 	nodes, err := provider.ListNodes(name)
 	if err != nil {
-		return kubeconfig, deprovision, fmt.Errorf("failed to list kind nodes: %s", err.Error())
+		return kubeconfig, deprovision, fmt.Errorf("failed to list kind nodes: %w", err)
 	}
 
-	for _, archive := range strings.Split(*archives, ",") {
-		if archive == "" {
-			continue
+	if len(images) > 0 {
+		dir, err := fs.TempDir("", "images-tar")
+		if err != nil {
+			return kubeconfig, deprovision, fmt.Errorf("failed to create tempdir for images: %w", err)
 		}
-		fmt.Printf("loading %s onto nodes\n", archive)
-		for _, node := range nodes {
-			fd, err := os.Open(archive)
-			if err != nil {
-				return kubeconfig, deprovision, fmt.Errorf("error opening archive %q: %s", archive, err.Error())
+		defer os.RemoveAll(dir)
+
+		imagesTarPath := filepath.Join(dir, "images.tar")
+
+		cmd := exec.Command("docker", append([]string{"save", "-o", imagesTarPath}, images...)...)
+		session, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(session).Should(gexec.Exit(0))
+
+		archives = append(archives, imagesTarPath)
+	}
+
+	if len(archives) > 0 {
+		for _, archive := range archives {
+			if archive == "" {
+				continue
 			}
-			err = nodeutils.LoadImageArchive(node, fd)
-			if err != nil {
-				return kubeconfig, deprovision, fmt.Errorf("error loading image archive %q to node %q: %s", archive, node, err.Error())
-			}
-			if err := fd.Close(); err != nil {
-				return kubeconfig, deprovision, fmt.Errorf("error loading image archive %q to node %q: %s", archive, node, err.Error())
+			fmt.Printf("loading %s onto nodes\n", archive)
+			for _, node := range nodes {
+				fd, err := os.Open(archive)
+				if err != nil {
+					return kubeconfig, deprovision, fmt.Errorf("error opening archive %q: %w", archive, err)
+				}
+				err = nodeutils.LoadImageArchive(node, fd)
+				if err != nil {
+					return kubeconfig, deprovision, fmt.Errorf("error loading image archive %q to node %q: %w", archive, node, err)
+				}
+				if err := fd.Close(); err != nil {
+					return kubeconfig, deprovision, fmt.Errorf("error loading image archive %q to node %q: %w", archive, node, err)
+				}
 			}
 		}
 	}

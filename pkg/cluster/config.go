@@ -1,13 +1,17 @@
 package cluster
 
 type MigrationConfig struct {
-	DatastoreEngine  string
-	DatastoreURI     string
-	SpannerCreds     string
-	TargetSpiceDBTag string
+	LogLevel              string
+	DatastoreEngine       string
+	DatastoreURI          string
+	SpannerCredsSecretRef string
+	TargetSpiceDBTag      string
 }
 
 type SpiceConfig struct {
+	LogLevel     string
+	Replicas     int32
+	PresharedKey string
 }
 
 type Config struct {
