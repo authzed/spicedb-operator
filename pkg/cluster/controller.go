@@ -2,10 +2,8 @@ package cluster
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -57,8 +55,6 @@ var (
 
 const OwningClusterIndex = "owning-cluster"
 
-type RequeueableError error
-
 type Controller struct {
 	queue          workqueue.RateLimitingInterface
 	dependentQueue workqueue.RateLimitingInterface
@@ -99,8 +95,8 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	for _, gvr := range OwnedResources {
 		gvr := gvr
 		ownedInformerFactory.ForResource(gvr).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.enqueue(gvr, obj) },
-			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, obj) },
+			AddFunc:    func(obj interface{}) { c.enqueue(gvr, c.queue, obj) },
+			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, c.queue, obj) },
 			// Delete is not used right now, we rely on ownerrefs to clean up
 		})
 		c.informers[gvr] = ownedInformerFactory
@@ -113,9 +109,9 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			return nil, err
 		}
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.enqueue(gvr, obj) },
-			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, obj) },
-			DeleteFunc: func(obj interface{}) { c.enqueue(gvr, obj) },
+			AddFunc:    func(obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
+			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
+			DeleteFunc: func(obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
 		})
 		c.informers[gvr] = externalInformerFactory
 	}
@@ -177,18 +173,13 @@ func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIn
 	return factory.ForResource(gvr).Informer()
 }
 
-// TODO: generics
-func (c *Controller) getOwnedObjects(nn types.NamespacedName, gvr schema.GroupVersionResource) ([]interface{}, error) {
-	return c.informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, nn.String())
-}
-
-func (c *Controller) enqueue(gvr schema.GroupVersionResource, obj interface{}) {
+func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
 	key, err := GVRMetaNamespaceKeyFunc(gvr, obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.queue.Add(key)
+	queue.Add(key)
 }
 
 func (c *Controller) startWorker(ctx context.Context, queue workqueue.RateLimitingInterface, sync syncFunc) {
@@ -213,77 +204,109 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		return true
 	}
 
-	var rerr RequeueableError
-	err = sync(ctx, *gvr, namespace, name)
-	if err == nil {
-		queue.Forget(key)
-		return true
+	ctx, cancel := context.WithCancel(ctx)
+
+	done := func() {
+		cancel()
+		c.queue.Forget(key)
 	}
-	if errors.As(err, &rerr) {
-		utilruntime.HandleError(fmt.Errorf("failed to sync %q, err: %w", key, err))
-		queue.AddRateLimited(key)
-		return true
+	requeue := func(after time.Duration) {
+		cancel()
+		if after == 0 {
+			c.queue.AddRateLimited(key)
+			return
+		}
+		c.queue.AddAfter(key, after)
 	}
 
-	queue.Forget(key)
+	go sync(ctx, *gvr, namespace, name, done, requeue)
+	<-ctx.Done()
+
 	return true
 }
 
 // syncFunc - an error returned here will do a rate-limited requeue of the object's key
-type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error
+type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration))
 
 // syncOwnedResource is called when Stack is updated
-func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error {
+func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
 	if gvr.GroupResource() != authzedClusterGR {
-		return fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String())
+		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String()))
+		done()
+		return
 	}
 	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
 	if err != nil {
-		return err
+		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown object (%s::%s/%s): %w", gvr.String(), namespace, name, err))
+		done()
+		return
 	}
 
 	u, ok := obj.(*unstructured.Unstructured)
 	if !ok {
-		return fmt.Errorf("syncOwnedResource called with invalid object %T", obj)
+		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object %T", obj))
+		done()
+		return
 	}
 
 	var cluster v1alpha1.AuthzedEnterpriseCluster
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-		return fmt.Errorf("syncOwnedResource called with invalid object: %w", err)
+		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object: %w", err))
+		done()
+		return
 	}
 
 	klog.V(4).Infof("syncing %s %s", gvr, cluster.ObjectMeta)
-	return c.syncCluster(ctx, &cluster)
+
+	r := Reconciler{
+		done: func() func() {
+			return func() {
+				done()
+			}
+		},
+		requeue: func(duration time.Duration) func() {
+			return func() {
+				requeue(duration)
+			}
+		},
+		cluster:   &cluster,
+		client:    c.client,
+		kclient:   c.kclient,
+		informers: c.informers,
+		recorder:  c.recorder,
+	}
+	r.sync(ctx)()
 }
 
 // syncExternalResource is called when a dependent resource is updated;
 // It queues the owning Stack for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
 // machine for AuthzedEnterpriseClusters with an entrypoint in syncCluster
-func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error {
+func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
 	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
 	if err != nil {
-		return err
+		utilruntime.HandleError(err)
+		done()
+		return
 	}
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
-		return err
+		utilruntime.HandleError(err)
+		done()
+		return
 	}
 
 	klog.V(4).Infof("syncing %s %s", gvr, objMeta)
 
 	labels := objMeta.GetLabels()
-	stackKey, ok := labels[OwnerLabelKey]
+	clusterName, ok := labels[OwnerLabelKey]
 	if !ok {
-		return fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName())
+		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName()))
+		done()
+		return
 	}
 
-	// stackKey must be namespace/name
-	if len(strings.SplitN(stackKey, "/", 2)) != 2 {
-		return fmt.Errorf("invalid cluster key label on %s %s/%s: %s", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName(), stackKey)
-	}
-
-	c.queue.AddRateLimited(GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, stackKey))
-	return nil
+	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
+	c.dependentQueue.AddRateLimited(GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
 }

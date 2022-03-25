@@ -7,12 +7,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/authzed/spicedb-operator/pkg/util"
 )
 
-var ManagedDependentSelector = util.MustParseSelector("authzed.com/managed-by=operator")
+const (
+	OperatorManagedLabelKey   = "authzed.com/managed-by"
+	OperatorManagedLabelValue = "operator"
+)
+
+var ManagedDependentSelector = util.MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 
 func GVRMetaNamespaceKeyer(gvr schema.GroupVersionResource, key string) string {
 	return fmt.Sprintf("%s.%s.%s::%s", gvr.Resource, gvr.Version, gvr.Group, key)
@@ -30,17 +36,17 @@ func GVRMetaNamespaceKeyFunc(gvr schema.GroupVersionResource, obj interface{}) (
 }
 
 func SplitGVRMetaNamespaceKey(key string) (gvr *schema.GroupVersionResource, namespace, name string, err error) {
-	parts := strings.SplitN(key, "::", 2)
-	if len(parts) != 2 {
+	before, after, ok := strings.Cut(key, "::")
+	if !ok {
 		err = fmt.Errorf("error parsing key: %s", key)
 		return
 	}
-	gvr, _ = schema.ParseResourceArg(parts[0])
+	gvr, _ = schema.ParseResourceArg(before)
 	if gvr == nil {
-		err = fmt.Errorf("error parsing gvr from key: %s", parts[0])
+		err = fmt.Errorf("error parsing gvr from key: %s", before)
 		return
 	}
-	namespace, name, err = cache.SplitMetaNamespaceKey(parts[1])
+	namespace, name, err = cache.SplitMetaNamespaceKey(after)
 	return
 }
 
@@ -51,14 +57,10 @@ func GetClusterKeyFromLabel(in interface{}) ([]string, error) {
 		return nil, err
 	}
 	objLabels := objMeta.GetLabels()
-	stackKey, ok := objLabels[OwnerLabelKey]
+	clusterName, ok := objLabels[OwnerLabelKey]
 	if !ok {
 		return nil, fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName())
 	}
-
-	// stackKey must be namespace/name
-	if len(strings.SplitN(stackKey, "/", 2)) != 2 {
-		return nil, fmt.Errorf("invalid cluster key label on %s %s/%s: %s", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName(), stackKey)
-	}
-	return []string{stackKey}, nil
+	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
+	return []string{nn.String()}, nil
 }
