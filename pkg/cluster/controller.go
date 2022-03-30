@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -37,7 +38,12 @@ import (
 
 // +kubebuilder:rbac:groups="authzed.com",resources=authzedenterpriseclusters,verbs=get;watch;list;create;update;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch;
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups="",resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="rbac",resources=role,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="rbac",resources=rolebinding,verbs=get;list;watch;create;update;patch;delete
 
 var (
 	// OwnedResources are always synced unless they're marked unmanaged
@@ -49,7 +55,11 @@ var (
 	ExternalResources = []schema.GroupVersionResource{
 		appsv1.SchemeGroupVersion.WithResource("deployments"),
 		corev1.SchemeGroupVersion.WithResource("secrets"),
+		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
+		corev1.SchemeGroupVersion.WithResource("services"),
 		batchv1.SchemeGroupVersion.WithResource("jobs"),
+		rbacv1.SchemeGroupVersion.WithResource("roles"),
+		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 	}
 )
 
