@@ -8,11 +8,47 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - get
   - list
   - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - apps
@@ -35,5 +71,29 @@ rules:
   - delete
   - get
   - list
+  - update
+  - watch
+- apiGroups:
+  - rbac
+  resources:
+  - role
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac
+  resources:
+  - rolebinding
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
   - update
   - watch

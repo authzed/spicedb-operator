@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -21,6 +22,7 @@ import (
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
@@ -36,6 +38,10 @@ const (
 	ComponentLabelKey               = "authzed.com/cluster-component"
 	ComponentSpiceDBLabelValue      = "spicedb"
 	ComponentMigrationJobLabelValue = "migration-job"
+	ComponentServiceAccountLabel    = "spicedb-serviceaccount"
+	ComponentRoleLabel              = "spicedb-role"
+	ComponentServiceLabel           = "spicedb-service"
+	ComponentRoleBindingLabel       = "spicedb-rolebinding"
 	SpiceDBMigrationRequirementsKey = "authzed.com/spicedb-migration"
 	SpiceDBConfigKey                = "authzed.com/spicedb-configuration"
 	SpiceDBTag                      = "spicedb:dev"
@@ -44,6 +50,8 @@ const (
 var (
 	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName)
 	authzedClusterGR   = v1alpha1ClusterGVR.GroupResource()
+
+	forceOwned = metav1.ApplyOptions{FieldManager: "authzed-operator", Force: true}
 )
 
 type Reconciler struct {
@@ -54,10 +62,6 @@ type Reconciler struct {
 	kclient   kubernetes.Interface
 	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
 	recorder  record.EventRecorder
-}
-
-func (r *Reconciler) getOwnedObjects(nn types.NamespacedName, gvr schema.GroupVersionResource) ([]interface{}, error) {
-	return r.informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, nn.String())
 }
 
 // syncCluster inspects the current AuthzedEnterpriseCluster object and ensures
@@ -102,9 +106,20 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 
 	// config is valid
 
-	spiceDBDeployment, next := r.getSpiceDBDeployment(r.cluster.NamespacedName())
-	if next != nil {
+	// TODO: parallel
+	// ensure rbac is ready
+	if next := r.ensureRBAC(ctx); next != nil {
 		return next
+	}
+
+	// ensure service
+	if next := r.ensureService(ctx, r.cluster.NamespacedName()); next != nil {
+		return next
+	}
+
+	spiceDBDeployment, err := GetComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), r.cluster.NamespacedName(), ComponentSpiceDBLabelValue)
+	if err != nil {
+		r.requeue(0)
 	}
 
 	// check migration level if
@@ -118,10 +133,9 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 		return next
 	}
 
-	// TODO: can there ever be multiple migration jobs here?
-
 	// fetch the migration job (if any)
-	migrationJob, err := r.getMigrationJob(r.cluster.NamespacedName())
+	// TODO: can there ever be multiple migration jobs here?
+	migrationJob, err := GetComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), r.cluster.NamespacedName(), ComponentMigrationJobLabelValue)
 	if err != nil {
 		return r.requeue(0)
 	}
@@ -234,7 +248,7 @@ func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedNa
 		// fetch it and add the label to it.
 		secret, err = r.kclient.CoreV1().Secrets(nn.Namespace).Apply(ctx, applycorev1.Secret(secretRef, nn.Namespace).WithLabels(map[string]string{
 			OwnerLabelKey: nn.Name,
-		}), metav1.ApplyOptions{FieldManager: "authzed-operator", Force: true})
+		}), forceOwned)
 		// TODO: events
 		// r.recorder.Event(secret, "Adopted", "ReferencedByCluster", "Secret was referenced as the secret source for an AuthzedEnterpriseCluster; it has been labelled to mark it as part of the configuration for that cluster.")
 	case 1:
@@ -261,7 +275,6 @@ func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedNa
 }
 
 // validConfig checks that the values in the config + the secret are sane
-// TODO: can we just re-use cue here?
 func (r *Reconciler) validConfig(config map[string]string, secret *corev1.Secret) (*Config, error) {
 	datastoreEngine, ok := config["datastore_engine"]
 	if !ok {
@@ -287,79 +300,44 @@ func (r *Reconciler) validConfig(config map[string]string, secret *corev1.Secret
 		return nil, fmt.Errorf("invalid value for replicas %q: %w", replicas, err)
 	}
 
+	envPrefix, ok := config["env_prefix"]
+	if !ok {
+		envPrefix = "SPICEDB_"
+	}
+
+	spicedbCmd, ok := config["cmd"]
+	if !ok {
+		spicedbCmd = "spicedb"
+	}
+
+	prefixesRequired, ok := config["prefixes_required"]
+	if !ok {
+		prefixesRequired = "true"
+	}
+
+	overlapStrategy, ok := config["overlap_strategy"]
+	if !ok {
+		overlapStrategy = "prefix"
+	}
+
 	// TODO: should we even store refs to the values from the secret?
 	return &Config{MigrationConfig: MigrationConfig{
-		DatastoreEngine:       datastoreEngine,
-		DatastoreURI:          string(datastoreURI),
-		SpannerCredsSecretRef: config["spanner_credentials"],
-		TargetSpiceDBTag:      SpiceDBTag,
+		DatastoreEngine:        datastoreEngine,
+		DatastoreURI:           string(datastoreURI),
+		SpannerCredsSecretRef:  config["spanner_credentials"],
+		TargetSpiceDBTag:       SpiceDBTag,
+		EnvPrefix:              envPrefix,
+		SpiceDBCmd:             spicedbCmd,
+		DatastoreTLSSecretName: config["datastore_tls_secret_name"],
 	}, SpiceConfig: SpiceConfig{
-		Replicas:     int32(replicas),
-		PresharedKey: string(psk),
+		Replicas:         int32(replicas),
+		PresharedKey:     string(psk),
+		EnvPrefix:        envPrefix,
+		SpiceDBCmd:       spicedbCmd,
+		TLSSecretName:    config["tls_secret_name"],
+		PrefixesRequired: prefixesRequired == "true",
+		OverlapStrategy:  overlapStrategy,
 	}}, nil
-}
-
-// TODO: generics for these getX methods
-func (r *Reconciler) getSpiceDBDeployment(nn types.NamespacedName) (*appsv1.Deployment, func()) {
-	ownedDeployments, err := r.getOwnedObjects(nn, appsv1.SchemeGroupVersion.WithResource("deployments"))
-	if err != nil {
-		utilruntime.HandleError(err)
-		return nil, r.requeue(0)
-	}
-
-	var spiceDeployment *appsv1.Deployment
-	for _, d := range ownedDeployments {
-		unst, ok := d.(*unstructured.Unstructured)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected unstructured, got: %T", d))
-			continue
-		}
-		deployment := &appsv1.Deployment{}
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, deployment); err != nil {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected deployment, %s", unst.GroupVersionKind()))
-			continue
-		}
-		labels := deployment.GetLabels()
-		if labels == nil {
-			continue
-		}
-		if labels[ComponentLabelKey] == ComponentSpiceDBLabelValue {
-			spiceDeployment = deployment
-			break
-		}
-	}
-	return spiceDeployment, nil
-}
-
-func (r *Reconciler) getMigrationJob(nn types.NamespacedName) (*batchv1.Job, error) {
-	ownedJobs, err := r.getOwnedObjects(nn, batchv1.SchemeGroupVersion.WithResource("jobs"))
-	if err != nil {
-		return nil, err
-	}
-
-	var migrationJob *batchv1.Job
-	for _, d := range ownedJobs {
-		unst, ok := d.(*unstructured.Unstructured)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected unstructured, got: %T", d))
-			continue
-		}
-
-		job := &batchv1.Job{}
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, job); err != nil {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected job, got: %s: %w", unst.GroupVersionKind(), err))
-			continue
-		}
-		labels := job.GetLabels()
-		if labels == nil {
-			continue
-		}
-		if labels[ComponentLabelKey] == ComponentMigrationJobLabelValue {
-			migrationJob = job
-			break
-		}
-	}
-	return migrationJob, nil
 }
 
 // migrationCheckRequired returns true if the current state requires that we
@@ -511,31 +489,86 @@ func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedNa
 
 	name := fmt.Sprintf("%s-spicedb", nn.Name)
 	dep := applyappsv1.Deployment(name, nn.Namespace)
-	dep = dep.WithLabels(map[string]string{
-		OwnerLabelKey:           nn.Name,
-		ComponentLabelKey:       ComponentSpiceDBLabelValue,
-		OperatorManagedLabelKey: OperatorManagedLabelValue,
-	})
+	dep = dep.WithLabels(LabelsForComponent(nn.Name, ComponentSpiceDBLabelValue))
 	dep = dep.WithAnnotations(map[string]string{
 		SpiceDBMigrationRequirementsKey: migrationHash,
 		SpiceDBConfigKey:                spiceDBConfigHash,
 	})
+	dep = dep.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(nn.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
 
-	dep = dep.WithSpec(applyappsv1.DeploymentSpec().WithReplicas(config.Replicas).WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).WithSpec(applycorev1.PodSpec().WithContainers(
-		applycorev1.Container().WithName(name).WithImage(SpiceDBTag).WithCommand("spicedb-enterprise", "serve").WithEnv(
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_LOG_LEVEL").WithValue(config.LogLevel),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_DATASTORE_ENGINE").WithValue(migrateConfig.DatastoreEngine),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_DISPATCH_UPSTREAM_ADDR").WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", name, nn.Namespace)),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("preshared_key"))),
-		).WithPorts(
-			applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-			applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-			applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-			applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-		),
-	))))
-	_, err = r.kclient.AppsV1().Deployments(nn.Namespace).Apply(ctx, dep, metav1.ApplyOptions{FieldManager: "authzed-operator", Force: true})
+	depEnv := []*applycorev1.EnvVarApplyConfiguration{
+		applycorev1.EnvVar().WithName(config.EnvPrefix + "_LOG_LEVEL").WithValue(config.LogLevel),
+		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DATASTORE_ENGINE").WithValue(migrateConfig.DatastoreEngine),
+		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DISPATCH_UPSTREAM_ADDR").WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", nn.Name, nn.Namespace)),
+		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
+		applycorev1.EnvVar().WithName(config.EnvPrefix + "_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("preshared_key"))),
+	}
+
+	probeCmd := []string{"grpc_health_probe", "-v", "-addr=localhost:50051"}
+
+	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
+	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
+
+	// TODO: validate that the secret exists before we start applying the deployment
+	// TODO: allow overriding each service's certs
+	if len(config.TLSSecretName) > 0 {
+		depEnv = append(depEnv,
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_GRPC_TLS_KEY_PATH").WithValue("/tls/tls.key"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_GRPC_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_CLUSTER_TLS_KEY_PATH").WithValue("/tls/tls.key"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_CLUSTER_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
+			// TODO: check that this works
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_UPSTREAM_CA_PATH").WithValue("/tls/tls.crt"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_HTTP_TLS_KEY_PATH").WithValue("/tls/tls.key"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_HTTP_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DASHBOARD_TLS_KEY_PATH").WithValue("/tls/tls.key"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DASHBOARD_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_METRICS_TLS_KEY_PATH").WithValue("/tls/tls.key"),
+			applycorev1.EnvVar().WithName(config.EnvPrefix+"_METRICS_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
+		)
+		probeCmd = append(probeCmd, "-tls", "-tls-ca-cert=/tls/tls.crt")
+		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.TLSSecretName)))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
+	}
+
+	if len(migrateConfig.DatastoreTLSSecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(migrateConfig.DatastoreTLSSecretName)))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("db-tls").WithMountPath("/db-tls").WithReadOnly(true))
+	}
+
+	if len(migrateConfig.SpannerCredsSecretRef) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(migrateConfig.SpannerCredsSecretRef).WithItems(
+			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
+		)))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("spanner").WithMountPath("/spanner-credentials").WithReadOnly(true))
+	}
+
+	dep = dep.WithSpec(applyappsv1.DeploymentSpec().
+		WithReplicas(config.Replicas).
+		WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
+		WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+			WithSpec(applycorev1.PodSpec().WithServiceAccountName(nn.Name).WithContainers(
+				applycorev1.Container().WithName(name).WithImage(SpiceDBTag).
+					WithCommand(config.SpiceDBCmd, "serve").
+					WithEnv(depEnv...).
+					WithPorts(
+						applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+						applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
+						applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
+						applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
+					).WithLivenessProbe(
+					applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(probeCmd...)).
+						WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+				).WithReadinessProbe(
+					applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(probeCmd...)).
+						WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+				).WithVolumeMounts(volumeMounts...),
+			).WithVolumes(volumes...))))
+	_, err = r.kclient.AppsV1().Deployments(nn.Namespace).Apply(ctx, dep, forceOwned)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return err
@@ -546,27 +579,180 @@ func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedNa
 func (r *Reconciler) updateJob(ctx context.Context, nn types.NamespacedName, migrationHash string, config *MigrationConfig) error {
 	name := fmt.Sprintf("%s-migrate-%s", nn.Name, migrationHash[:15])
 	job := applybatchv1.Job(name, nn.Namespace)
-	job = job.WithLabels(map[string]string{
-		OwnerLabelKey:           nn.Name,
-		ComponentLabelKey:       ComponentMigrationJobLabelValue,
-		OperatorManagedLabelKey: OperatorManagedLabelValue,
-	})
+	job = job.WithLabels(LabelsForComponent(nn.Name, ComponentMigrationJobLabelValue))
 	job = job.WithAnnotations(map[string]string{
 		SpiceDBMigrationRequirementsKey: migrationHash,
 	})
+	job = job.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(nn.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
 
-	job = job.WithSpec(applybatchv1.JobSpec().WithTemplate(applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
-		applycorev1.Container().WithName(name).WithImage(SpiceDBTag).WithCommand("spicedb-enterprise", "migrate", "head").WithEnv(
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_LOG_LEVEL").WithValue(config.LogLevel),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_DATASTORE_ENGINE").WithValue(config.DatastoreEngine),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
-			applycorev1.EnvVar().WithName("SPICEDB_ENTERPRISE_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("migration_secrets"))),
-		).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-	).WithRestartPolicy(corev1.RestartPolicyNever))))
+	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
+	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
 
-	_, err := r.kclient.BatchV1().Jobs(nn.Namespace).Apply(ctx, job, metav1.ApplyOptions{FieldManager: "authzed-operator", Force: true})
+	// TODO: this is the same as the volumes/mounts for the deployment
+	if len(config.DatastoreTLSSecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.DatastoreTLSSecretName)))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("db-tls").WithMountPath("/db-tls").WithReadOnly(true))
+	}
+	// TODO: this is the same as the volumes/mounts for the deployment
+	if len(config.SpannerCredsSecretRef) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.SpannerCredsSecretRef).WithItems(
+			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
+		)))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("spanner").WithMountPath("/spanner-credentials").WithReadOnly(true))
+	}
+
+	job = job.WithSpec(applybatchv1.JobSpec().WithTemplate(
+		applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
+			applycorev1.Container().WithName(name).WithImage(SpiceDBTag).WithCommand(config.SpiceDBCmd, "migrate", "head").WithEnv(
+				applycorev1.EnvVar().WithName(config.EnvPrefix+"_LOG_LEVEL").WithValue(config.LogLevel),
+				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_ENGINE").WithValue(config.DatastoreEngine),
+				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
+				applycorev1.EnvVar().WithName(config.EnvPrefix+"_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("migration_secrets"))),
+			).WithVolumeMounts(volumeMounts...).WithPorts(
+				applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
+				applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
+				applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
+				applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
+			).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+		).WithVolumes(volumes...).WithRestartPolicy(corev1.RestartPolicyNever))))
+
+	_, err := r.kclient.BatchV1().Jobs(nn.Namespace).Apply(ctx, job, forceOwned)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// ensureService
+// TODO: check if needs to be updated
+func (r *Reconciler) ensureService(ctx context.Context, nn types.NamespacedName) func() {
+	service, err := GetComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), nn, ComponentServiceLabel)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+
+	if service != nil {
+		return nil
+	}
+
+	newService := applycorev1.Service(nn.Name, nn.Namespace).WithLabels(LabelsForComponent(nn.Name, ComponentServiceLabel))
+	newService = newService.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(nn.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
+	newService = newService.WithSpec(applycorev1.ServiceSpec().WithSelector(LabelsForComponent(nn.Name, ComponentSpiceDBLabelValue)).WithPorts(
+		applycorev1.ServicePort().WithName("grpc").WithPort(50051),
+		applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
+		applycorev1.ServicePort().WithName("gateway").WithPort(8443),
+		applycorev1.ServicePort().WithName("prometheus").WithPort(9090),
+	))
+	_, err = r.kclient.CoreV1().Services(nn.Namespace).Apply(ctx, newService, forceOwned)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+
+	return nil
+}
+
+// ensureRBAC
+// TODO: check if needs to be updated
+func (r *Reconciler) ensureRBAC(ctx context.Context) func() {
+	serviceAccount, err := GetComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), r.cluster.NamespacedName(), ComponentServiceAccountLabel)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+	role, err := GetComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), r.cluster.NamespacedName(), ComponentRoleLabel)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+	roleBinding, err := GetComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), r.cluster.NamespacedName(), ComponentRoleBindingLabel)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+
+	if serviceAccount != nil && role != nil && roleBinding != nil {
+		return nil
+	}
+
+	newSA := applycorev1.ServiceAccount(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentServiceAccountLabel))
+	newSA = newSA.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(r.cluster.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
+	_, err = r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, newSA, forceOwned)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+
+	newRole := applyrbacv1.Role(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentRoleLabel))
+	newRole = newRole.WithRules(applyrbacv1.PolicyRule().WithAPIGroups("").WithResources("endpoints").WithVerbs("get", "list", "watch"))
+	newRole = newRole.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(r.cluster.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
+	_, err = r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, newRole, forceOwned)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+
+	newRoleBinding := applyrbacv1.RoleBinding(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentRoleBindingLabel))
+	newRoleBinding = newRoleBinding.WithOwnerReferences(applymetav1.OwnerReference().
+		WithName(r.cluster.Name).
+		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+		WithUID(r.cluster.UID))
+	newRoleBinding = newRoleBinding.WithRoleRef(applyrbacv1.RoleRef().WithKind("Role").WithName(r.cluster.Name))
+	newRoleBinding = newRoleBinding.WithSubjects(applyrbacv1.Subject().WithNamespace(r.cluster.Namespace).WithKind("ServiceAccount").WithName(r.cluster.Name))
+	_, err = r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, newRoleBinding, forceOwned)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return r.requeue(0)
+	}
+	return nil
+}
+
+// TODO: take K as a parameter so that callers don't have to specify
+func GetComponent[K metav1.Object](informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory, gvr schema.GroupVersionResource, owner types.NamespacedName, component string) (K, error) {
+	var foundObj K
+
+	ownedObjects, err := informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, owner.String())
+	if err != nil {
+		return foundObj, err
+	}
+
+	for _, d := range ownedObjects {
+		unst, ok := d.(*unstructured.Unstructured)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected unstructured, got: %T", d))
+			continue
+		}
+		var obj *K
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, &obj); err != nil {
+			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected %s, got: %s: %w", gvr.Resource, unst.GroupVersionKind(), err))
+			continue
+		}
+		labels := (*obj).GetLabels()
+		if labels == nil {
+			continue
+		}
+		if labels[ComponentLabelKey] == component {
+			foundObj = *obj
+			break
+		}
+	}
+	return foundObj, nil
 }

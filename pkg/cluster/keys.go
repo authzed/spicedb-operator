@@ -20,6 +20,14 @@ const (
 
 var ManagedDependentSelector = util.MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 
+func LabelsForComponent(owner, component string) map[string]string {
+	return map[string]string{
+		OwnerLabelKey:           owner,
+		ComponentLabelKey:       component,
+		OperatorManagedLabelKey: OperatorManagedLabelValue,
+	}
+}
+
 func GVRMetaNamespaceKeyer(gvr schema.GroupVersionResource, key string) string {
 	return fmt.Sprintf("%s.%s.%s::%s", gvr.Resource, gvr.Version, gvr.Group, key)
 }

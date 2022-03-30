@@ -13,15 +13,42 @@
 
 ## Debug
 
-- metrics on `localhost:8080/metrics`
-- profiles on `localhost:8080/debug/pprof`
+- metrics on `:8080/metrics`
+- profiles on `:8080/debug/pprof`
 - control log level with `-v=1` to `-v=8`
+
+## Tests
+
+Install ginkgo:
+```sh
+go install github.com/onsi/ginkgo/v2/ginkgo@v2
+```
+
+Run against an existing cluster with images already loaded (current kubeconfig context)
+```sh
+ginkgo --tags=e2e -r
+```
+
+Spin up a new `kind` cluster and run tests:
+```sh
+PROVISION=true IMAGES=spicedb:dev ginkgo --tags=e2e -r
+```
+
+Run against apiserver+etcd only (not all tests will run):
+```sh
+PROVISION=false APISERVER_ONLY=true ginkgo --tags=e2e -r
+```
+
+Run with `go test` (ginkgo has better signal handling, prefer ginkgo to `go test`)
+```sh
+go test -tags=e2e ./...
+```
 
 ## Notes
 
 - `client-go` is used instead of frameworks like kubebuilder/operator-sdk/kudo
 - Design closely mimics modern kubernetes controllers, see references
-- Re-use patterns from k/k when possible
+- Re-uses patterns from k/k when possible
 
 ## References
 

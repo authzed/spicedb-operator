@@ -48,6 +48,10 @@ func listsep(c rune) bool {
 }
 
 var (
+	// - if run with `PROVISION=true` (the default), we spin up a new kind cluster for the tests
+	// - if run with `APISERVER_ONLY=true`, we'll use apiserver + etcd instead of a real cluster
+	// - if run with `PROVISION=false` and `APISERVER_ONLY=false` we'll use the environment / kubeconfig flags to connect to an existing cluster
+
 	apiserverOnly = os.Getenv("APISERVER_ONLY") == "true"
 	provision     = os.Getenv("PROVISION") == "true"
 	archives      = strings.FieldsFunc(os.Getenv("ARCHIVES"), listsep)
@@ -58,7 +62,7 @@ var (
 
 func TestEndToEnd(t *testing.T) {
 	RegisterFailHandler(Fail)
-	SetDefaultEventuallyTimeout(1 * time.Minute)
+	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
@@ -66,10 +70,6 @@ func TestEndToEnd(t *testing.T) {
 }
 
 var testEnv *envtest.Environment
-
-// - if run with `--provision=true` (the default), we spin up a new kind cluster for the tests
-// - if run with `--apiserver-only=true`, we'll use apiserver + etcd instead of a real cluster
-// - if run with `--provision=false` and `--apiserver-only=false` we'll use the environment / kubeconfig flags to connect to an existing cluster
 
 var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
