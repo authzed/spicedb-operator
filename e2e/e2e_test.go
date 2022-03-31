@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/kind/pkg/fs"
 
 	"github.com/authzed/spicedb-operator/pkg/cluster"
+	"github.com/authzed/spicedb-operator/pkg/cmd/run"
 )
 
 func listsep(c rune) bool {
@@ -73,10 +74,6 @@ var testEnv *envtest.Environment
 
 var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("..", "config", "crds")},
-		CRDInstallOptions: envtest.CRDInstallOptions{
-			CleanUpAfterUse: false,
-		},
 		ControlPlaneStopTimeout: 3 * time.Minute,
 	}
 
@@ -119,6 +116,8 @@ func StartOperator() {
 
 	kclient, err := kubernetes.NewForConfig(restConfig)
 	Expect(err).To(Succeed())
+
+	Expect(run.BootstrapCRD([]string{filepath.Join("..", "config", "crds")}, restConfig)).To(Succeed())
 
 	ctrl, err := cluster.NewController(context.Background(), dclient, kclient)
 	Expect(err).To(Succeed())

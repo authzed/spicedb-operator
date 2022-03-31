@@ -1,15 +1,19 @@
 package run
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/rest"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	"github.com/authzed/spicedb-operator/pkg/cluster"
 	"github.com/authzed/spicedb-operator/pkg/manager"
@@ -20,6 +24,8 @@ type Options struct {
 	ConfigFlags  *genericclioptions.ConfigFlags
 	DebugFlags   *ctrlmanageropts.DebuggingOptions
 	DebugAddress string
+
+	CRDPaths []string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -46,6 +52,8 @@ func NewCmdRun(o *Options) *cobra.Command {
 	}
 
 	namedFlagSets := &cliflag.NamedFlagSets{}
+	bootstrapFlags := namedFlagSets.FlagSet("bootstrap")
+	bootstrapFlags.StringArrayVar(&o.CRDPaths, "crd", []string{}, "if set, the operator will attempt to install/update the CRDs found at the specified path before starting up.")
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
 	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
@@ -88,5 +96,27 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return ctx.Err()
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
+
+	if len(o.CRDPaths) > 0 {
+		restConfig, err := f.ToRESTConfig()
+		if err != nil {
+			return err
+		}
+		if err := BootstrapCRD(o.CRDPaths, restConfig); err != nil {
+			return err
+		}
+	}
+
 	return mgr.StartControllers(ctx, ctrl)
+}
+
+func BootstrapCRD(crdPaths []string, restConfig *rest.Config) error {
+	_, err := envtest.InstallCRDs(restConfig, envtest.CRDInstallOptions{
+		Paths:              crdPaths,
+		ErrorIfPathMissing: true,
+		MaxTime:            5 * time.Minute,
+		PollInterval:       200 * time.Millisecond,
+		CleanUpAfterUse:    false,
+	})
+	return err
 }
