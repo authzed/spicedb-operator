@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,7 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/fs"
+	"sigs.k8s.io/yaml"
 
 	"github.com/authzed/spicedb-operator/pkg/cluster"
 	"github.com/authzed/spicedb-operator/pkg/cmd/run"
@@ -119,12 +121,40 @@ func StartOperator() {
 
 	Expect(run.BootstrapCRD([]string{filepath.Join("..", "config", "crds")}, restConfig)).To(Succeed())
 
-	ctrl, err := cluster.NewController(context.Background(), dclient, kclient)
+	opconfig := cluster.OperatorConfig{
+		ImageName: "spicedb",
+		ImageTag:  "dev",
+	}
+	ctrl, err := cluster.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig))
 	Expect(err).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 	go ctrl.Start(ctx, 2)
+}
+
+var ConfigFileName = ""
+
+func WriteConfig(operatorConfig cluster.OperatorConfig) string {
+	out, err := yaml.Marshal(operatorConfig)
+	Expect(err).To(Succeed())
+	var file *os.File
+	if len(ConfigFileName) == 0 {
+		file, err = ioutil.TempFile("", "operator-config")
+		Expect(err).To(Succeed())
+		ConfigFileName = file.Name()
+	} else {
+		file, err = os.OpenFile(ConfigFileName, os.O_WRONLY, os.ModeAppend)
+		Expect(err).To(Succeed())
+	}
+	defer func() {
+		Expect(file.Close()).To(Succeed())
+	}()
+	_, err = file.Write(out)
+	Expect(err).To(Succeed())
+	GinkgoWriter.Println("wrote new config to", ConfigFileName)
+	fmt.Println(ConfigFileName)
+	return ConfigFileName
 }
 
 func ConfigureApiserver() {

@@ -23,7 +23,7 @@ func TestReconcile(t *testing.T) {
 	dclient := dynamicfake.NewSimpleDynamicClient(scheme)
 	kclient := k8sfake.NewSimpleClientset()
 
-	ctrl, err := NewController(context.Background(), dclient, kclient)
+	ctrl, err := NewController(context.Background(), dclient, kclient, "")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())

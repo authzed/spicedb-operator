@@ -5,7 +5,7 @@ type MigrationConfig struct {
 	DatastoreEngine        string
 	DatastoreURI           string
 	SpannerCredsSecretRef  string
-	TargetSpiceDBTag       string
+	TargetSpiceDBImage     string
 	EnvPrefix              string
 	SpiceDBCmd             string
 	DatastoreTLSSecretName string

@@ -25,7 +25,8 @@ type Options struct {
 	DebugFlags   *ctrlmanageropts.DebuggingOptions
 	DebugAddress string
 
-	CRDPaths []string
+	CRDPaths           []string
+	OperatorConfigPath string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -58,7 +59,9 @@ func NewCmdRun(o *Options) *cobra.Command {
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
 	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
 	o.DebugFlags.AddFlags(debugFlags)
-	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
+	globalFlags := namedFlagSets.FlagSet("global")
+	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
+	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
 
 	for _, f := range namedFlagSets.FlagSets {
 		cmd.Flags().AddFlagSet(f)
@@ -88,7 +91,7 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 	}
 
 	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := cluster.NewController(ctx, dclient, kclient)
+	ctrl, err := cluster.NewController(ctx, dclient, kclient, o.OperatorConfigPath)
 	if err != nil {
 		return err
 	}

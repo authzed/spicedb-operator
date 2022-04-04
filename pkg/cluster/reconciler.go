@@ -44,7 +44,6 @@ const (
 	ComponentRoleBindingLabel       = "spicedb-rolebinding"
 	SpiceDBMigrationRequirementsKey = "authzed.com/spicedb-migration"
 	SpiceDBConfigKey                = "authzed.com/spicedb-configuration"
-	SpiceDBTag                      = "spicedb:dev"
 )
 
 var (
@@ -62,6 +61,8 @@ type Reconciler struct {
 	kclient   kubernetes.Interface
 	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
 	recorder  record.EventRecorder
+
+	spiceDBImage string
 }
 
 // syncCluster inspects the current AuthzedEnterpriseCluster object and ensures
@@ -117,9 +118,18 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 		return next
 	}
 
-	spiceDBDeployment, err := GetComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), r.cluster.NamespacedName(), ComponentSpiceDBLabelValue)
+	spiceDBDeployments, err := GetComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), r.cluster.NamespacedName(), ComponentSpiceDBLabelValue)
 	if err != nil {
 		r.requeue(0)
+	}
+
+	if len(spiceDBDeployments) > 1 {
+		// TODO delete deployments without matching hashes
+	}
+
+	var spiceDBDeployment *appsv1.Deployment
+	if len(spiceDBDeployments) > 0 {
+		spiceDBDeployment = spiceDBDeployments[0]
 	}
 
 	// check migration level if
@@ -134,10 +144,46 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 	}
 
 	// fetch the migration job (if any)
-	// TODO: can there ever be multiple migration jobs here?
-	migrationJob, err := GetComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), r.cluster.NamespacedName(), ComponentMigrationJobLabelValue)
+	migrationJobs, err := GetComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), r.cluster.NamespacedName(), ComponentMigrationJobLabelValue)
 	if err != nil {
 		return r.requeue(0)
+	}
+
+	// there can be multiple migration jobs if the config was changed before
+	// older jobs were cleaned up
+	if len(migrationJobs) > 1 {
+		// TODO: migration hash is calculated in many places
+		migrationHash, err := util.SecureHashObject(config)
+		if err != nil {
+			return r.requeue(0)
+		}
+
+		// delete jobs without matching hashes
+		for _, j := range migrationJobs {
+			shouldDelete := func() bool {
+				annotations := j.Annotations
+				if annotations == nil {
+					return true
+				}
+				hash, ok := annotations[SpiceDBMigrationRequirementsKey]
+				if !ok {
+					return true
+				}
+				return subtle.ConstantTimeCompare([]byte(hash), []byte(migrationHash)) != 1
+			}
+			if !shouldDelete() {
+				continue
+			}
+			if err := r.kclient.BatchV1().Jobs(j.GetNamespace()).Delete(ctx, j.GetName(), metav1.DeleteOptions{}); err != nil {
+				utilruntime.HandleError(err)
+				return r.requeue(0)
+			}
+		}
+		return r.requeue(1 * time.Second)
+	}
+	var migrationJob *batchv1.Job
+	if len(migrationJobs) > 0 {
+		migrationJob = migrationJobs[0]
 	}
 
 	if checkMigrations {
@@ -147,7 +193,7 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 			return r.requeue(0)
 		}
 
-		migrationsRequired, err := r.checkDatastoreMigrationLevel(spiceDBDeployment)
+		migrationsRequired, err := r.checkDatastoreMigrationLevel(spiceDBDeployment, &config.MigrationConfig)
 		if err != nil {
 			return r.requeue(0)
 		}
@@ -167,12 +213,6 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 	}
 
 	// datastore is up and fully migrated
-
-	// check for and create serviceaccount
-
-	// in parallel:
-	// - check for and create service
-	// - check for and create deployment
 
 	// ensure deployment exists with proper config
 	deploymentUpdateRequired, err := r.deploymentUpdateRequired(spiceDBDeployment, &config.SpiceConfig, &config.MigrationConfig)
@@ -325,7 +365,7 @@ func (r *Reconciler) validConfig(config map[string]string, secret *corev1.Secret
 		DatastoreEngine:        datastoreEngine,
 		DatastoreURI:           string(datastoreURI),
 		SpannerCredsSecretRef:  config["spanner_credentials"],
-		TargetSpiceDBTag:       SpiceDBTag,
+		TargetSpiceDBImage:     r.spiceDBImage,
 		EnvPrefix:              envPrefix,
 		SpiceDBCmd:             spicedbCmd,
 		DatastoreTLSSecretName: config["datastore_tls_secret_name"],
@@ -362,17 +402,17 @@ func (r *Reconciler) migrationCheckRequired(spiceDBDeployment *appsv1.Deployment
 	}
 
 	// if hash is different, migration check is required
-	return subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) == 1, nil
+	return subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) != 1, nil
 }
 
-func (r *Reconciler) checkDatastoreMigrationLevel(spiceDBDeployment *appsv1.Deployment) (bool, error) {
+func (r *Reconciler) checkDatastoreMigrationLevel(spiceDBDeployment *appsv1.Deployment, config *MigrationConfig) (bool, error) {
 	// if there is no deployment, we need to migrate
 	if spiceDBDeployment == nil {
 		return true, nil
 	}
 
 	// we're deploying a new version and should check for migrations first
-	if spiceDBDeployment.Spec.Template.Spec.Containers[0].Image != SpiceDBTag {
+	if spiceDBDeployment.Spec.Template.Spec.Containers[0].Image != config.TargetSpiceDBImage {
 		return true, nil
 	}
 
@@ -396,6 +436,10 @@ func (r *Reconciler) migrateHead(ctx context.Context, cluster *v1alpha1.AuthzedE
 			utilruntime.HandleError(err)
 			return r.requeue(0)
 		}
+		// TODO: this would be a good place to grab the updated job's revision
+		//  and wait on future resyncs
+		// job has been created, requeue and check its status
+		return r.requeue(1 * time.Second)
 	}
 
 	// if migration failed entirely, pause so we can diagnose
@@ -443,7 +487,7 @@ func (r *Reconciler) migrationJobApplyRequired(migrationJob *batchv1.Job, migrat
 	}
 
 	// if hash is different, update is required
-	return annotations[SpiceDBMigrationRequirementsKey] == migrationConfigHash, nil
+	return subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationConfigHash)) != 1, nil
 }
 
 // deploymentUpdateRequired returns true if the deployment on the cluster needs
@@ -471,7 +515,8 @@ func (r *Reconciler) deploymentUpdateRequired(spiceDBDeployment *appsv1.Deployme
 	}
 
 	// if hash is different, update is required
-	return annotations[SpiceDBConfigKey] == spiceDBConfigHash && annotations[SpiceDBMigrationRequirementsKey] == migrationHash, nil
+	return annotations[SpiceDBConfigKey] != spiceDBConfigHash ||
+		subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) != 1, nil
 }
 
 func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedName, config *SpiceConfig, migrateConfig *MigrationConfig) error {
@@ -552,7 +597,7 @@ func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedNa
 		WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
 		WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 			WithSpec(applycorev1.PodSpec().WithServiceAccountName(nn.Name).WithContainers(
-				applycorev1.Container().WithName(name).WithImage(SpiceDBTag).
+				applycorev1.Container().WithName(name).WithImage(migrateConfig.TargetSpiceDBImage).
 					WithCommand(config.SpiceDBCmd, "serve").
 					WithEnv(depEnv...).
 					WithPorts(
@@ -607,7 +652,7 @@ func (r *Reconciler) updateJob(ctx context.Context, nn types.NamespacedName, mig
 
 	job = job.WithSpec(applybatchv1.JobSpec().WithTemplate(
 		applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
-			applycorev1.Container().WithName(name).WithImage(SpiceDBTag).WithCommand(config.SpiceDBCmd, "migrate", "head").WithEnv(
+			applycorev1.Container().WithName(name).WithImage(config.TargetSpiceDBImage).WithCommand(config.SpiceDBCmd, "migrate", "head").WithEnv(
 				applycorev1.EnvVar().WithName(config.EnvPrefix+"_LOG_LEVEL").WithValue(config.LogLevel),
 				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_ENGINE").WithValue(config.DatastoreEngine),
 				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
@@ -726,12 +771,12 @@ func (r *Reconciler) ensureRBAC(ctx context.Context) func() {
 }
 
 // TODO: take K as a parameter so that callers don't have to specify
-func GetComponent[K metav1.Object](informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory, gvr schema.GroupVersionResource, owner types.NamespacedName, component string) (K, error) {
-	var foundObj K
+func GetComponent[K metav1.Object](informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory, gvr schema.GroupVersionResource, owner types.NamespacedName, component string) ([]K, error) {
+	var found []K
 
 	ownedObjects, err := informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, owner.String())
 	if err != nil {
-		return foundObj, err
+		return nil, err
 	}
 
 	for _, d := range ownedObjects {
@@ -750,9 +795,8 @@ func GetComponent[K metav1.Object](informers map[schema.GroupVersionResource]dyn
 			continue
 		}
 		if labels[ComponentLabelKey] == component {
-			foundObj = *obj
-			break
+			found = append(found, *obj)
 		}
 	}
-	return foundObj, nil
+	return found, nil
 }
