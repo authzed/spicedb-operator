@@ -8,6 +8,7 @@ import (
 	_ "embed"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,46 +45,43 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 	)
 
 	AssertMigrationJobCleanup := func(args func() (string, string)) {
-		It("deletes the migration job", func() {
-			namespace, owner := args()
-			ctx, cancel := context.WithCancel(context.Background())
-			DeferCleanup(cancel)
+		namespace, owner := args()
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
 
-			Eventually(func(g Gomega) {
-				jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue, cluster.OwnerLabelKey, owner),
-				})
-				g.Expect(err).To(Succeed())
-				g.Expect(len(jobs.Items)).To(BeZero())
-			}).Should(Succeed())
-		})
+		Eventually(func(g Gomega) {
+			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue, cluster.OwnerLabelKey, owner),
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(jobs.Items)).To(BeZero())
+		}).Should(Succeed())
 	}
 
-	AssertHealthySpiceDBCluster := func(args func() (string, string), logMatcher types.GomegaMatcher) {
-		It("creates a spicedb cluster", func() {
-			namespace, owner := args()
-			ctx, cancel := context.WithCancel(context.Background())
-			DeferCleanup(cancel)
+	AssertHealthySpiceDBCluster := func(image string, args func() (string, string), logMatcher types.GomegaMatcher) {
+		namespace, owner := args()
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
 
-			var deps *appsv1.DeploymentList
-			Eventually(func(g Gomega) {
-				var err error
-				deps, err = kclient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentSpiceDBLabelValue, cluster.OwnerLabelKey, owner),
-				})
-				g.Expect(err).To(Succeed())
-				g.Expect(len(deps.Items)).To(Equal(1))
-				GinkgoWriter.Println(deps.Items[0].Status)
-				g.Expect(deps.Items[0].Status.AvailableReplicas).ToNot(BeZero())
-			}).Should(Succeed())
+		var deps *appsv1.DeploymentList
+		Eventually(func(g Gomega) {
+			var err error
+			deps, err = kclient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentSpiceDBLabelValue, cluster.OwnerLabelKey, owner),
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(deps.Items)).To(Equal(1))
+			g.Expect(deps.Items[0].Spec.Template.Spec.Containers[0].Image).To(Equal(image))
+			GinkgoWriter.Println(deps.Items[0].Status)
+			g.Expect(deps.Items[0].Status.AvailableReplicas).ToNot(BeZero())
+		}).Should(Succeed())
 
-			By("not having startup warnings")
-			var buf bytes.Buffer
-			Tail(&deps.Items[0], func(g Gomega) {
-				g.Eventually(buf.Len()).ShouldNot(BeZero())
-				g.Consistently(buf.String()).Should(logMatcher)
-			}, GinkgoWriter, &buf)
-		})
+		By("not having startup warnings")
+		var buf bytes.Buffer
+		Tail(&deps.Items[0], func(g Gomega) {
+			g.Eventually(buf.Len()).ShouldNot(BeZero())
+			g.Consistently(buf.String()).Should(logMatcher)
+		}, GinkgoWriter, &buf)
 	}
 
 	AssertDependentResourceCleanup := func(namespace, owner, secretName string) {
@@ -135,7 +133,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 		}).Should(Succeed())
 	}
 
-	AssertMigrationsCompleted := func(args func() (string, string)) {
+	AssertMigrationsCompleted := func(image string, args func() (string, string)) {
 		namespace, name := args()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -150,20 +148,23 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition("cockroachdb", "head")))
 		}).Should(Succeed())
 
-		jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
-			LabelSelector: fmt.Sprintf("%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue),
-		})
-		Expect(err).To(Succeed())
-		Expect(len(jobs.Items)).To(Equal(1))
-
-		TailF(&jobs.Items[0])
-
 		Eventually(func(g Gomega) {
-			job := &jobs.Items[0]
-			job, err := kclient.BatchV1().Jobs(namespace).Get(ctx, job.Name, metav1.GetOptions{})
-			g.Expect(err).To(Succeed())
-			g.Expect(job.Status.Succeeded).ToNot(BeZero())
-		}).Should(Succeed())
+			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue),
+			})
+			Expect(err).To(Succeed())
+
+			Expect(len(jobs.Items)).ToNot(BeZero())
+
+			job := &jobs.Items[len(jobs.Items)-1]
+			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(image))
+			TailF(job)
+			Eventually(func(g Gomega) {
+				job, err := kclient.BatchV1().Jobs(namespace).Get(ctx, job.Name, metav1.GetOptions{})
+				g.Expect(err).To(Succeed())
+				g.Expect(job.Status.Succeeded).ToNot(BeZero())
+			}).Should(Succeed())
+		})
 	}
 
 	BeforeEach(func() {
@@ -293,7 +294,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
 
-				AssertMigrationsCompleted(func() (string, string) { return cluster.Namespace, cluster.Name })
+				AssertMigrationsCompleted("authzed-spicedb-enterprise:dev", func() (string, string) { return cluster.Namespace, cluster.Name })
 			})
 
 			AfterAll(func() {
@@ -308,23 +309,29 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 			})
 
 			Describe("with a migrated datastore", func() {
-				AssertHealthySpiceDBCluster(func() (string, string) { return cluster.Namespace, cluster.Name }, Not(ContainSubstring("ERROR: kuberesolver")))
+				It("creates a spicedb cluster", func() {
+					AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
+						func() (string, string) { return cluster.Namespace, cluster.Name },
+						Not(ContainSubstring("ERROR: kuberesolver")))
+				})
 				When("the spicedb cluster is running", func() {
-					AssertMigrationJobCleanup(func() (string, string) {
-						return cluster.Namespace, cluster.Name
+					It("cleans up the migration job", func() {
+						AssertMigrationJobCleanup(func() (string, string) {
+							return cluster.Namespace, cluster.Name
+						})
 					})
 				})
 			})
 		})
 
 		When("a valid AuthzedEnterpriseCluster is created (with TLS)", Ordered, func() {
-			var cluster *v1alpha1.AuthzedEnterpriseCluster
+			var spiceCluster *v1alpha1.AuthzedEnterpriseCluster
 
 			BeforeAll(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				DeferCleanup(cancel)
 
-				cluster = &v1alpha1.AuthzedEnterpriseCluster{
+				spiceCluster = &v1alpha1.AuthzedEnterpriseCluster{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       v1alpha1.AuthzedEnterpriseClusterKind,
 						APIVersion: v1alpha1.SchemeGroupVersion.String(),
@@ -346,22 +353,22 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 
 				certPem, keyPem, err := cert.GenerateSelfSignedCertKey("test2", nil, []string{
 					"localhost",
-					"test2." + cluster.Namespace,
-					fmt.Sprintf("test2.%s.svc.cluster.local", cluster.Namespace),
+					"test2." + spiceCluster.Namespace,
+					fmt.Sprintf("test2.%s.svc.spiceCluster.local", spiceCluster.Namespace),
 				})
 				Expect(err).To(Succeed())
 
 				tlsSecret := corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "spicedb-grpc-tls",
-						Namespace: cluster.Namespace,
+						Namespace: spiceCluster.Namespace,
 					},
 					Data: map[string][]byte{
 						"tls.key": keyPem,
 						"tls.crt": certPem,
 					},
 				}
-				_, err = kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
+				_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
 
 				secret := corev1.Secret{
@@ -375,38 +382,76 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 						"preshared_key":     "testtesttesttest",
 					},
 				}
-				_, err = kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
+				_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
 
-				u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
+				u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
 				Expect(err).To(Succeed())
-				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
 
-				AssertMigrationsCompleted(func() (string, string) {
-					return cluster.Namespace, cluster.Name
-				})
+				AssertMigrationsCompleted("authzed-spicedb-enterprise:dev",
+					func() (string, string) {
+						return spiceCluster.Namespace, spiceCluster.Name
+					})
 			})
 
 			AfterAll(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 
-				Expect(client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Delete(ctx, cluster.Name, metav1.DeleteOptions{})).To(Succeed())
+				Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
 
-				AssertDependentResourceCleanup(cluster.Namespace, cluster.Name, "spicedb2")
+				AssertDependentResourceCleanup(spiceCluster.Namespace, spiceCluster.Name, "spicedb2")
 
-				Expect(kclient.CoreV1().Secrets(cluster.Namespace).Delete(ctx, "spicedb2", metav1.DeleteOptions{})).To(Succeed())
+				Expect(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete(ctx, "spicedb2", metav1.DeleteOptions{})).To(Succeed())
 			})
 
 			Describe("with a migrated datastore", func() {
-				AssertHealthySpiceDBCluster(func() (string, string) {
-					return cluster.Namespace, cluster.Name
-				}, Not(ContainSubstring("ERROR: kuberesolver")))
+				It("creates a spicedb cluster", func() {
+					AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
+						func() (string, string) {
+							return spiceCluster.Namespace, spiceCluster.Name
+						}, Not(ContainSubstring("ERROR: kuberesolver")))
+				})
 
 				When("the spicedb cluster is running", func() {
-					AssertMigrationJobCleanup(func() (string, string) {
-						return cluster.Namespace, cluster.Name
+					It("cleans up the migration job", func() {
+						AssertMigrationJobCleanup(func() (string, string) {
+							return spiceCluster.Namespace, spiceCluster.Name
+						})
+					})
+
+					When("the image name/tag are updated", Ordered, func() {
+						var imageName string
+
+						BeforeAll(func() {
+							newConfig := cluster.OperatorConfig{
+								ImageTag:  "updated",
+								ImageName: "authzed-spicedb-enterprise",
+							}
+							imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
+							WriteConfig(newConfig)
+						})
+
+						It("migrates to the latest version", func() {
+							AssertMigrationsCompleted(imageName,
+								func() (string, string) {
+									return spiceCluster.Namespace, spiceCluster.Name
+								})
+						})
+
+						It("updates the deployment", func() {
+							AssertHealthySpiceDBCluster(imageName, func() (string, string) {
+								return spiceCluster.Namespace, spiceCluster.Name
+							}, Not(ContainSubstring("ERROR: kuberesolver")))
+						})
+
+						It("deletes the migration job", func() {
+							AssertMigrationJobCleanup(func() (string, string) {
+								return spiceCluster.Namespace, spiceCluster.Name
+							})
+						})
 					})
 				})
 			})

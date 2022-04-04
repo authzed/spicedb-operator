@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,11 +17,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -65,6 +71,12 @@ var (
 
 const OwningClusterIndex = "owning-cluster"
 
+type OperatorConfig struct {
+	ImageName   string `json:"imageName"`
+	ImageTag    string `json:"imageTag"`
+	ImageDigest string `json:"imageDigest"`
+}
+
 type Controller struct {
 	queue          workqueue.RateLimitingInterface
 	dependentQueue workqueue.RateLimitingInterface
@@ -72,17 +84,34 @@ type Controller struct {
 	informers      map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
 	recorder       record.EventRecorder
 	kclient        kubernetes.Interface
+
+	// config
+	configFilePath string
+	configWatcher  *fsnotify.Watcher
+	configLock     sync.RWMutex
+	config         OperatorConfig
 }
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface) (*Controller, error) {
+func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
 		client:         dclient,
 		queue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 		dependentQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_components_queue"),
 		informers:      make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
+		configFilePath: configFilePath,
+	}
+	if len(configFilePath) > 0 {
+		var err error
+		c.configWatcher, err = fsnotify.NewWatcher()
+		if err != nil {
+			return nil, err
+		}
+		if err := c.configWatcher.Add(configFilePath); err != nil {
+			return nil, err
+		}
 	}
 
 	ownedInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
@@ -126,11 +155,14 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		c.informers[gvr] = externalInformerFactory
 	}
 
+	c.loadConfig()
+
 	// start informers
 	ownedInformerFactory.Start(ctx.Done())
 	externalInformerFactory.Start(ctx.Done())
 	ownedInformerFactory.WaitForCacheSync(ctx.Done())
 	externalInformerFactory.WaitForCacheSync(ctx.Done())
+	go c.watchConfig()
 
 	return c, nil
 }
@@ -151,6 +183,10 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	}
 
 	<-ctx.Done()
+
+	if c.configWatcher != nil {
+		klog.Error(c.configWatcher.Close())
+	}
 }
 
 func (c *Controller) Name() string {
@@ -181,6 +217,61 @@ func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIn
 		return nil
 	}
 	return factory.ForResource(gvr).Informer()
+}
+
+func (c *Controller) watchConfig() {
+	if len(c.configFilePath) == 0 {
+		return
+	}
+	for {
+		select {
+		case event, ok := <-c.configWatcher.Events:
+			if !ok {
+				return
+			}
+			if !(event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Rename == fsnotify.Rename) {
+				return
+			}
+			c.loadConfig()
+
+			// requeue all clusters when config changes
+			clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
+			if err != nil {
+				utilruntime.HandleError(err)
+				return
+			}
+			for _, cluster := range clusters {
+				c.enqueue(v1alpha1ClusterGVR, c.queue, cluster)
+			}
+		case err, ok := <-c.configWatcher.Errors:
+			if !ok {
+				return
+			}
+			utilruntime.HandleError(fmt.Errorf("error watching config file: %w", err))
+		}
+	}
+}
+
+func (c *Controller) loadConfig() {
+	if len(c.configFilePath) == 0 {
+		return
+	}
+	file, err := os.Open(c.configFilePath)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		utilruntime.HandleError(file.Close())
+	}()
+	decoder := yaml.NewYAMLOrJSONDecoder(file, 100)
+	c.configLock.Lock()
+	defer c.configLock.Unlock()
+	if err := decoder.Decode(&c.config); err != nil {
+		panic(err)
+	}
+	if len(c.config.ImageName)+len(c.config.ImageTag)+len(c.config.ImageDigest) == 0 {
+		panic(fmt.Errorf("unable to load config from %s", c.configFilePath))
+	}
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
@@ -285,6 +376,15 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		informers: c.informers,
 		recorder:  c.recorder,
 	}
+	c.configLock.RLock()
+	// TODO: pull in an image spec library
+	if len(c.config.ImageDigest) > 0 {
+		r.spiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
+	} else {
+		r.spiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageTag}, ":")
+	}
+	c.configLock.RUnlock()
+
 	r.sync(ctx)()
 }
 
@@ -309,8 +409,8 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 
 	klog.V(4).Infof("syncing %s %s", gvr, objMeta)
 
-	labels := objMeta.GetLabels()
-	clusterName, ok := labels[OwnerLabelKey]
+	clusterLabels := objMeta.GetLabels()
+	clusterName, ok := clusterLabels[OwnerLabelKey]
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName()))
 		done()
@@ -318,5 +418,5 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 	}
 
 	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
-	c.dependentQueue.AddRateLimited(GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
+	c.queue.AddRateLimited(GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
 }
