@@ -3,6 +3,7 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=authzed-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths="../../../apis/..." output:crd:artifacts:config=../../../bootstrap/crds
 
 const (
 	AuthzedEnterpriseClusterResourceName = "authzedenterpriseclusters"
