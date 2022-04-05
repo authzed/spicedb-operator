@@ -1,14 +1,13 @@
-FROM golang:1.17-alpine AS builder
+FROM golang:1.18 AS builder
 WORKDIR /go/src/app
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build ./cmd/*
+RUN go build ./cmd/...
 
 FROM alpine:3.15
 
-RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
-COPY --from=builder /go/src/app/authzed-enterprise-operator /usr/local/bin/authzed-enterprise-operator
+COPY --from=builder /go/src/app/authzed-operator /usr/local/bin/authzed-operator
 ENTRYPOINT ["authzed-enterprise-operator"]
