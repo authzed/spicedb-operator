@@ -86,6 +86,5 @@ func (c ClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
 }
 
 func (c ClientGetter) ToRawKubeConfigLoader() clientcmd.ClientConfig {
-	// TODO implement me
-	panic("implement me")
+	panic("test ClientGetter doesn't support raw kube config loading")
 }

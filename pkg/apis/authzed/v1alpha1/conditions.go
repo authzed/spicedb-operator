@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/authzed/spicedb-operator/pkg/util"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 func NewPatch(nn types.NamespacedName, generation int64) *AuthzedEnterpriseCluster {
@@ -35,7 +35,7 @@ func NewPausedCondition() metav1.Condition {
 		Status:             metav1.ConditionTrue,
 		Reason:             "PausedByLabel",
 		LastTransitionTime: metav1.NewTime(time.Now()),
-		Message:            fmt.Sprintf("Controller pause requested via label: %s", util.PausedControllerSelectorKey),
+		Message:            fmt.Sprintf("Controller pause requested via label: %s", metadata.PausedControllerSelectorKey),
 	}
 }
 
@@ -45,7 +45,7 @@ func NewSelfPausedCondition() metav1.Condition {
 		Status:             metav1.ConditionTrue,
 		Reason:             "PausedByController",
 		LastTransitionTime: metav1.NewTime(time.Now()),
-		Message:            fmt.Sprintf("Reconiciliation has been paused by the controller; see other conditions for more information. When ready, unpause by removing the %s label", util.PausedControllerSelectorKey),
+		Message:            fmt.Sprintf("Reconiciliation has been paused by the controller; see other conditions for more information. When ready, unpause by removing the %s label", metadata.PausedControllerSelectorKey),
 	}
 }
 

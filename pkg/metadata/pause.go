@@ -1,4 +1,4 @@
-package util
+package metadata
 
 import (
 	"k8s.io/apimachinery/pkg/api/meta"

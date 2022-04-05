@@ -119,7 +119,7 @@ func StartOperator() {
 	kclient, err := kubernetes.NewForConfig(restConfig)
 	Expect(err).To(Succeed())
 
-	Expect(bootstrap.BootstrapCRD(restConfig)).To(Succeed())
+	Expect(bootstrap.CRD(restConfig)).To(Succeed())
 
 	opconfig := cluster.OperatorConfig{
 		ImageName: "spicedb",

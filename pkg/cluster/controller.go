@@ -37,7 +37,7 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/manager"
-	"github.com/authzed/spicedb-operator/pkg/util"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen rbac:roleName=authzed-operator paths="../../pkg/..." output:rbac:dir=../../config/rbac
@@ -119,7 +119,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
-			options.LabelSelector = util.NotPausedSelector.String()
+			options.LabelSelector = metadata.NotPausedSelector.String()
 		},
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(

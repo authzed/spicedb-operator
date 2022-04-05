@@ -14,7 +14,7 @@ import (
 //go:embed crds/authzed.com_authzedenterpriseclusters.yaml
 var clusterCRDFile []byte
 
-func BootstrapCRD(restConfig *rest.Config) error {
+func CRD(restConfig *rest.Config) error {
 	var clusterCRD v1.CustomResourceDefinition
 	if err := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(clusterCRDFile), 100).Decode(&clusterCRD); err != nil {
 		return err

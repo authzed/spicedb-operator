@@ -1,7 +1,7 @@
-package util
+package metadata
 
 import (
-	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
 
 	"github.com/davecgh/go-spew/spew"
@@ -9,8 +9,7 @@ import (
 )
 
 func SecureHashObject(obj interface{}) (string, error) {
-	// using sha256 since the database uri may contain a secret
-	hasher := sha256.New()
+	hasher := sha512.New512_256()
 	printer := spew.ConfigState{
 		Indent:         " ",
 		SortKeys:       true,
