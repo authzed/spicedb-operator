@@ -102,7 +102,7 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		if err != nil {
 			return err
 		}
-		if err := bootstrap.BootstrapCRD(restConfig); err != nil {
+		if err := bootstrap.CRD(restConfig); err != nil {
 			return err
 		}
 	}

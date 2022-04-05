@@ -30,7 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/util"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 const (
@@ -73,7 +73,7 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 
 	// paused objects are not watched, but may be in the queue due to a sync
 	// of a dependent object
-	if util.IsPaused(r.cluster) {
+	if metadata.IsPaused(r.cluster) {
 		return r.pause(ctx)
 	}
 
@@ -153,7 +153,7 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 	// older jobs were cleaned up
 	if len(migrationJobs) > 1 {
 		// TODO: migration hash is calculated in many places
-		migrationHash, err := util.SecureHashObject(config)
+		migrationHash, err := metadata.SecureHashObject(config)
 		if err != nil {
 			return r.requeue(0)
 		}
@@ -260,7 +260,7 @@ func (r *Reconciler) selfPause(ctx context.Context, patch *v1alpha1.AuthzedEnter
 		return r.requeue(0)
 	}
 	patch.ObjectMeta.Labels = map[string]string{
-		util.PausedControllerSelectorKey: string(r.cluster.UID),
+		metadata.PausedControllerSelectorKey: string(r.cluster.UID),
 	}
 	if err := r.Patch(ctx, patch); err != nil {
 		return r.requeue(0)
@@ -305,7 +305,7 @@ func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedNa
 		next = r.requeue(0)
 		return
 	}
-	secretHash, err = util.SecureHashObject(secret)
+	secretHash, err = metadata.SecureHashObject(secret)
 	if err != nil {
 		utilruntime.HandleError(err)
 		next = r.requeue(0)
@@ -390,7 +390,7 @@ func (r *Reconciler) migrationCheckRequired(spiceDBDeployment *appsv1.Deployment
 	}
 
 	// check the migration requirements hash
-	migrationHash, err := util.SecureHashObject(config)
+	migrationHash, err := metadata.SecureHashObject(config)
 	if err != nil {
 		return false, r.requeue(0)
 	}
@@ -427,7 +427,7 @@ func (r *Reconciler) migrateHead(ctx context.Context, cluster *v1alpha1.AuthzedE
 	}
 	if migrationJobRequired {
 		// TODO: this is calculated in the step above too
-		migrationConfigHash, err := util.SecureHashObject(migrationConfig)
+		migrationConfigHash, err := metadata.SecureHashObject(migrationConfig)
 		if err != nil {
 			utilruntime.HandleError(err)
 			return r.requeue(0)
@@ -475,7 +475,7 @@ func (r *Reconciler) migrationJobApplyRequired(migrationJob *batchv1.Job, migrat
 	}
 
 	// calculate the config hash
-	migrationConfigHash, err := util.SecureHashObject(migrationConfig)
+	migrationConfigHash, err := metadata.SecureHashObject(migrationConfig)
 	if err != nil {
 		return false, err
 	}
@@ -499,11 +499,11 @@ func (r *Reconciler) deploymentUpdateRequired(spiceDBDeployment *appsv1.Deployme
 	}
 
 	// calculate the config hash
-	spiceDBConfigHash, err := util.SecureHashObject(config)
+	spiceDBConfigHash, err := metadata.SecureHashObject(config)
 	if err != nil {
 		return false, err
 	}
-	migrationHash, err := util.SecureHashObject(migrateConfig)
+	migrationHash, err := metadata.SecureHashObject(migrateConfig)
 	if err != nil {
 		return false, err
 	}
@@ -521,12 +521,12 @@ func (r *Reconciler) deploymentUpdateRequired(spiceDBDeployment *appsv1.Deployme
 
 func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedName, config *SpiceConfig, migrateConfig *MigrationConfig) error {
 	// calculate the config hashes
-	spiceDBConfigHash, err := util.SecureHashObject(config)
+	spiceDBConfigHash, err := metadata.SecureHashObject(config)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return err
 	}
-	migrationHash, err := util.SecureHashObject(migrateConfig)
+	migrationHash, err := metadata.SecureHashObject(migrateConfig)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return err

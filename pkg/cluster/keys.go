@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/authzed/spicedb-operator/pkg/util"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 	OperatorManagedLabelValue = "operator"
 )
 
-var ManagedDependentSelector = util.MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
+var ManagedDependentSelector = metadata.MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 
 func LabelsForComponent(owner, component string) map[string]string {
 	return map[string]string{
