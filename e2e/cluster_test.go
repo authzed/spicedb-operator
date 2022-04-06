@@ -207,7 +207,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 				condition := meta.FindStatusCondition(c.Status.Conditions, "ValidatingFailed")
-				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("datastore_engine is a required field"))))
+				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("datastoreEngine is a required field"))))
 			}).Should(Succeed())
 		})
 	})
@@ -282,9 +282,9 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 					},
 					Spec: v1alpha1.ClusterSpec{
 						Config: map[string]string{
-							"datastore_engine": "cockroachdb",
-							"env_prefix":       "SPICEDB_ENTERPRISE",
-							"cmd":              "spicedb-enterprise",
+							"datastoreEngine": "cockroachdb",
+							"envPrefix":       "SPICEDB_ENTERPRISE",
+							"cmd":             "spicedb-enterprise",
 						},
 						SecretRef: "spicedb",
 					},
@@ -342,10 +342,10 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 					},
 					Spec: v1alpha1.ClusterSpec{
 						Config: map[string]string{
-							"datastore_engine": "cockroachdb",
-							"env_prefix":       "SPICEDB_ENTERPRISE",
-							"cmd":              "spicedb-enterprise",
-							"tls_secret_name":  "spicedb-grpc-tls",
+							"datastoreEngine": "cockroachdb",
+							"envPrefix":       "SPICEDB_ENTERPRISE",
+							"cmd":             "spicedb-enterprise",
+							"tlsSecretName":   "spicedb-grpc-tls",
 						},
 						SecretRef: "spicedb2",
 					},
