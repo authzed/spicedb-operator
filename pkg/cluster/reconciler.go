@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
-	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -94,7 +93,7 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 		}
 	}
 
-	config, err := r.validConfig(r.cluster.Spec.Config, secret)
+	config, err := NewConfig(r.spiceDBImage, r.cluster.Spec.Config, secret)
 	if err != nil {
 		patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
 		meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewInvalidConfigCondition(secretHash, err))
@@ -199,7 +198,7 @@ func (r *Reconciler) sync(ctx context.Context) func() {
 		}
 		if migrationsRequired {
 			patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-			meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
+			meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewMigratingCondition(config.MigrationConfig.DatastoreEngine, "head"))
 			if err := r.PatchStatus(ctx, patch); err != nil {
 				return r.requeue(0)
 			}
@@ -312,72 +311,6 @@ func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedNa
 		return
 	}
 	return secret, secretHash, nil
-}
-
-// validConfig checks that the values in the config + the secret are sane
-func (r *Reconciler) validConfig(config map[string]string, secret *corev1.Secret) (*Config, error) {
-	datastoreEngine, ok := config["datastore_engine"]
-	if !ok {
-		return nil, fmt.Errorf("datastore_engine is a required field")
-	}
-
-	datastoreURI, ok := secret.Data["datastore_uri"]
-	if !ok {
-		return nil, fmt.Errorf("secret must contain a datastore-uri field")
-	}
-
-	psk, ok := secret.Data["preshared_key"]
-	if !ok {
-		return nil, fmt.Errorf("secret must contain a preshared_key field")
-	}
-
-	replicasVal, ok := config["replicas"]
-	if !ok {
-		replicasVal = "2"
-	}
-	replicas, err := strconv.ParseInt(replicasVal, 10, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid value for replicas %q: %w", replicas, err)
-	}
-
-	envPrefix, ok := config["env_prefix"]
-	if !ok {
-		envPrefix = "SPICEDB_"
-	}
-
-	spicedbCmd, ok := config["cmd"]
-	if !ok {
-		spicedbCmd = "spicedb"
-	}
-
-	prefixesRequired, ok := config["prefixes_required"]
-	if !ok {
-		prefixesRequired = "true"
-	}
-
-	overlapStrategy, ok := config["overlap_strategy"]
-	if !ok {
-		overlapStrategy = "prefix"
-	}
-
-	// TODO: should we even store refs to the values from the secret?
-	return &Config{MigrationConfig: MigrationConfig{
-		DatastoreEngine:        datastoreEngine,
-		DatastoreURI:           string(datastoreURI),
-		SpannerCredsSecretRef:  config["spanner_credentials"],
-		TargetSpiceDBImage:     r.spiceDBImage,
-		EnvPrefix:              envPrefix,
-		SpiceDBCmd:             spicedbCmd,
-		DatastoreTLSSecretName: config["datastore_tls_secret_name"],
-	}, SpiceConfig: SpiceConfig{
-		Replicas:         int32(replicas),
-		PresharedKey:     string(psk),
-		EnvPrefix:        envPrefix,
-		SpiceDBCmd:       spicedbCmd,
-		TLSSecretName:    config["tls_secret_name"],
-		PrefixesRequired: prefixesRequired == "true",
-		OverlapStrategy:  overlapStrategy,
-	}}, nil
 }
 
 // migrationCheckRequired returns true if the current state requires that we
@@ -545,36 +478,13 @@ func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedNa
 		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
 		WithUID(r.cluster.UID))
 
-	depEnv := []*applycorev1.EnvVarApplyConfiguration{
-		applycorev1.EnvVar().WithName(config.EnvPrefix + "_LOG_LEVEL").WithValue(config.LogLevel),
-		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DATASTORE_ENGINE").WithValue(migrateConfig.DatastoreEngine),
-		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DISPATCH_UPSTREAM_ADDR").WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", nn.Name, nn.Namespace)),
-		applycorev1.EnvVar().WithName(config.EnvPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
-		applycorev1.EnvVar().WithName(config.EnvPrefix + "_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("preshared_key"))),
-	}
-
 	probeCmd := []string{"grpc_health_probe", "-v", "-addr=localhost:50051"}
 
 	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
 	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
 
 	// TODO: validate that the secret exists before we start applying the deployment
-	// TODO: allow overriding each service's certs
 	if len(config.TLSSecretName) > 0 {
-		depEnv = append(depEnv,
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_GRPC_TLS_KEY_PATH").WithValue("/tls/tls.key"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_GRPC_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_CLUSTER_TLS_KEY_PATH").WithValue("/tls/tls.key"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_CLUSTER_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
-			// TODO: check that this works
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DISPATCH_UPSTREAM_CA_PATH").WithValue("/tls/tls.crt"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_HTTP_TLS_KEY_PATH").WithValue("/tls/tls.key"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_HTTP_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DASHBOARD_TLS_KEY_PATH").WithValue("/tls/tls.key"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_DASHBOARD_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_METRICS_TLS_KEY_PATH").WithValue("/tls/tls.key"),
-			applycorev1.EnvVar().WithName(config.EnvPrefix+"_METRICS_TLS_CERT_PATH").WithValue("/tls/tls.crt"),
-		)
 		probeCmd = append(probeCmd, "-tls", "-tls-ca-cert=/tls/tls.crt")
 		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.TLSSecretName)))
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
@@ -599,7 +509,7 @@ func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedNa
 			WithSpec(applycorev1.PodSpec().WithServiceAccountName(nn.Name).WithContainers(
 				applycorev1.Container().WithName(name).WithImage(migrateConfig.TargetSpiceDBImage).
 					WithCommand(config.SpiceDBCmd, "serve").
-					WithEnv(depEnv...).
+					WithEnv(config.ToEnvVarApplyConfiguration(nn)...).
 					WithPorts(
 						applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
 						applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
