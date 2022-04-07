@@ -12,23 +12,22 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
-	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -49,12 +48,18 @@ var (
 	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName)
 	authzedClusterGR   = v1alpha1ClusterGVR.GroupResource()
 
-	forceOwned = metav1.ApplyOptions{FieldManager: "authzed-operator", Force: true}
+	forceOwned = metav1.ApplyOptions{FieldManager: "spicedb-operator", Force: true}
 )
 
+// TODO: top level reconciler refactor?
+// TODO: wait for a specific RV to be seen, with a timeout
+// TODO: tracing handler middleware
+// TODO: event emitting handler middleware
+// TODO: status set/unset middleware
+
 type Reconciler struct {
-	done      func() func()
-	requeue   func(duration time.Duration) func()
+	done      func()
+	requeue   func(duration time.Duration)
 	cluster   *v1alpha1.AuthzedEnterpriseCluster
 	client    dynamic.Interface
 	kclient   kubernetes.Interface
@@ -64,229 +69,92 @@ type Reconciler struct {
 	spiceDBImage string
 }
 
-// syncCluster inspects the current AuthzedEnterpriseCluster object and ensures
+// Handle inspects the current AuthzedEnterpriseCluster object and ensures
 // the desired state is persisted on the cluster.
 // `cluster` is a copy of the object from the cache and is safe to mutate.
-func (r *Reconciler) sync(ctx context.Context) func() {
+func (r *Reconciler) Handle(ctx context.Context) {
 	klog.V(4).Infof("syncing cluster %s/%s", r.cluster.Namespace, r.cluster.Name)
 
-	// paused objects are not watched, but may be in the queue due to a sync
-	// of a dependent object
-	if metadata.IsPaused(r.cluster) {
-		return r.pause(ctx)
-	}
-
-	// TODO: generate default secret if missing
-	// get the secret and see if it's changed
-	secret, secretHash, next := r.getOrAdoptSecret(ctx, r.cluster.NamespacedName(), r.cluster.Spec.SecretRef)
-	if next != nil {
-		return next
-	}
-
-	if r.cluster.ObjectMeta.Generation != r.cluster.Status.ObservedGeneration || secretHash != r.cluster.Status.SecretHash {
-		patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-		patch.Status.ObservedGeneration = r.cluster.ObjectMeta.Generation
-		patch.Status.SecretHash = secretHash
-		meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewValidatingConfigCondition(secretHash))
-		if err := r.PatchStatus(ctx, patch); err != nil {
-			return r.requeue(0)
-		}
-	}
-
-	config, err := NewConfig(r.spiceDBImage, r.cluster.Spec.Config, secret)
-	if err != nil {
-		patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-		meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewInvalidConfigCondition(secretHash, err))
-		if err := r.PatchStatus(ctx, patch); err != nil {
-			return r.requeue(0)
-		}
-		// if the config is invalid, there's no work to do until it has changed
-		return r.done()
-	}
-
-	// config is valid
-
-	// TODO: parallel
-	// ensure rbac is ready
-	if next := r.ensureRBAC(ctx); next != nil {
-		return next
-	}
-
-	// ensure service
-	if next := r.ensureService(ctx, r.cluster.NamespacedName()); next != nil {
-		return next
-	}
-
-	spiceDBDeployments, err := GetComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), r.cluster.NamespacedName(), ComponentSpiceDBLabelValue)
-	if err != nil {
-		r.requeue(0)
-	}
-
-	if len(spiceDBDeployments) > 1 {
-		// TODO delete deployments without matching hashes
-	}
-
-	var spiceDBDeployment *appsv1.Deployment
-	if len(spiceDBDeployments) > 0 {
-		spiceDBDeployment = spiceDBDeployments[0]
-	}
-
-	// check migration level if
-	// 	- there's no deployment
-	//  - there's been a relevant config change (datastore uri, engine, credentials, target spicedb version)
-
-	// determine if config / state has changed in some way that would require us to check
-	// whether the datastore is fully migrated
-	checkMigrations, next := r.migrationCheckRequired(spiceDBDeployment, &config.MigrationConfig)
-	if next != nil {
-		return next
-	}
-
-	// fetch the migration job (if any)
-	migrationJobs, err := GetComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), r.cluster.NamespacedName(), ComponentMigrationJobLabelValue)
-	if err != nil {
-		return r.requeue(0)
-	}
-
-	// there can be multiple migration jobs if the config was changed before
-	// older jobs were cleaned up
-	if len(migrationJobs) > 1 {
-		// TODO: migration hash is calculated in many places
-		migrationHash, err := metadata.SecureHashObject(config)
-		if err != nil {
-			return r.requeue(0)
-		}
-
-		// delete jobs without matching hashes
-		for _, j := range migrationJobs {
-			shouldDelete := func() bool {
-				annotations := j.Annotations
-				if annotations == nil {
-					return true
-				}
-				hash, ok := annotations[SpiceDBMigrationRequirementsKey]
-				if !ok {
-					return true
-				}
-				return subtle.ConstantTimeCompare([]byte(hash), []byte(migrationHash)) != 1
-			}
-			if !shouldDelete() {
-				continue
-			}
-			if err := r.kclient.BatchV1().Jobs(j.GetNamespace()).Delete(ctx, j.GetName(), metav1.DeleteOptions{}); err != nil {
-				utilruntime.HandleError(err)
-				return r.requeue(0)
-			}
-		}
-		return r.requeue(1 * time.Second)
-	}
-	var migrationJob *batchv1.Job
-	if len(migrationJobs) > 0 {
-		migrationJob = migrationJobs[0]
-	}
-
-	if checkMigrations {
-		patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-		meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewVerifyingMigrationCondition())
-		if err := r.PatchStatus(ctx, patch); err != nil {
-			return r.requeue(0)
-		}
-
-		migrationsRequired, err := r.checkDatastoreMigrationLevel(spiceDBDeployment, &config.MigrationConfig)
-		if err != nil {
-			return r.requeue(0)
-		}
-		if migrationsRequired {
-			patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-			meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewMigratingCondition(config.MigrationConfig.DatastoreEngine, "head"))
-			if err := r.PatchStatus(ctx, patch); err != nil {
-				return r.requeue(0)
-			}
-
-			// actually migrate
-			next := r.migrateHead(ctx, r.cluster, migrationJob, &config.MigrationConfig)
-			if next != nil {
-				return next
-			}
-		}
-	}
-
-	// datastore is up and fully migrated
-
-	// ensure deployment exists with proper config
-	deploymentUpdateRequired, err := r.deploymentUpdateRequired(spiceDBDeployment, &config.SpiceConfig, &config.MigrationConfig)
-	if err != nil {
-		return r.requeue(0)
-	}
-
-	if deploymentUpdateRequired {
-		if err := r.updateDeployment(ctx, r.cluster.NamespacedName(), &config.SpiceConfig, &config.MigrationConfig); err != nil {
-			return r.requeue(0)
-		}
-	}
-
-	// check if we need to delete the migration job (deployment exists with the same migration hash)
-	if migrationJob != nil && spiceDBDeployment != nil && migrationJob.Annotations[SpiceDBMigrationRequirementsKey] == spiceDBDeployment.Annotations[SpiceDBMigrationRequirementsKey] {
-		if err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, migrationJob.GetName(), metav1.DeleteOptions{}); err != nil {
-			utilruntime.HandleError(err)
-			return r.requeue(0)
-		}
-	}
-
-	return r.done()
+	deploymentHandler := newDeploymentHandler(r, newJobCleanupHandler(r))
+	waitForMigrationsHandler := newWaitForMigrationsHandler(r, deploymentHandler, newSelfPauseClusterHandler(r))
+	libctrl.NewChainHandler(
+		newPauseClusterHandler(r),
+		newSecretAdopterHandler(r,
+			newConfigChangeHandler(r,
+				newValidateConfigHandler(r,
+					newEnsureDeploymentPrereqsHandler(r,
+						libctrl.NewChainHandler(
+							newGetDeploymentsHandler(r),
+							newGetJobsHandler(r),
+							newMigrationCheckHandler(r,
+								newMigrationRunHandler(r, waitForMigrationsHandler),
+								waitForMigrationsHandler,
+								newDeploymentHandler(r, newJobCleanupHandler(r)),
+							),
+						),
+					),
+				),
+			),
+		),
+	).Handle(ctx)
 }
 
-// pause sets the pause condition in the status in response to a user adding
-// the pause label to the resource
-func (r *Reconciler) pause(ctx context.Context) func() {
-	if meta.FindStatusCondition(r.cluster.Status.Conditions, v1alpha1.ConditionTypePaused) != nil {
-		return r.done()
-	}
-	patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-	meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewPausedCondition())
-	if err := r.PatchStatus(ctx, patch); err != nil {
-		return r.requeue(0)
-	}
-	return r.done()
+func newPauseClusterHandler(r *Reconciler) libctrl.Handler {
+	return libctrl.NewPauseHandler(
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		metadata.PausedControllerSelectorKey,
+		r.cluster,
+		r.PatchStatus,
+		libctrl.NoopHandler,
+	)
 }
 
-// selfPause sets the pause condition in the status and sets the label
-// controller-paused. The controller chooses to pause reconciliation in some
-// cases that it believes user intervention is required.
-func (r *Reconciler) selfPause(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) func() {
-	meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewSelfPausedCondition())
-	if err := r.PatchStatus(ctx, patch); err != nil {
-		return r.requeue(0)
-	}
-	patch.ObjectMeta.Labels = map[string]string{
-		metadata.PausedControllerSelectorKey: string(r.cluster.UID),
-	}
-	if err := r.Patch(ctx, patch); err != nil {
-		return r.requeue(0)
-	}
-	return r.done()
+func newSelfPauseClusterHandler(r *Reconciler) *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster] {
+	return libctrl.NewSelfPauseHandler(
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		metadata.PausedControllerSelectorKey,
+		r.cluster,
+		r.cluster.UID,
+		r.Patch,
+		r.PatchStatus,
+	)
 }
 
-// getOrAdoptSecret will return the secret from the cache, or label the secret
-// so that it will be in the cache in the future (if labelling succeeds, the
-// newly labelled secret will be returned). Returns nil if cluster has no
-// secretRef.
-func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedName, secretRef string) (secret *corev1.Secret, secretHash string, next func()) {
-	if secretRef == "" {
+// TODO: generic adoption handler
+type secretAdopterHandler struct {
+	libctrl.HandlerControls
+	nn         types.NamespacedName
+	secretName string
+
+	// TODO: component
+	secretIndexer   cache.Indexer
+	secretApplyFunc func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error)
+	next            libctrl.Handler
+}
+
+func (s *secretAdopterHandler) Handle(ctx context.Context) {
+	if s.secretName == "" {
+		s.next.Handle(ctx)
 		return
 	}
-	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
-	secrets, err := r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer().ByIndex(OwningClusterIndex, nn.String())
+	secrets, err := s.secretIndexer.ByIndex(OwningClusterIndex, s.nn.String())
 	if err != nil {
-		next = r.requeue(0)
+		s.Requeue()
 		return
 	}
+	var secret *corev1.Secret
 	switch len(secrets) {
 	case 0:
 		// secret is not in cache, which means it's not labelled for the cluster
 		// fetch it and add the label to it.
-		secret, err = r.kclient.CoreV1().Secrets(nn.Namespace).Apply(ctx, applycorev1.Secret(secretRef, nn.Namespace).WithLabels(map[string]string{
-			OwnerLabelKey: nn.Name,
+		secret, err = s.secretApplyFunc(ctx, applycorev1.Secret(s.secretName, s.nn.Namespace).WithLabels(map[string]string{
+			OwnerLabelKey: s.nn.Name,
 		}), forceOwned)
 		// TODO: events
 		// r.recorder.Event(secret, "Adopted", "ReferencedByCluster", "Secret was referenced as the secret source for an AuthzedEnterpriseCluster; it has been labelled to mark it as part of the configuration for that cluster.")
@@ -294,419 +162,592 @@ func (r *Reconciler) getOrAdoptSecret(ctx context.Context, nn types.NamespacedNa
 		var ok bool
 		secret, ok = secrets[0].(*corev1.Secret)
 		if !ok {
-			err = fmt.Errorf("non-secret object found in secret informer cache for %s/%s; should not be possible", nn.Namespace, secretRef)
+			err = fmt.Errorf("non-secret object found in secret informer cache for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
 		}
 	default:
-		err = fmt.Errorf("more than one secret found for %s/%s; should not be possible", nn.Namespace, secretRef)
+		err = fmt.Errorf("more than one secret found for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
 	}
 	if err != nil {
-		utilruntime.HandleError(err)
-		next = r.requeue(0)
+		s.RequeueErr(err)
 		return
 	}
-	secretHash, err = metadata.SecureHashObject(secret)
+	secretHash, err := libctrl.SecureHashObject(secret)
 	if err != nil {
-		utilruntime.HandleError(err)
-		next = r.requeue(0)
+		s.RequeueErr(err)
 		return
 	}
-	return secret, secretHash, nil
+	ctx = ctxSecretHash.WithValue(ctx, secretHash)
+	ctx = ctxSecret.WithValue(ctx, secret)
+	s.next.Handle(ctx)
 }
 
-// migrationCheckRequired returns true if the current state requires that we
-// check the migration level of the database. This can be required if there
-// has been a relevant config change (database-uri, for example) or if the
-// cluster is initializing.
-func (r *Reconciler) migrationCheckRequired(spiceDBDeployment *appsv1.Deployment, config *MigrationConfig) (bool, func()) {
-	if spiceDBDeployment == nil {
-		return true, nil
+func newSecretAdopterHandler(r *Reconciler, next libctrl.Handler) *secretAdopterHandler {
+	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
+	return &secretAdopterHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:              r.cluster.NamespacedName(),
+		secretName:      r.cluster.Spec.SecretRef,
+		secretIndexer:   r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
+		secretApplyFunc: r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
+		next:            next,
 	}
+}
 
-	// check the migration requirements hash
-	migrationHash, err := metadata.SecureHashObject(config)
+type configChangedHandler struct {
+	nn            types.NamespacedName
+	currentStatus *v1alpha1.AuthzedEnterpriseCluster
+	obj           metav1.Object
+	status        *v1alpha1.ClusterStatus
+	requeue       func()
+	patchStatus   func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	next          libctrl.Handler
+}
+
+func (c *configChangedHandler) Handle(ctx context.Context) {
+	secretHash := ctxSecretHash.Value(ctx)
+	if c.obj.GetGeneration() != c.status.ObservedGeneration || secretHash != c.status.SecretHash {
+		c.currentStatus.Status.ObservedGeneration = c.obj.GetGeneration()
+		c.currentStatus.Status.SecretHash = secretHash
+		meta.SetStatusCondition(&c.currentStatus.Status.Conditions, v1alpha1.NewValidatingConfigCondition(secretHash))
+		if err := c.patchStatus(ctx, c.currentStatus); err != nil {
+			c.requeue()
+			return
+		}
+	}
+	ctx = ctxClusterStatus.WithValue(ctx, c.currentStatus)
+	c.next.Handle(ctx)
+}
+
+func newConfigChangeHandler(r *Reconciler, next libctrl.Handler) *configChangedHandler {
+	return &configChangedHandler{
+		currentStatus: r.cluster.NewStatusPatch(),
+		nn:            r.cluster.NamespacedName(),
+		obj:           r.cluster.GetObjectMeta(),
+		status:        &r.cluster.Status,
+		patchStatus:   r.PatchStatus,
+		requeue: func() {
+			r.requeue(0)
+		},
+		next: next,
+	}
+}
+
+type validateConfigHandler struct {
+	libctrl.HandlerControls
+	rawConfig    map[string]string
+	spiceDBImage string
+	nn           types.NamespacedName
+	uid          types.UID
+	status       *v1alpha1.ClusterStatus
+	generation   int64
+
+	patchStatus func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	next        libctrl.Handler
+}
+
+func (c *validateConfigHandler) Handle(ctx context.Context) {
+	currentStatus := ctxClusterStatus.MustValue(ctx)
+	// config is either valid or invalid, remove validating condition
+	if condition := meta.FindStatusCondition(c.status.Conditions, v1alpha1.ConditionTypeValidating); condition != nil {
+		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionTypeValidating)
+		if err := c.patchStatus(ctx, currentStatus); err != nil {
+			c.Requeue()
+			return
+		}
+	}
+	config, err := NewConfig(c.nn, c.uid, c.spiceDBImage, c.rawConfig, ctxSecret.Value(ctx))
 	if err != nil {
-		return false, r.requeue(0)
+		meta.SetStatusCondition(&currentStatus.Status.Conditions, v1alpha1.NewInvalidConfigCondition("", err))
+		if err := c.patchStatus(ctx, currentStatus); err != nil {
+			c.Requeue()
+			return
+		}
+		// if the config is invalid, there's no work to do until it has changed
+		c.Done()
+		return
 	}
 
-	// no annotations means we need to check
-	annotations := spiceDBDeployment.Annotations
-	if annotations == nil {
-		return true, nil
-	}
-
-	// if hash is different, migration check is required
-	return subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) != 1, nil
+	ctx = ctxConfig.WithValue(ctx, config)
+	ctx = ctxClusterStatus.WithValue(ctx, currentStatus)
+	c.next.Handle(ctx)
 }
 
-func (r *Reconciler) checkDatastoreMigrationLevel(spiceDBDeployment *appsv1.Deployment, config *MigrationConfig) (bool, error) {
-	// if there is no deployment, we need to migrate
-	if spiceDBDeployment == nil {
-		return true, nil
+func newValidateConfigHandler(r *Reconciler, next libctrl.Handler) *validateConfigHandler {
+	return &validateConfigHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:           r.cluster.NamespacedName(),
+		uid:          r.cluster.UID,
+		rawConfig:    r.cluster.Spec.Config,
+		spiceDBImage: r.spiceDBImage,
+		generation:   r.cluster.Generation,
+		status:       &r.cluster.Status,
+		patchStatus:  r.PatchStatus,
+		next:         next,
 	}
-
-	// we're deploying a new version and should check for migrations first
-	if spiceDBDeployment.Spec.Template.Spec.Containers[0].Image != config.TargetSpiceDBImage {
-		return true, nil
-	}
-
-	return false, nil
 }
 
-func (r *Reconciler) migrateHead(ctx context.Context, cluster *v1alpha1.AuthzedEnterpriseCluster, migrationJob *batchv1.Job, migrationConfig *MigrationConfig) func() {
-	migrationJobRequired, err := r.migrationJobApplyRequired(migrationJob, migrationConfig)
+func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
+	r *Reconciler,
+	component *libctrl.Component[K],
+	applyObj func(ctx context.Context, apply A) (K, error),
+	deleteObject func(ctx context.Context, name string) error,
+	newObj func(ctx context.Context) A,
+) *libctrl.EnsureComponentByHash[K, A] {
+	return libctrl.NewEnsureComponentByHash[K, A](
+		libctrl.NewHashableComponent[K](*component, libctrl.NewObjectHash(), "authzed.com/cluster-component-hash"),
+		r.cluster.NamespacedName(),
+		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
+		applyObj,
+		deleteObject,
+		newObj)
+}
+
+func newEnsureServiceAccountHandler(r *Reconciler) libctrl.Handler {
+	return newEnsureClusterComponent(r,
+		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceAccountLabel)),
+		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
+			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		}, func(ctx context.Context, name string) error {
+			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		}, func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
+			return ctxConfig.MustValue(ctx).serviceAccount()
+		})
+}
+
+func newEnsureRoleHandler(r *Reconciler) libctrl.Handler {
+	return newEnsureClusterComponent(r,
+		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleLabel)),
+		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
+			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		}, func(ctx context.Context, name string) error {
+			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		}, func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
+			return ctxConfig.MustValue(ctx).role()
+		})
+}
+
+func newEnsureRoleBindingHandler(r *Reconciler) libctrl.Handler {
+	return newEnsureClusterComponent(r,
+		libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
+		func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
+			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		}, func(ctx context.Context, name string) error {
+			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		}, func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
+			return ctxConfig.MustValue(ctx).roleBinding()
+		})
+}
+
+func newEnsureServiceHandler(r *Reconciler) libctrl.Handler {
+	return newEnsureClusterComponent(r,
+		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceLabel)),
+		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
+			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		}, func(ctx context.Context, name string) error {
+			return r.kclient.CoreV1().Services(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		}, func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
+			return ctxConfig.MustValue(ctx).service()
+		})
+}
+
+func newGetDeploymentsHandler(r *Reconciler) libctrl.Handler {
+	return libctrl.NewComponentContextHandler[*appsv1.Deployment](
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		ctxDeployments,
+		libctrl.NewComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentSpiceDBLabelValue)),
+		r.cluster.NamespacedName(),
+		libctrl.NoopHandler,
+	)
+}
+
+func newGetJobsHandler(r *Reconciler) libctrl.Handler {
+	return libctrl.NewComponentContextHandler[*batchv1.Job](
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		ctxJobs,
+		libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue)),
+		r.cluster.NamespacedName(),
+		libctrl.NoopHandler,
+	)
+}
+
+type ensureDeploymentPrereqsHandler struct {
+	*libctrl.ParallelHandler
+	next libctrl.Handler
+}
+
+func newEnsureDeploymentPrereqsHandler(r *Reconciler, next libctrl.Handler) *ensureDeploymentPrereqsHandler {
+	return &ensureDeploymentPrereqsHandler{
+		ParallelHandler: libctrl.NewParallelHandler(
+			newEnsureServiceAccountHandler(r),
+			newEnsureRoleHandler(r),
+			newEnsureRoleBindingHandler(r),
+			newEnsureServiceHandler(r),
+		),
+		next: next,
+	}
+}
+
+func (e *ensureDeploymentPrereqsHandler) Handle(ctx context.Context) {
+	// TODO: set condition, remove condition
+	e.ParallelHandler.Handle(ctx)
+	ctx = ctxDeployments.WithHandle(ctx)
+	ctx = ctxJobs.WithHandle(ctx)
+	e.next.Handle(ctx)
+}
+
+type migrationCheckHandler struct {
+	libctrl.HandlerControls
+
+	nextMigrationRunHandler libctrl.Handler
+	nextWaitForJobHandler   libctrl.Handler
+	nextDeploymentHandler   libctrl.Handler
+}
+
+func newMigrationCheckHandler(r *Reconciler,
+	nextMigrationRunHandler,
+	nextWaitForMigrationsHandler,
+	nextDeploymentHandler libctrl.Handler,
+) *migrationCheckHandler {
+	return &migrationCheckHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nextMigrationRunHandler: nextMigrationRunHandler,
+		nextWaitForJobHandler:   nextWaitForMigrationsHandler,
+		nextDeploymentHandler:   nextDeploymentHandler,
+	}
+}
+
+// TODO: maybe this could be generalized as some sort of "Hash Handoff" flow
+func (m *migrationCheckHandler) Handle(ctx context.Context) {
+	deployments := ctxDeployments.MustValue(ctx)
+	jobs := ctxJobs.MustValue(ctx)
+
+	migrationHash, err := libctrl.SecureHashObject(ctxConfig.MustValue(ctx).MigrationConfig)
 	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
+		m.RequeueErr(err)
+		return
 	}
-	if migrationJobRequired {
-		// TODO: this is calculated in the step above too
-		migrationConfigHash, err := metadata.SecureHashObject(migrationConfig)
+	ctx = ctxMigrationHash.WithValue(ctx, migrationHash)
+
+	hasJob := false
+	hasDeployment := false
+	for _, d := range deployments {
+		if d.Annotations != nil && libctrl.SecureHashEqual(d.Annotations[SpiceDBMigrationRequirementsKey], migrationHash) {
+			hasDeployment = true
+			break
+		}
+	}
+	for _, j := range jobs {
+		if j.Annotations != nil && libctrl.SecureHashEqual(j.Annotations[SpiceDBMigrationRequirementsKey], migrationHash) {
+			hasJob = true
+			ctx = ctxCurrentMigrationJob.WithValue(ctx, j)
+			break
+		}
+	}
+
+	// if there's no job and no (updated) deployment, create the job
+	if !hasDeployment && !hasJob {
+		m.nextMigrationRunHandler.Handle(ctx)
+		return
+	}
+
+	// if there's a job but no (updated) deployment, wait for the job
+	if hasJob && !hasDeployment {
+		m.nextWaitForJobHandler.Handle(ctx)
+		return
+	}
+
+	// if the deployment is up to date, continue
+	m.nextDeploymentHandler.Handle(ctx)
+}
+
+// TODO: see if the config hashing can be generalized / unified with the object hashing
+type migrationRunHandler struct {
+	libctrl.HandlerControls
+	nn          types.NamespacedName
+	secretRef   string
+	patchStatus func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+
+	getJobs   func(ctx context.Context) []*batchv1.Job
+	applyJob  func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error
+	deleteJob func(ctx context.Context, name string) error
+	next      libctrl.Handler
+}
+
+func newMigrationRunHandler(r *Reconciler, next libctrl.Handler) *migrationRunHandler {
+	return &migrationRunHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueAfter(r.requeue),
+		),
+		nn:        r.cluster.NamespacedName(),
+		secretRef: r.cluster.Spec.SecretRef,
+		getJobs: func(ctx context.Context) []*batchv1.Job {
+			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
+			return job.List(r.cluster.NamespacedName())
+		},
+		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
+			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, forceOwned)
+			return err
+		},
+		deleteJob: func(ctx context.Context, name string) error {
+			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		patchStatus: r.PatchStatus,
+		next:        next,
+	}
+}
+
+func (m *migrationRunHandler) Handle(ctx context.Context) {
+	currentStatus := ctxClusterStatus.MustValue(ctx)
+	config := ctxConfig.MustValue(ctx)
+	meta.SetStatusCondition(&currentStatus.Status.Conditions, v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
+	if err := m.patchStatus(ctx, currentStatus); err != nil {
+		m.RequeueErr(err)
+		return
+	}
+	ctx = ctxClusterStatus.WithValue(ctx, currentStatus)
+
+	jobs := ctxJobs.MustValue(ctx)
+	migrationHash := ctxMigrationHash.Value(ctx)
+
+	matchingObjs := make([]*batchv1.Job, 0)
+	extraObjs := make([]*batchv1.Job, 0)
+	for _, o := range jobs {
+		annotations := o.GetAnnotations()
+		if annotations == nil {
+			extraObjs = append(extraObjs, o)
+		}
+		if subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) == 1 {
+			matchingObjs = append(matchingObjs, o)
+		} else {
+			extraObjs = append(extraObjs, o)
+		}
+	}
+
+	if len(matchingObjs) == 0 {
+		// apply if no matching object in cluster
+		err := m.applyJob(ctx, ctxConfig.MustValue(ctx).migrationJob(migrationHash))
 		if err != nil {
-			utilruntime.HandleError(err)
-			return r.requeue(0)
+			m.RequeueErr(err)
+			return
 		}
-		if err := r.updateJob(ctx, cluster.NamespacedName(), migrationConfigHash, migrationConfig); err != nil {
-			utilruntime.HandleError(err)
-			return r.requeue(0)
-		}
-		// TODO: this would be a good place to grab the updated job's revision
-		//  and wait on future resyncs
-		// job has been created, requeue and check its status
-		return r.requeue(1 * time.Second)
 	}
 
+	// delete extra objects
+	for _, o := range extraObjs {
+		if err := m.deleteJob(ctx, o.GetName()); err != nil {
+			m.RequeueErr(err)
+			return
+		}
+	}
+
+	// job with correct hash exists
+	if len(matchingObjs) > 1 {
+		ctx = ctxCurrentMigrationJob.WithValue(ctx, matchingObjs[0])
+		m.next.Handle(ctx)
+		return
+	}
+
+	// if we had to create a job, requeue after a wait since the job takes time
+	m.RequeueAfter(5 * time.Second)
+}
+
+type waitForMigrationsHandler struct {
+	libctrl.HandlerControls
+	nn                    types.NamespacedName
+	generation            int64
+	patchStatus           func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	selfPause             *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]
+	nextDeploymentHandler libctrl.Handler
+}
+
+func newWaitForMigrationsHandler(r *Reconciler, next libctrl.Handler, selfPauseHandler *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]) *waitForMigrationsHandler {
+	ctrls := libctrl.HandlerControlsWith(
+		libctrl.WithDone(r.done),
+		libctrl.WithRequeueAfter(r.requeue),
+	)
+	return &waitForMigrationsHandler{
+		HandlerControls:       ctrls,
+		nn:                    r.cluster.NamespacedName(),
+		patchStatus:           r.PatchStatus,
+		generation:            r.cluster.Generation,
+		selfPause:             selfPauseHandler,
+		nextDeploymentHandler: next,
+	}
+}
+
+func (m *waitForMigrationsHandler) Handle(ctx context.Context) {
+	job := ctxCurrentMigrationJob.MustValue(ctx)
 	// if migration failed entirely, pause so we can diagnose
-	if c := findJobCondition(migrationJob, batchv1.JobFailed); c != nil {
+	if c := findJobCondition(job, batchv1.JobFailed); c != nil && c.Status == corev1.ConditionTrue {
+		currentStatus := ctxClusterStatus.MustValue(ctx)
+		config := ctxConfig.MustValue(ctx)
 		err := fmt.Errorf("migration job failed: %s", c.Message)
 		utilruntime.HandleError(err)
-		patch := v1alpha1.NewPatch(r.cluster.NamespacedName(), r.cluster.Generation)
-		meta.SetStatusCondition(&patch.Status.Conditions, v1alpha1.NewMigrationFailedCondition(migrationConfig.DatastoreEngine, "head", err))
-		if err := r.PatchStatus(ctx, patch); err != nil {
-			return r.requeue(0)
-		}
-		if err := r.selfPause(ctx, patch); err != nil {
-			return r.requeue(0)
-		}
-		return r.done()
+		meta.SetStatusCondition(&currentStatus.Status.Conditions, v1alpha1.NewMigrationFailedCondition(config.DatastoreEngine, "head", err))
+		m.selfPause.Object = currentStatus
+		m.selfPause.Handle(ctx)
+		return
 	}
 
-	// if done, go to the next step
-	if findJobCondition(migrationJob, batchv1.JobComplete) != nil {
-		return nil
+	// if done, go to the nextDeploymentHandler step
+	if jobConditionHasStatus(job, batchv1.JobComplete, corev1.ConditionTrue) {
+		m.nextDeploymentHandler.Handle(ctx)
+		return
 	}
 
 	// otherwise, it's created but still running, just wait
-	return r.requeue(5 * time.Second)
+	m.RequeueAfter(5 * time.Second)
 }
 
-// deploymentUpdateRequired returns true if the deployment on the cluster needs
-// to be updated to match the current config
-func (r *Reconciler) migrationJobApplyRequired(migrationJob *batchv1.Job, migrationConfig *MigrationConfig) (bool, error) {
-	// if there's no spice job, need to create one
-	if migrationJob == nil {
-		return true, nil
-	}
-
-	// calculate the config hash
-	migrationConfigHash, err := metadata.SecureHashObject(migrationConfig)
-	if err != nil {
-		return false, err
-	}
-
-	// no annotations means we need to update
-	annotations := migrationJob.Annotations
-	if annotations == nil {
-		return true, nil
-	}
-
-	// if hash is different, update is required
-	return subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationConfigHash)) != 1, nil
+type deploymentHandler struct {
+	libctrl.HandlerControls
+	nn               types.NamespacedName
+	deleteDeployment func(ctx context.Context, name string) error
+	applyDeployment  func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
+	patchStatus      func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	next             libctrl.Handler
 }
 
-// deploymentUpdateRequired returns true if the deployment on the cluster needs
-// to be updated to match the current config
-func (r *Reconciler) deploymentUpdateRequired(spiceDBDeployment *appsv1.Deployment, config *SpiceConfig, migrateConfig *MigrationConfig) (bool, error) {
-	// if there's no spice deployment, need to create one
-	if spiceDBDeployment == nil {
-		return true, nil
+func newDeploymentHandler(r *Reconciler, next libctrl.Handler) *deploymentHandler {
+	return &deploymentHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:          r.cluster.NamespacedName(),
+		next:        next,
+		patchStatus: r.PatchStatus,
+		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
+			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, forceOwned)
+		},
+		deleteDeployment: func(ctx context.Context, name string) error {
+			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
 	}
-
-	// calculate the config hash
-	spiceDBConfigHash, err := metadata.SecureHashObject(config)
-	if err != nil {
-		return false, err
-	}
-	migrationHash, err := metadata.SecureHashObject(migrateConfig)
-	if err != nil {
-		return false, err
-	}
-
-	// no annotations means we need to update
-	annotations := spiceDBDeployment.Annotations
-	if annotations == nil {
-		return true, nil
-	}
-
-	// if hash is different, update is required
-	return annotations[SpiceDBConfigKey] != spiceDBConfigHash ||
-		subtle.ConstantTimeCompare([]byte(annotations[SpiceDBMigrationRequirementsKey]), []byte(migrationHash)) != 1, nil
 }
 
-func (r *Reconciler) updateDeployment(ctx context.Context, nn types.NamespacedName, config *SpiceConfig, migrateConfig *MigrationConfig) error {
-	// calculate the config hashes
-	spiceDBConfigHash, err := metadata.SecureHashObject(config)
+func (m *deploymentHandler) Handle(ctx context.Context) {
+	currentStatus := ctxClusterStatus.MustValue(ctx)
+	// remove migrating condition if present
+	if meta.IsStatusConditionTrue(currentStatus.Status.Conditions, v1alpha1.ConditionTypeMigrating) {
+		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionTypeMigrating)
+		if err := m.patchStatus(ctx, currentStatus); err != nil {
+			m.RequeueErr(err)
+			return
+		}
+		ctx = ctxClusterStatus.WithValue(ctx, currentStatus)
+	}
+
+	migrationHash := ctxMigrationHash.Value(ctx)
+	config := ctxConfig.MustValue(ctx)
+	spiceDBConfigHash, err := libctrl.HashObject(config.SpiceConfig)
 	if err != nil {
-		utilruntime.HandleError(err)
-		return err
+		m.RequeueErr(err)
+		return
 	}
-	migrationHash, err := metadata.SecureHashObject(migrateConfig)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return err
-	}
+	ctx = ctxSpiceConfigHash.WithValue(ctx, spiceDBConfigHash)
 
-	name := fmt.Sprintf("%s-spicedb", nn.Name)
-	dep := applyappsv1.Deployment(name, nn.Namespace)
-	dep = dep.WithLabels(LabelsForComponent(nn.Name, ComponentSpiceDBLabelValue))
-	dep = dep.WithAnnotations(map[string]string{
-		SpiceDBMigrationRequirementsKey: migrationHash,
-		SpiceDBConfigKey:                spiceDBConfigHash,
-	})
-	dep = dep.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(nn.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-
-	probeCmd := []string{"grpc_health_probe", "-v", "-addr=localhost:50051"}
-
-	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
-	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
-
-	// TODO: validate that the secret exists before we start applying the deployment
-	if len(config.TLSSecretName) > 0 {
-		probeCmd = append(probeCmd, "-tls", "-tls-ca-cert=/tls/tls.crt")
-		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.TLSSecretName)))
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
+	matchingObjs := make([]*appsv1.Deployment, 0)
+	extraObjs := make([]*appsv1.Deployment, 0)
+	for _, o := range ctxDeployments.MustValue(ctx) {
+		annotations := o.GetAnnotations()
+		if annotations == nil {
+			extraObjs = append(extraObjs, o)
+		}
+		if libctrl.SecureHashEqual(annotations[SpiceDBMigrationRequirementsKey], migrationHash) &&
+			libctrl.HashEqual(annotations[SpiceDBConfigKey], spiceDBConfigHash) {
+			matchingObjs = append(matchingObjs, o)
+		} else {
+			extraObjs = append(extraObjs, o)
+		}
 	}
 
-	if len(migrateConfig.DatastoreTLSSecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(migrateConfig.DatastoreTLSSecretName)))
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("db-tls").WithMountPath("/db-tls").WithReadOnly(true))
+	if len(matchingObjs) == 1 {
+		ctx = ctxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
+	}
+	// deployment with correct hash exists
+	if len(matchingObjs) == 0 {
+		// apply if no matching object in cluster
+		deployment, err := m.applyDeployment(ctx, ctxConfig.MustValue(ctx).deployment(migrationHash, spiceDBConfigHash))
+		if err != nil {
+			m.RequeueErr(err)
+			return
+		}
+		ctx = ctxCurrentSpiceDeployment.WithValue(ctx, deployment)
 	}
 
-	if len(migrateConfig.SpannerCredsSecretRef) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(migrateConfig.SpannerCredsSecretRef).WithItems(
-			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
-		)))
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("spanner").WithMountPath("/spanner-credentials").WithReadOnly(true))
+	// delete extra objects
+	for _, o := range extraObjs {
+		if err := m.deleteDeployment(ctx, o.GetName()); err != nil {
+			m.RequeueErr(err)
+			return
+		}
 	}
 
-	dep = dep.WithSpec(applyappsv1.DeploymentSpec().
-		WithReplicas(config.Replicas).
-		WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
-		WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
-			WithSpec(applycorev1.PodSpec().WithServiceAccountName(nn.Name).WithContainers(
-				applycorev1.Container().WithName(name).WithImage(migrateConfig.TargetSpiceDBImage).
-					WithCommand(config.SpiceDBCmd, "serve").
-					WithEnv(config.ToEnvVarApplyConfiguration(nn)...).
-					WithPorts(
-						applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-						applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-						applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-						applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-					).WithLivenessProbe(
-					applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(probeCmd...)).
-						WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-				).WithReadinessProbe(
-					applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(probeCmd...)).
-						WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-				).WithVolumeMounts(volumeMounts...),
-			).WithVolumes(volumes...))))
-	_, err = r.kclient.AppsV1().Deployments(nn.Namespace).Apply(ctx, dep, forceOwned)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return err
-	}
-	return nil
+	m.next.Handle(ctx)
 }
 
-func (r *Reconciler) updateJob(ctx context.Context, nn types.NamespacedName, migrationHash string, config *MigrationConfig) error {
-	name := fmt.Sprintf("%s-migrate-%s", nn.Name, migrationHash[:15])
-	job := applybatchv1.Job(name, nn.Namespace)
-	job = job.WithLabels(LabelsForComponent(nn.Name, ComponentMigrationJobLabelValue))
-	job = job.WithAnnotations(map[string]string{
-		SpiceDBMigrationRequirementsKey: migrationHash,
-	})
-	job = job.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(nn.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-
-	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
-	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
-
-	// TODO: this is the same as the volumes/mounts for the deployment
-	if len(config.DatastoreTLSSecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.DatastoreTLSSecretName)))
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("db-tls").WithMountPath("/db-tls").WithReadOnly(true))
-	}
-	// TODO: this is the same as the volumes/mounts for the deployment
-	if len(config.SpannerCredsSecretRef) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(config.SpannerCredsSecretRef).WithItems(
-			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
-		)))
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("spanner").WithMountPath("/spanner-credentials").WithReadOnly(true))
-	}
-
-	job = job.WithSpec(applybatchv1.JobSpec().WithTemplate(
-		applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
-			applycorev1.Container().WithName(name).WithImage(config.TargetSpiceDBImage).WithCommand(config.SpiceDBCmd, "migrate", "head").WithEnv(
-				applycorev1.EnvVar().WithName(config.EnvPrefix+"_LOG_LEVEL").WithValue(config.LogLevel),
-				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_ENGINE").WithValue(config.DatastoreEngine),
-				applycorev1.EnvVar().WithName(config.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("datastore_uri"))),
-				applycorev1.EnvVar().WithName(config.EnvPrefix+"_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(r.cluster.Spec.SecretRef).WithKey("migration_secrets"))),
-			).WithVolumeMounts(volumeMounts...).WithPorts(
-				applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
-				applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
-				applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
-				applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
-			).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-		).WithVolumes(volumes...).WithRestartPolicy(corev1.RestartPolicyNever))))
-
-	_, err := r.kclient.BatchV1().Jobs(nn.Namespace).Apply(ctx, job, forceOwned)
-	if err != nil {
-		return err
-	}
-	return nil
+type jobCleanupHandler struct {
+	libctrl.HandlerControls
+	getJobs   func(ctx context.Context) []*batchv1.Job
+	deleteJob func(ctx context.Context, name string) error
 }
 
-// ensureService
-// TODO: check if needs to be updated
-func (r *Reconciler) ensureService(ctx context.Context, nn types.NamespacedName) func() {
-	service, err := GetComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), nn, ComponentServiceLabel)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
+func newJobCleanupHandler(r *Reconciler) *jobCleanupHandler {
+	return &jobCleanupHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		getJobs: func(ctx context.Context) []*batchv1.Job {
+			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
+			return job.List(r.cluster.NamespacedName())
+		},
+		deleteJob: func(ctx context.Context, name string) error {
+			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
 	}
-
-	if service != nil {
-		return nil
-	}
-
-	newService := applycorev1.Service(nn.Name, nn.Namespace).WithLabels(LabelsForComponent(nn.Name, ComponentServiceLabel))
-	newService = newService.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(nn.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-	newService = newService.WithSpec(applycorev1.ServiceSpec().WithSelector(LabelsForComponent(nn.Name, ComponentSpiceDBLabelValue)).WithPorts(
-		applycorev1.ServicePort().WithName("grpc").WithPort(50051),
-		applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
-		applycorev1.ServicePort().WithName("gateway").WithPort(8443),
-		applycorev1.ServicePort().WithName("prometheus").WithPort(9090),
-	))
-	_, err = r.kclient.CoreV1().Services(nn.Namespace).Apply(ctx, newService, forceOwned)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-
-	return nil
 }
 
-// ensureRBAC
-// TODO: check if needs to be updated
-func (r *Reconciler) ensureRBAC(ctx context.Context) func() {
-	serviceAccount, err := GetComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), r.cluster.NamespacedName(), ComponentServiceAccountLabel)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-	role, err := GetComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), r.cluster.NamespacedName(), ComponentRoleLabel)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-	roleBinding, err := GetComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), r.cluster.NamespacedName(), ComponentRoleBindingLabel)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
+// cleans up jobs that have completed and match the migration level of the current deployment
+// (other jobs will be cleaned up by the previous job sync, this is only concerned with cleaning up "latest" jobs)
+func (s *jobCleanupHandler) Handle(ctx context.Context) {
+	jobs := s.getJobs(ctx)
+	deployment := *ctxCurrentSpiceDeployment.MustValue(ctx)
+	if deployment.Annotations == nil || len(jobs) == 0 {
+		s.Done()
+		return
 	}
 
-	if serviceAccount != nil && role != nil && roleBinding != nil {
-		return nil
-	}
-
-	newSA := applycorev1.ServiceAccount(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentServiceAccountLabel))
-	newSA = newSA.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(r.cluster.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-	_, err = r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, newSA, forceOwned)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-
-	newRole := applyrbacv1.Role(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentRoleLabel))
-	newRole = newRole.WithRules(applyrbacv1.PolicyRule().WithAPIGroups("").WithResources("endpoints").WithVerbs("get", "list", "watch"))
-	newRole = newRole.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(r.cluster.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-	_, err = r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, newRole, forceOwned)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-
-	newRoleBinding := applyrbacv1.RoleBinding(r.cluster.Name, r.cluster.Namespace).WithLabels(LabelsForComponent(r.cluster.Name, ComponentRoleBindingLabel))
-	newRoleBinding = newRoleBinding.WithOwnerReferences(applymetav1.OwnerReference().
-		WithName(r.cluster.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
-		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-		WithUID(r.cluster.UID))
-	newRoleBinding = newRoleBinding.WithRoleRef(applyrbacv1.RoleRef().WithKind("Role").WithName(r.cluster.Name))
-	newRoleBinding = newRoleBinding.WithSubjects(applyrbacv1.Subject().WithNamespace(r.cluster.Namespace).WithKind("ServiceAccount").WithName(r.cluster.Name))
-	_, err = r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, newRoleBinding, forceOwned)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return r.requeue(0)
-	}
-	return nil
-}
-
-// TODO: take K as a parameter so that callers don't have to specify
-func GetComponent[K metav1.Object](informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory, gvr schema.GroupVersionResource, owner types.NamespacedName, component string) ([]K, error) {
-	var found []K
-
-	ownedObjects, err := informers[gvr].ForResource(gvr).Informer().GetIndexer().ByIndex(OwningClusterIndex, owner.String())
-	if err != nil {
-		return nil, err
-	}
-
-	for _, d := range ownedObjects {
-		unst, ok := d.(*unstructured.Unstructured)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected unstructured, got: %T", d))
+	for _, j := range jobs {
+		if j.Annotations == nil {
 			continue
 		}
-		var obj *K
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unst.Object, &obj); err != nil {
-			utilruntime.HandleError(fmt.Errorf("invalid object returned from index, expected %s, got: %s: %w", gvr.Resource, unst.GroupVersionKind(), err))
-			continue
-		}
-		labels := (*obj).GetLabels()
-		if labels == nil {
-			continue
-		}
-		if labels[ComponentLabelKey] == component {
-			found = append(found, *obj)
+		if libctrl.SecureHashEqual(
+			j.Annotations[SpiceDBMigrationRequirementsKey],
+			deployment.Annotations[SpiceDBMigrationRequirementsKey]) &&
+			jobConditionHasStatus(j, batchv1.JobComplete, corev1.ConditionTrue) {
+			if err := s.deleteJob(ctx, j.GetName()); err != nil {
+				s.RequeueErr(err)
+				return
+			}
 		}
 	}
-	return found, nil
+	s.Done()
 }

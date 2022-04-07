@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,6 +20,10 @@ const (
 )
 
 var ManagedDependentSelector = metadata.MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
+
+func SelectorForComponent(owner, component string) labels.Selector {
+	return labels.SelectorFromSet(LabelsForComponent(owner, component))
+}
 
 func LabelsForComponent(owner, component string) map[string]string {
 	return map[string]string{

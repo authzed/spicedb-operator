@@ -207,7 +207,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 				condition := meta.FindStatusCondition(c.Status.Conditions, "ValidatingFailed")
-				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("datastoreEngine is a required field"))))
+				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
 			}).Should(Succeed())
 		})
 	})

@@ -360,16 +360,8 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	klog.V(4).Infof("syncing %s %s", gvr, cluster.ObjectMeta)
 
 	r := Reconciler{
-		done: func() func() {
-			return func() {
-				done()
-			}
-		},
-		requeue: func(duration time.Duration) func() {
-			return func() {
-				requeue(duration)
-			}
-		},
+		done:      done,
+		requeue:   requeue,
 		cluster:   &cluster,
 		client:    c.client,
 		kclient:   c.kclient,
@@ -385,7 +377,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	}
 	c.configLock.RUnlock()
 
-	r.sync(ctx)()
+	r.Handle(ctx)
 }
 
 // syncExternalResource is called when a dependent resource is updated;

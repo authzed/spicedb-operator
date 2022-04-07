@@ -53,9 +53,6 @@ type ClusterStatus struct {
 	// SecretHash is a digest of the last applied secret
 	SecretHash string `json:"secretHash,omitempty"`
 
-	// CurrentMigrationName
-	CurrentMigrationName string `json:"currentMigrationName,omitempty"`
-
 	// Conditions for the current state of the Stack.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
