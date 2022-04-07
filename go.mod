@@ -4,8 +4,10 @@ go 1.18
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/fatih/camelcase v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/go-logr/zapr v1.2.3
+	github.com/jzelinskie/stringz v0.0.1
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.17.0
 	github.com/spf13/afero v1.6.0
@@ -51,7 +53,6 @@ require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect
-	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fatih/color v1.12.0 // indirect
 	github.com/felixge/httpsnoop v1.0.1 // indirect
 	github.com/go-errors/errors v1.0.1 // indirect
