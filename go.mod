@@ -3,6 +3,7 @@ module github.com/authzed/spicedb-operator
 go 1.18
 
 require (
+	github.com/cespare/xxhash v1.1.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fatih/camelcase v1.0.0
 	github.com/fsnotify/fsnotify v1.5.1
