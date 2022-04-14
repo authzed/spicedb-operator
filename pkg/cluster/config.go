@@ -171,7 +171,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
 // spicedb container
 func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfiguration {
-	// Add non-passthrough config that is either generated directly by the
+	// Set non-passthrough config that is either generated directly by the
 	// controller (dispatch address), has some direct effect on the cluster
 	// (tls), or lives in an external secret (preshared key).
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
