@@ -28,6 +28,7 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -49,58 +50,122 @@ var (
 	authzedClusterGR   = v1alpha1ClusterGVR.GroupResource()
 
 	forceOwned = metav1.ApplyOptions{FieldManager: "spicedb-operator", Force: true}
+
+	handlerSelfPauseKey         handler.Key = "selfPause"
+	handlerDeploymentKey        handler.Key = "deploymentChain"
+	handlerMigrationRunKey      handler.Key = "runMigration"
+	handlerWaitForMigrationsKey handler.Key = "waitForMigrationChain"
 )
 
-// TODO: top level reconciler refactor?
 // TODO: wait for a specific RV to be seen, with a timeout
 // TODO: tracing handler middleware
 // TODO: event emitting handler middleware
 // TODO: status set/unset middleware
 
-type Reconciler struct {
-	done      func()
-	requeue   func(duration time.Duration)
-	cluster   *v1alpha1.AuthzedEnterpriseCluster
-	client    dynamic.Interface
-	kclient   kubernetes.Interface
-	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder  record.EventRecorder
-
+type SpiceDBClusterHandler struct {
+	done         func()
+	requeue      func(duration time.Duration)
+	cluster      *v1alpha1.AuthzedEnterpriseCluster
+	client       dynamic.Interface
+	kclient      kubernetes.Interface
+	informers    map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
+	recorder     record.EventRecorder
 	spiceDBImage string
 }
 
 // Handle inspects the current AuthzedEnterpriseCluster object and ensures
 // the desired state is persisted on the cluster.
-// `cluster` is a copy of the object from the cache and is safe to mutate.
-func (r *Reconciler) Handle(ctx context.Context) {
+func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	klog.V(4).Infof("syncing cluster %s/%s", r.cluster.Namespace, r.cluster.Name)
 
-	deploymentHandler := newDeploymentHandler(r, newJobCleanupHandler(r))
-	waitForMigrationsHandler := newWaitForMigrationsHandler(r, deploymentHandler, newSelfPauseClusterHandler(r))
-	libctrl.NewChainHandler(
-		newPauseClusterHandler(r),
-		newSecretAdopterHandler(r,
-			newConfigChangeHandler(r,
-				newValidateConfigHandler(r,
-					newEnsureDeploymentPrereqsHandler(r,
-						libctrl.NewChainHandler(
-							newGetDeploymentsHandler(r),
-							newGetJobsHandler(r),
-							newMigrationCheckHandler(r,
-								newMigrationRunHandler(r, waitForMigrationsHandler),
-								waitForMigrationsHandler,
-								newDeploymentHandler(r, newJobCleanupHandler(r)),
-							),
-						),
-					),
-				),
-			),
+	deploymentHandlerChain := libctrl.Chain(
+		r.ensureDeployment,
+		r.cleanupJob,
+	).Handler(handlerDeploymentKey)
+
+	waitForMigrationsChain := r.waitForMigrationsHandler(
+		deploymentHandlerChain,
+		r.selfPauseCluster(handler.NoopHandler),
+	).WithID(handlerWaitForMigrationsKey)
+
+	libctrl.Chain(
+		r.pauseCluster,
+		r.secretAdopter,
+		r.checkConfigChanged,
+		r.validateConfig,
+		libctrl.Parallel(
+			r.ensureServiceAccount,
+			r.ensureRole,
+			r.ensureRoleBinding,
+			r.ensureService,
 		),
-	).Handle(ctx)
+		ctxDeployments.HandleBuilder("deploymentsPre"),
+		ctxJobs.HandleBuilder("jobsPre"),
+		libctrl.Parallel(
+			r.getDeployments,
+			r.getJobs,
+		),
+		r.checkMigrations(
+			deploymentHandlerChain,
+			libctrl.Chain(
+				r.runMigration,
+				waitForMigrationsChain.Builder(),
+			).Handler(handlerMigrationRunKey),
+			waitForMigrationsChain,
+		).Builder(),
+	).Handler("cluster").Handle(ctx)
 }
 
-func newPauseClusterHandler(r *Reconciler) libctrl.Handler {
-	return libctrl.NewPauseHandler(
+func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&deploymentHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:          r.cluster.NamespacedName(),
+		next:        handler.Handlers(next).MustOne(),
+		patchStatus: r.PatchStatus,
+		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
+			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, forceOwned)
+		},
+		deleteDeployment: func(ctx context.Context, name string) error {
+			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+	}, "ensureDeployment")
+}
+
+func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
+	return handler.NewHandler(&jobCleanupHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		getJobs: func(ctx context.Context) []*batchv1.Job {
+			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
+			return job.List(r.cluster.NamespacedName())
+		},
+		deleteJob: func(ctx context.Context, name string) error {
+			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+	}, "cleanupJob")
+}
+
+func (r *SpiceDBClusterHandler) waitForMigrationsHandler(handlers ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&waitForMigrationsHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueAfter(r.requeue),
+		),
+		nn:                    r.cluster.NamespacedName(),
+		patchStatus:           r.PatchStatus,
+		generation:            r.cluster.Generation,
+		selfPause:             handlerSelfPauseKey.MustFind(handlers).ContextHandler.(*libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]),
+		nextDeploymentHandler: handlerDeploymentKey.MustFind(handlers),
+	}, "waitForMigrations")
+}
+
+func (r SpiceDBClusterHandler) pauseCluster(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(libctrl.NewPauseHandler(
 		libctrl.HandlerControlsWith(
 			libctrl.WithDone(r.done),
 			libctrl.WithRequeueImmediate(r.requeue),
@@ -108,12 +173,12 @@ func newPauseClusterHandler(r *Reconciler) libctrl.Handler {
 		metadata.PausedControllerSelectorKey,
 		r.cluster,
 		r.PatchStatus,
-		libctrl.NoopHandler,
-	)
+		handler.Handlers(next).MustOne(),
+	), "pauseCluster")
 }
 
-func newSelfPauseClusterHandler(r *Reconciler) *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster] {
-	return libctrl.NewSelfPauseHandler(
+func (r *SpiceDBClusterHandler) selfPauseCluster(...handler.Handler) handler.Handler {
+	return handler.NewHandler(libctrl.NewSelfPauseHandler(
 		libctrl.HandlerControlsWith(
 			libctrl.WithDone(r.done),
 			libctrl.WithRequeueImmediate(r.requeue),
@@ -123,7 +188,191 @@ func newSelfPauseClusterHandler(r *Reconciler) *libctrl.SelfPauseHandler[*v1alph
 		r.cluster.UID,
 		r.Patch,
 		r.PatchStatus,
-	)
+	), handlerSelfPauseKey)
+}
+
+func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.Handler {
+	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
+	return handler.NewHandler(&secretAdopterHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:              r.cluster.NamespacedName(),
+		secretName:      r.cluster.Spec.SecretRef,
+		secretIndexer:   r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
+		secretApplyFunc: r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
+		next:            handler.Handlers(next).MustOne(),
+	}, "adoptSecret")
+}
+
+func (r *SpiceDBClusterHandler) checkConfigChanged(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&configChangedHandler{
+		currentStatus: r.cluster.NewStatusPatch(),
+		nn:            r.cluster.NamespacedName(),
+		obj:           r.cluster.GetObjectMeta(),
+		status:        &r.cluster.Status,
+		patchStatus:   r.PatchStatus,
+		requeue: func() {
+			r.requeue(0)
+		},
+		next: handler.Handlers(next).MustOne(),
+	}, "checkConfigChanged")
+}
+
+func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&validateConfigHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nn:           r.cluster.NamespacedName(),
+		uid:          r.cluster.UID,
+		rawConfig:    r.cluster.Spec.Config,
+		spiceDBImage: r.spiceDBImage,
+		generation:   r.cluster.Generation,
+		status:       &r.cluster.Status,
+		patchStatus:  r.PatchStatus,
+		next:         handler.Handlers(next).MustOne(),
+	}, "validateConfig")
+}
+
+func (r *SpiceDBClusterHandler) getDeployments(...handler.Handler) handler.Handler {
+	return handler.NewHandler(libctrl.NewComponentContextHandler[*appsv1.Deployment](
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		ctxDeployments,
+		libctrl.NewComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentSpiceDBLabelValue)),
+		r.cluster.NamespacedName(),
+		handler.NoopHandler,
+	), "getDeployments")
+}
+
+func (r *SpiceDBClusterHandler) getJobs(...handler.Handler) handler.Handler {
+	return handler.NewHandler(libctrl.NewComponentContextHandler[*batchv1.Job](
+		libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		ctxJobs,
+		libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue)),
+		r.cluster.NamespacedName(),
+		handler.NoopHandler,
+	), "getJobs")
+}
+
+func (r *SpiceDBClusterHandler) runMigration(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&migrationRunHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueAfter(r.requeue),
+		),
+		nn:        r.cluster.NamespacedName(),
+		secretRef: r.cluster.Spec.SecretRef,
+		getJobs: func(ctx context.Context) []*batchv1.Job {
+			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
+			return job.List(r.cluster.NamespacedName())
+		},
+		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
+			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, forceOwned)
+			return err
+		},
+		deleteJob: func(ctx context.Context, name string) error {
+			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		patchStatus: r.PatchStatus,
+		next:        handler.Handlers(next).MustOne(),
+	}, "createMigrationJob")
+}
+
+func (r *SpiceDBClusterHandler) checkMigrations(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(&migrationCheckHandler{
+		HandlerControls: libctrl.HandlerControlsWith(
+			libctrl.WithDone(r.done),
+			libctrl.WithRequeueImmediate(r.requeue),
+		),
+		nextMigrationRunHandler: handlerMigrationRunKey.MustFind(next),
+		nextWaitForJobHandler:   handlerWaitForMigrationsKey.MustFind(next),
+		nextDeploymentHandler:   handlerDeploymentKey.MustFind(next),
+	}, "checkMigrations")
+}
+
+func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
+	r *SpiceDBClusterHandler,
+	component *libctrl.Component[K],
+	applyObj func(ctx context.Context, apply A) (K, error),
+	deleteObject func(ctx context.Context, name string) error,
+	newObj func(ctx context.Context) A,
+) *libctrl.EnsureComponentByHash[K, A] {
+	return libctrl.NewEnsureComponentByHash[K, A](
+		libctrl.NewHashableComponent[K](*component, libctrl.NewObjectHash(), "authzed.com/cluster-component-hash"),
+		r.cluster.NamespacedName(),
+		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
+		applyObj,
+		deleteObject,
+		newObj)
+}
+
+func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler.Handler {
+	return handler.NewHandler(newEnsureClusterComponent(r,
+		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceAccountLabel)),
+		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
+			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		},
+		func(ctx context.Context, name string) error {
+			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
+			return ctxConfig.MustValue(ctx).serviceAccount()
+		},
+	), "ensureServiceAccount")
+}
+
+func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
+	return handler.NewHandler(newEnsureClusterComponent(r,
+		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleLabel)),
+		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
+			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		},
+		func(ctx context.Context, name string) error {
+			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
+			return ctxConfig.MustValue(ctx).role()
+		},
+	), "ensureRole")
+}
+
+func (r *SpiceDBClusterHandler) ensureRoleBinding(...handler.Handler) handler.Handler {
+	return handler.NewHandler(newEnsureClusterComponent(r,
+		libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
+		func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
+			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		},
+		func(ctx context.Context, name string) error {
+			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
+			return ctxConfig.MustValue(ctx).roleBinding()
+		},
+	), "ensureRoleBinding")
+}
+
+func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handler {
+	return handler.NewHandler(newEnsureClusterComponent(r,
+		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceLabel)),
+		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
+			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+		},
+		func(ctx context.Context, name string) error {
+			return r.kclient.CoreV1().Services(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
+			return ctxConfig.MustValue(ctx).service()
+		},
+	), "ensureService")
 }
 
 // TODO: generic adoption handler
@@ -135,7 +384,7 @@ type secretAdopterHandler struct {
 	// TODO: component
 	secretIndexer   cache.Indexer
 	secretApplyFunc func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error)
-	next            libctrl.Handler
+	next            handler.ContextHandler
 }
 
 func (s *secretAdopterHandler) Handle(ctx context.Context) {
@@ -181,21 +430,6 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 	s.next.Handle(ctx)
 }
 
-func newSecretAdopterHandler(r *Reconciler, next libctrl.Handler) *secretAdopterHandler {
-	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
-	return &secretAdopterHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		nn:              r.cluster.NamespacedName(),
-		secretName:      r.cluster.Spec.SecretRef,
-		secretIndexer:   r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
-		secretApplyFunc: r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
-		next:            next,
-	}
-}
-
 type configChangedHandler struct {
 	nn            types.NamespacedName
 	currentStatus *v1alpha1.AuthzedEnterpriseCluster
@@ -203,7 +437,7 @@ type configChangedHandler struct {
 	status        *v1alpha1.ClusterStatus
 	requeue       func()
 	patchStatus   func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
-	next          libctrl.Handler
+	next          handler.ContextHandler
 }
 
 func (c *configChangedHandler) Handle(ctx context.Context) {
@@ -221,20 +455,6 @@ func (c *configChangedHandler) Handle(ctx context.Context) {
 	c.next.Handle(ctx)
 }
 
-func newConfigChangeHandler(r *Reconciler, next libctrl.Handler) *configChangedHandler {
-	return &configChangedHandler{
-		currentStatus: r.cluster.NewStatusPatch(),
-		nn:            r.cluster.NamespacedName(),
-		obj:           r.cluster.GetObjectMeta(),
-		status:        &r.cluster.Status,
-		patchStatus:   r.PatchStatus,
-		requeue: func() {
-			r.requeue(0)
-		},
-		next: next,
-	}
-}
-
 type validateConfigHandler struct {
 	libctrl.HandlerControls
 	rawConfig    map[string]string
@@ -245,7 +465,7 @@ type validateConfigHandler struct {
 	generation   int64
 
 	patchStatus func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
-	next        libctrl.Handler
+	next        handler.ContextHandler
 }
 
 func (c *validateConfigHandler) Handle(ctx context.Context) {
@@ -275,160 +495,12 @@ func (c *validateConfigHandler) Handle(ctx context.Context) {
 	c.next.Handle(ctx)
 }
 
-func newValidateConfigHandler(r *Reconciler, next libctrl.Handler) *validateConfigHandler {
-	return &validateConfigHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		nn:           r.cluster.NamespacedName(),
-		uid:          r.cluster.UID,
-		rawConfig:    r.cluster.Spec.Config,
-		spiceDBImage: r.spiceDBImage,
-		generation:   r.cluster.Generation,
-		status:       &r.cluster.Status,
-		patchStatus:  r.PatchStatus,
-		next:         next,
-	}
-}
-
-func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
-	r *Reconciler,
-	component *libctrl.Component[K],
-	applyObj func(ctx context.Context, apply A) (K, error),
-	deleteObject func(ctx context.Context, name string) error,
-	newObj func(ctx context.Context) A,
-) *libctrl.EnsureComponentByHash[K, A] {
-	return libctrl.NewEnsureComponentByHash[K, A](
-		libctrl.NewHashableComponent[K](*component, libctrl.NewObjectHash(), "authzed.com/cluster-component-hash"),
-		r.cluster.NamespacedName(),
-		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
-		applyObj,
-		deleteObject,
-		newObj)
-}
-
-func newEnsureServiceAccountHandler(r *Reconciler) libctrl.Handler {
-	return newEnsureClusterComponent(r,
-		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceAccountLabel)),
-		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
-			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
-		}, func(ctx context.Context, name string) error {
-			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		}, func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
-			return ctxConfig.MustValue(ctx).serviceAccount()
-		})
-}
-
-func newEnsureRoleHandler(r *Reconciler) libctrl.Handler {
-	return newEnsureClusterComponent(r,
-		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleLabel)),
-		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
-			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
-		}, func(ctx context.Context, name string) error {
-			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		}, func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
-			return ctxConfig.MustValue(ctx).role()
-		})
-}
-
-func newEnsureRoleBindingHandler(r *Reconciler) libctrl.Handler {
-	return newEnsureClusterComponent(r,
-		libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
-		func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
-			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
-		}, func(ctx context.Context, name string) error {
-			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		}, func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
-			return ctxConfig.MustValue(ctx).roleBinding()
-		})
-}
-
-func newEnsureServiceHandler(r *Reconciler) libctrl.Handler {
-	return newEnsureClusterComponent(r,
-		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceLabel)),
-		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
-			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
-		}, func(ctx context.Context, name string) error {
-			return r.kclient.CoreV1().Services(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		}, func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
-			return ctxConfig.MustValue(ctx).service()
-		})
-}
-
-func newGetDeploymentsHandler(r *Reconciler) libctrl.Handler {
-	return libctrl.NewComponentContextHandler[*appsv1.Deployment](
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		ctxDeployments,
-		libctrl.NewComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentSpiceDBLabelValue)),
-		r.cluster.NamespacedName(),
-		libctrl.NoopHandler,
-	)
-}
-
-func newGetJobsHandler(r *Reconciler) libctrl.Handler {
-	return libctrl.NewComponentContextHandler[*batchv1.Job](
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		ctxJobs,
-		libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue)),
-		r.cluster.NamespacedName(),
-		libctrl.NoopHandler,
-	)
-}
-
-type ensureDeploymentPrereqsHandler struct {
-	*libctrl.ParallelHandler
-	next libctrl.Handler
-}
-
-func newEnsureDeploymentPrereqsHandler(r *Reconciler, next libctrl.Handler) *ensureDeploymentPrereqsHandler {
-	return &ensureDeploymentPrereqsHandler{
-		ParallelHandler: libctrl.NewParallelHandler(
-			newEnsureServiceAccountHandler(r),
-			newEnsureRoleHandler(r),
-			newEnsureRoleBindingHandler(r),
-			newEnsureServiceHandler(r),
-		),
-		next: next,
-	}
-}
-
-func (e *ensureDeploymentPrereqsHandler) Handle(ctx context.Context) {
-	// TODO: set condition, remove condition
-	e.ParallelHandler.Handle(ctx)
-	ctx = ctxDeployments.WithHandle(ctx)
-	ctx = ctxJobs.WithHandle(ctx)
-	e.next.Handle(ctx)
-}
-
 type migrationCheckHandler struct {
 	libctrl.HandlerControls
 
-	nextMigrationRunHandler libctrl.Handler
-	nextWaitForJobHandler   libctrl.Handler
-	nextDeploymentHandler   libctrl.Handler
-}
-
-func newMigrationCheckHandler(r *Reconciler,
-	nextMigrationRunHandler,
-	nextWaitForMigrationsHandler,
-	nextDeploymentHandler libctrl.Handler,
-) *migrationCheckHandler {
-	return &migrationCheckHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		nextMigrationRunHandler: nextMigrationRunHandler,
-		nextWaitForJobHandler:   nextWaitForMigrationsHandler,
-		nextDeploymentHandler:   nextDeploymentHandler,
-	}
+	nextMigrationRunHandler handler.ContextHandler
+	nextWaitForJobHandler   handler.ContextHandler
+	nextDeploymentHandler   handler.ContextHandler
 }
 
 // TODO: maybe this could be generalized as some sort of "Hash Handoff" flow
@@ -485,31 +557,7 @@ type migrationRunHandler struct {
 	getJobs   func(ctx context.Context) []*batchv1.Job
 	applyJob  func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error
 	deleteJob func(ctx context.Context, name string) error
-	next      libctrl.Handler
-}
-
-func newMigrationRunHandler(r *Reconciler, next libctrl.Handler) *migrationRunHandler {
-	return &migrationRunHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueAfter(r.requeue),
-		),
-		nn:        r.cluster.NamespacedName(),
-		secretRef: r.cluster.Spec.SecretRef,
-		getJobs: func(ctx context.Context) []*batchv1.Job {
-			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
-			return job.List(r.cluster.NamespacedName())
-		},
-		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
-			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, forceOwned)
-			return err
-		},
-		deleteJob: func(ctx context.Context, name string) error {
-			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		},
-		patchStatus: r.PatchStatus,
-		next:        next,
-	}
+	next      handler.ContextHandler
 }
 
 func (m *migrationRunHandler) Handle(ctx context.Context) {
@@ -573,22 +621,7 @@ type waitForMigrationsHandler struct {
 	generation            int64
 	patchStatus           func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
 	selfPause             *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]
-	nextDeploymentHandler libctrl.Handler
-}
-
-func newWaitForMigrationsHandler(r *Reconciler, next libctrl.Handler, selfPauseHandler *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]) *waitForMigrationsHandler {
-	ctrls := libctrl.HandlerControlsWith(
-		libctrl.WithDone(r.done),
-		libctrl.WithRequeueAfter(r.requeue),
-	)
-	return &waitForMigrationsHandler{
-		HandlerControls:       ctrls,
-		nn:                    r.cluster.NamespacedName(),
-		patchStatus:           r.PatchStatus,
-		generation:            r.cluster.Generation,
-		selfPause:             selfPauseHandler,
-		nextDeploymentHandler: next,
-	}
+	nextDeploymentHandler handler.ContextHandler
 }
 
 func (m *waitForMigrationsHandler) Handle(ctx context.Context) {
@@ -621,25 +654,7 @@ type deploymentHandler struct {
 	deleteDeployment func(ctx context.Context, name string) error
 	applyDeployment  func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
 	patchStatus      func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
-	next             libctrl.Handler
-}
-
-func newDeploymentHandler(r *Reconciler, next libctrl.Handler) *deploymentHandler {
-	return &deploymentHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		nn:          r.cluster.NamespacedName(),
-		next:        next,
-		patchStatus: r.PatchStatus,
-		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
-			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, forceOwned)
-		},
-		deleteDeployment: func(ctx context.Context, name string) error {
-			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		},
-	}
+	next             handler.ContextHandler
 }
 
 func (m *deploymentHandler) Handle(ctx context.Context) {
@@ -707,22 +722,6 @@ type jobCleanupHandler struct {
 	libctrl.HandlerControls
 	getJobs   func(ctx context.Context) []*batchv1.Job
 	deleteJob func(ctx context.Context, name string) error
-}
-
-func newJobCleanupHandler(r *Reconciler) *jobCleanupHandler {
-	return &jobCleanupHandler{
-		HandlerControls: libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		getJobs: func(ctx context.Context) []*batchv1.Job {
-			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
-			return job.List(r.cluster.NamespacedName())
-		},
-		deleteJob: func(ctx context.Context, name string) error {
-			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		},
-	}
 }
 
 // cleans up jobs that have completed and match the migration level of the current deployment

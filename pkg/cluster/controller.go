@@ -359,7 +359,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 
 	klog.V(4).Infof("syncing %s %s", gvr, cluster.ObjectMeta)
 
-	r := Reconciler{
+	r := SpiceDBClusterHandler{
 		done:      done,
 		requeue:   requeue,
 		cluster:   &cluster,

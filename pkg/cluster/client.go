@@ -12,7 +12,7 @@ import (
 
 var force = true
 
-func (r *Reconciler) PatchStatus(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error {
+func (r *SpiceDBClusterHandler) PatchStatus(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error {
 	for _, c := range patch.Status.Conditions {
 		c.ObservedGeneration = patch.Generation
 	}
@@ -26,7 +26,7 @@ func (r *Reconciler) PatchStatus(ctx context.Context, patch *v1alpha1.AuthzedEnt
 	return err
 }
 
-func (r *Reconciler) Patch(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error {
+func (r *SpiceDBClusterHandler) Patch(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error {
 	data, err := client.Apply.Data(patch)
 	if err != nil {
 		return err
