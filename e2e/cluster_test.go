@@ -32,13 +32,13 @@ import (
 )
 
 var (
-	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName)
+	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 
 	//go:embed cockroach.yaml
 	cockroachyaml []byte
 )
 
-var _ = Describe("AuthzedEnterpriseClusters", func() {
+var _ = Describe("SpiceDBClusters", func() {
 	var (
 		client  dynamic.Interface
 		kclient kubernetes.Interface
@@ -138,7 +138,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		Eventually(func(g Gomega) {
-			var c *v1alpha1.AuthzedEnterpriseCluster
+			var c *v1alpha1.SpiceDBCluster
 			out, err := client.Resource(v1alpha1ClusterGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 			g.Expect(err).To(Succeed())
 			g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
@@ -181,9 +181,9 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 		It("Reports invalid config on the status", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
-			aec := &v1alpha1.AuthzedEnterpriseCluster{
+			aec := &v1alpha1.SpiceDBCluster{
 				TypeMeta: metav1.TypeMeta{
-					Kind:       v1alpha1.AuthzedEnterpriseClusterKind,
+					Kind:       v1alpha1.SpiceDBClusterKind,
 					APIVersion: v1alpha1.SchemeGroupVersion.String(),
 				},
 				ObjectMeta: metav1.ObjectMeta{
@@ -201,7 +201,7 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 			Expect(err).To(Succeed())
 			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace("test").Delete, ctx, "test", metav1.DeleteOptions{})
 
-			var c *v1alpha1.AuthzedEnterpriseCluster
+			var c *v1alpha1.SpiceDBCluster
 			Eventually(func(g Gomega) {
 				out, err := client.Resource(v1alpha1ClusterGVR).Namespace("test").Get(ctx, "test", metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
@@ -250,8 +250,8 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 			By("crdb running.")
 		})
 
-		When("a valid AuthzedEnterpriseCluster is created (no TLS)", Ordered, func() {
-			var cluster *v1alpha1.AuthzedEnterpriseCluster
+		When("a valid SpiceDBCluster is created (no TLS)", Ordered, func() {
+			var cluster *v1alpha1.SpiceDBCluster
 
 			BeforeAll(func() {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -271,9 +271,9 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 				_, err := kclient.CoreV1().Secrets("test").Create(ctx, &secret, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
 
-				cluster = &v1alpha1.AuthzedEnterpriseCluster{
+				cluster = &v1alpha1.SpiceDBCluster{
 					TypeMeta: metav1.TypeMeta{
-						Kind:       v1alpha1.AuthzedEnterpriseClusterKind,
+						Kind:       v1alpha1.SpiceDBClusterKind,
 						APIVersion: v1alpha1.SchemeGroupVersion.String(),
 					},
 					ObjectMeta: metav1.ObjectMeta{
@@ -324,16 +324,16 @@ var _ = Describe("AuthzedEnterpriseClusters", func() {
 			})
 		})
 
-		When("a valid AuthzedEnterpriseCluster is created (with TLS)", Ordered, func() {
-			var spiceCluster *v1alpha1.AuthzedEnterpriseCluster
+		When("a valid SpiceDBCluster is created (with TLS)", Ordered, func() {
+			var spiceCluster *v1alpha1.SpiceDBCluster
 
 			BeforeAll(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				DeferCleanup(cancel)
 
-				spiceCluster = &v1alpha1.AuthzedEnterpriseCluster{
+				spiceCluster = &v1alpha1.SpiceDBCluster{
 					TypeMeta: metav1.TypeMeta{
-						Kind:       v1alpha1.AuthzedEnterpriseClusterKind,
+						Kind:       v1alpha1.SpiceDBClusterKind,
 						APIVersion: v1alpha1.SchemeGroupVersion.String(),
 					},
 					ObjectMeta: metav1.ObjectMeta{

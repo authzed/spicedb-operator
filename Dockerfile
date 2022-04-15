@@ -9,5 +9,5 @@ RUN go build ./cmd/...
 
 FROM alpine:3.15
 
-COPY --from=builder /go/src/app/authzed-operator /usr/local/bin/authzed-operator
-ENTRYPOINT ["authzed-enterprise-operator"]
+COPY --from=builder /go/src/app/spicedb-operator /usr/local/bin/spicedb-operator
+ENTRYPOINT ["spicedb-operator"]

@@ -26,9 +26,9 @@ func UsageVersion(includeDeps bool) string {
 
 	if !includeDeps {
 		if Version == "(devel)" {
-			return "authzed-operator development build (unknown exact version)"
+			return "spicedb-operator development build (unknown exact version)"
 		}
-		return "authzed-operator " + Version
+		return "spicedb-operator " + Version
 	}
 
 	var b strings.Builder

@@ -42,7 +42,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                   "run [flags]",
 		DisableFlagsInUseLine: true,
-		Short:                 "run Authzed Stack operator",
+		Short:                 "run SpiceDB operator",
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(o.Validate(cmd, args))
 			cmdutil.CheckErr(o.Run(f, cmd, args))

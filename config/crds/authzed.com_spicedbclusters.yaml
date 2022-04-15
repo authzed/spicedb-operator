@@ -5,20 +5,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
-  name: authzedenterpriseclusters.authzed.com
+  name: spicedbclusters.authzed.com
 spec:
   group: authzed.com
   names:
-    kind: AuthzedEnterpriseCluster
-    listKind: AuthzedEnterpriseClusterList
-    plural: authzedenterpriseclusters
-    singular: authzedenterprisecluster
+    kind: SpiceDBCluster
+    listKind: SpiceDBClusterList
+    plural: spicedbclusters
+    singular: spicedbcluster
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AuthzedEnterpriseCluster defines a full Authzed Enterprise cluster
+        description: SpiceDBCluster defines all options for a full SpiceDB cluster
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -33,12 +33,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: ClusterSpec holds the desired state of the Stack.
+            description: ClusterSpec holds the desired state of the cluster.
             properties:
               config:
                 additionalProperties:
                   type: string
-                description: 'Config values to be passed to the cluster TODO: map[string]interface?'
+                description: Config values to be passed to the cluster
                 type: object
               secretName:
                 description: SecretName points to a secret (in the same namespace)
@@ -47,8 +47,7 @@ spec:
                 type: string
             type: object
           status:
-            description: ClusterStatus communicates the observed state of the Authzed
-              Stack.
+            description: ClusterStatus communicates the observed state of the cluster.
             properties:
               conditions:
                 description: Conditions for the current state of the Stack.

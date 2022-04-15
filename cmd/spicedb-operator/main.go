@@ -13,7 +13,7 @@ import (
 func main() {
 	root := &cobra.Command{
 		Use:     os.Args[0],
-		Short:   "an operator for managing authzed enterprise stacks",
+		Short:   "an operator for managing SpiceDB clusters",
 		Version: version.Version,
 	}
 

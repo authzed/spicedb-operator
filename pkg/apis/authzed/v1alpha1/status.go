@@ -5,10 +5,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (c *AuthzedEnterpriseCluster) NewStatusPatch() *AuthzedEnterpriseCluster {
-	return &AuthzedEnterpriseCluster{
+func (c *SpiceDBCluster) NewStatusPatch() *SpiceDBCluster {
+	return &SpiceDBCluster{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       AuthzedEnterpriseClusterKind,
+			Kind:       SpiceDBClusterKind,
 			APIVersion: SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{Namespace: c.Namespace, Name: c.Name, Generation: c.Generation},
@@ -20,10 +20,10 @@ func (c *AuthzedEnterpriseCluster) NewStatusPatch() *AuthzedEnterpriseCluster {
 	}
 }
 
-func (c *AuthzedEnterpriseCluster) FindStatusCondition(conditionType string) *metav1.Condition {
+func (c *SpiceDBCluster) FindStatusCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(c.Status.Conditions, conditionType)
 }
 
-func (c *AuthzedEnterpriseCluster) SetStatusCondition(condition metav1.Condition) {
+func (c *SpiceDBCluster) SetStatusCondition(condition metav1.Condition) {
 	meta.SetStatusCondition(&c.Status.Conditions, condition)
 }

@@ -12,7 +12,7 @@ import (
 var (
 	ctxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	ctxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
-	ctxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.AuthzedEnterpriseCluster](nil)
+	ctxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
 	ctxConfig                 = libctrl.NewContextDefaultingKey[*Config](nil)
 	ctxSpiceConfigHash        = libctrl.NewContextDefaultingKey[string]("")
 	ctxMigrationHash          = libctrl.NewContextDefaultingKey[string]("")
