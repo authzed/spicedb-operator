@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func (c *AuthzedEnterpriseCluster) NamespacedName() types.NamespacedName {
+func (c *SpiceDBCluster) NamespacedName() types.NamespacedName {
 	return types.NamespacedName{
 		Name:      c.Name,
 		Namespace: c.Namespace,

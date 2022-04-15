@@ -46,8 +46,8 @@ const (
 )
 
 var (
-	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName)
-	authzedClusterGR   = v1alpha1ClusterGVR.GroupResource()
+	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
+	spiceDBClusterGR   = v1alpha1ClusterGVR.GroupResource()
 
 	forceOwned = metav1.ApplyOptions{FieldManager: "spicedb-operator", Force: true}
 
@@ -65,7 +65,7 @@ var (
 type SpiceDBClusterHandler struct {
 	done         func()
 	requeue      func(duration time.Duration)
-	cluster      *v1alpha1.AuthzedEnterpriseCluster
+	cluster      *v1alpha1.SpiceDBCluster
 	client       dynamic.Interface
 	kclient      kubernetes.Interface
 	informers    map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
@@ -73,7 +73,7 @@ type SpiceDBClusterHandler struct {
 	spiceDBImage string
 }
 
-// Handle inspects the current AuthzedEnterpriseCluster object and ensures
+// Handle inspects the current SpiceDBCluster object and ensures
 // the desired state is persisted on the cluster.
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	klog.V(4).Infof("syncing cluster %s/%s", r.cluster.Namespace, r.cluster.Name)
@@ -159,7 +159,7 @@ func (r *SpiceDBClusterHandler) waitForMigrationsHandler(handlers ...handler.Han
 		nn:                    r.cluster.NamespacedName(),
 		patchStatus:           r.PatchStatus,
 		generation:            r.cluster.Generation,
-		selfPause:             handlerSelfPauseKey.MustFind(handlers).ContextHandler.(*libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]),
+		selfPause:             handlerSelfPauseKey.MustFind(handlers).ContextHandler.(*libctrl.SelfPauseHandler[*v1alpha1.SpiceDBCluster]),
 		nextDeploymentHandler: handlerDeploymentKey.MustFind(handlers),
 	}, "waitForMigrations")
 }
@@ -406,7 +406,7 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 			OwnerLabelKey: s.nn.Name,
 		}), forceOwned)
 		// TODO: events
-		// r.recorder.Event(secret, "Adopted", "ReferencedByCluster", "Secret was referenced as the secret source for an AuthzedEnterpriseCluster; it has been labelled to mark it as part of the configuration for that cluster.")
+		// r.recorder.Event(secret, "Adopted", "ReferencedByCluster", "Secret was referenced as the secret source for an SpiceDBCluster; it has been labelled to mark it as part of the configuration for that cluster.")
 	case 1:
 		var ok bool
 		secret, ok = secrets[0].(*corev1.Secret)
@@ -432,11 +432,11 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 
 type configChangedHandler struct {
 	nn            types.NamespacedName
-	currentStatus *v1alpha1.AuthzedEnterpriseCluster
+	currentStatus *v1alpha1.SpiceDBCluster
 	obj           metav1.Object
 	status        *v1alpha1.ClusterStatus
 	requeue       func()
-	patchStatus   func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	patchStatus   func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next          handler.ContextHandler
 }
 
@@ -464,7 +464,7 @@ type validateConfigHandler struct {
 	status       *v1alpha1.ClusterStatus
 	generation   int64
 
-	patchStatus func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
 }
 
@@ -552,7 +552,7 @@ type migrationRunHandler struct {
 	libctrl.HandlerControls
 	nn          types.NamespacedName
 	secretRef   string
-	patchStatus func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 
 	getJobs   func(ctx context.Context) []*batchv1.Job
 	applyJob  func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error
@@ -619,8 +619,8 @@ type waitForMigrationsHandler struct {
 	libctrl.HandlerControls
 	nn                    types.NamespacedName
 	generation            int64
-	patchStatus           func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
-	selfPause             *libctrl.SelfPauseHandler[*v1alpha1.AuthzedEnterpriseCluster]
+	patchStatus           func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	selfPause             *libctrl.SelfPauseHandler[*v1alpha1.SpiceDBCluster]
 	nextDeploymentHandler handler.ContextHandler
 }
 
@@ -653,7 +653,7 @@ type deploymentHandler struct {
 	nn               types.NamespacedName
 	deleteDeployment func(ctx context.Context, name string) error
 	applyDeployment  func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
-	patchStatus      func(ctx context.Context, patch *v1alpha1.AuthzedEnterpriseCluster) error
+	patchStatus      func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next             handler.ContextHandler
 }
 

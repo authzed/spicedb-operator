@@ -197,7 +197,7 @@ func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyCon
 func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 	return applymetav1.OwnerReference().
 		WithName(c.Name).
-		WithKind(v1alpha1.AuthzedEnterpriseClusterKind).
+		WithKind(v1alpha1.SpiceDBClusterKind).
 		WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
 		WithUID(types.UID(c.UID))
 }
