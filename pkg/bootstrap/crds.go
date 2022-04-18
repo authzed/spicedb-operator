@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-//go:embed crds/authzed.com_authzedenterpriseclusters.yaml
+//go:embed crds/authzed.com_spicedbclusters.yaml
 var clusterCRDFile []byte
 
 func CRD(restConfig *rest.Config) error {

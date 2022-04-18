@@ -8,26 +8,10 @@ func TestToEnvVarName(t *testing.T) {
 		key    string
 		want   string
 	}{
-		{
-			"prefix",
-			"key",
-			"PREFIX_KEY",
-		},
-		{
-			"SPICEDB",
-			"grpcTLSKeyPath",
-			"SPICEDB_GRPC_TLS_KEY_PATH",
-		},
-		{
-			"SPICEDB",
-			"grpcTlsKeyPath",
-			"SPICEDB_GRPC_TLS_KEY_PATH",
-		},
-		{
-			"SPICEDB",
-			"dispatchUpstreamCAPath",
-			"SPICEDB_DISPATCH_UPSTREAM_CA_PATH",
-		},
+		{"prefix", "key", "PREFIX_KEY"},
+		{"SPICEDB", "grpcTLSKeyPath", "SPICEDB_GRPC_TLS_KEY_PATH"},
+		{"SPICEDB", "grpcTlsKeyPath", "SPICEDB_GRPC_TLS_KEY_PATH"},
+		{"SPICEDB", "dispatchUpstreamCAPath", "SPICEDB_DISPATCH_UPSTREAM_CA_PATH"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.prefix+"/"+tt.key, func(t *testing.T) {

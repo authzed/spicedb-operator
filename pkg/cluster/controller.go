@@ -11,6 +11,9 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -40,9 +43,9 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen rbac:roleName=authzed-operator paths="../../pkg/..." output:rbac:dir=../../config/rbac
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen rbac:roleName=spicedb-operator paths="../../pkg/..." output:rbac:dir=../../config/rbac
 
-// +kubebuilder:rbac:groups="authzed.com",resources=authzedenterpriseclusters,verbs=get;watch;list;create;update;delete
+// +kubebuilder:rbac:groups="authzed.com",resources=spicedbclusters,verbs=get;watch;list;create;update;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups="",resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -51,10 +54,14 @@ import (
 // +kubebuilder:rbac:groups="rbac",resources=role,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="rbac",resources=rolebinding,verbs=get;list;watch;create;update;patch;delete
 
+func init() {
+	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
+}
+
 var (
 	// OwnedResources are always synced unless they're marked unmanaged
 	OwnedResources = []schema.GroupVersionResource{
-		v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.AuthzedEnterpriseClusterResourceName),
+		v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName),
 	}
 
 	// ExternalResources are not synced unless they're marked as managed
@@ -172,6 +179,13 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer c.queue.ShutDown()
 	defer c.dependentQueue.ShutDown()
 
+	broadcaster := record.NewBroadcaster()
+	defer broadcaster.Shutdown()
+
+	broadcaster.StartStructuredLogging(0)
+	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: c.kclient.CoreV1().Events("")})
+	c.recorder = broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "spicedb-operator"})
+
 	for _, gvr := range OwnedResources {
 		klog.Info(fmt.Sprintf("Starting %s controller", gvr.Resource))
 		defer klog.Info(fmt.Sprintf("Stopping %s controller", gvr.Resource))
@@ -190,7 +204,7 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 }
 
 func (c *Controller) Name() string {
-	return v1alpha1.AuthzedEnterpriseClusterResourceName
+	return v1alpha1.SpiceDBClusterResourceName
 }
 
 func (c *Controller) DebuggingHandler() http.Handler {
@@ -329,9 +343,9 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 // syncFunc - an error returned here will do a rate-limited requeue of the object's key
 type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration))
 
-// syncOwnedResource is called when Stack is updated
+// syncOwnedResource is called when SpiceDBCluster is updated
 func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
-	if gvr.GroupResource() != authzedClusterGR {
+	if gvr.GroupResource() != spiceDBClusterGR {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String()))
 		done()
 		return
@@ -350,26 +364,18 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	var cluster v1alpha1.AuthzedEnterpriseCluster
+	var cluster v1alpha1.SpiceDBCluster
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object: %w", err))
 		done()
 		return
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, cluster.ObjectMeta)
+	klog.V(4).Infof("syncing %s %s", gvr, klog.KObj(&cluster))
 
-	r := Reconciler{
-		done: func() func() {
-			return func() {
-				done()
-			}
-		},
-		requeue: func(duration time.Duration) func() {
-			return func() {
-				requeue(duration)
-			}
-		},
+	r := SpiceDBClusterHandler{
+		done:      done,
+		requeue:   requeue,
 		cluster:   &cluster,
 		client:    c.client,
 		kclient:   c.kclient,
@@ -385,13 +391,13 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	}
 	c.configLock.RUnlock()
 
-	r.sync(ctx)()
+	r.Handle(ctx)
 }
 
 // syncExternalResource is called when a dependent resource is updated;
-// It queues the owning Stack for reconciliation based on the labels.
+// It queues the owning SpiceDBCluster for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
-// machine for AuthzedEnterpriseClusters with an entrypoint in syncCluster
+// machine for SpiceDBClusters with an entrypoint in syncCluster
 func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
 	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
 	if err != nil {

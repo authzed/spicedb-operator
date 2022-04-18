@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -63,12 +65,25 @@ var (
 	restConfig *rest.Config
 )
 
+func init() {
+	klog.InitFlags(nil)
+}
+
 func TestEndToEnd(t *testing.T) {
 	RegisterFailHandler(Fail)
+
+	// Default operator logs to --v=4 and write to GinkgoWriter
+	if verbosity := flag.CommandLine.Lookup("v"); verbosity.Value.String() == "" {
+		Expect(verbosity.Value.Set("4")).To(Succeed())
+	}
+	klog.SetOutput(GinkgoWriter)
+
+	// Test Defaults
 	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
+
 	RunSpecs(t, "operator tests")
 }
 

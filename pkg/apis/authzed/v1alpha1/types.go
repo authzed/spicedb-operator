@@ -2,21 +2,21 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=authzed-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=spicedb-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths="../../../apis/..." output:crd:artifacts:config=../../../bootstrap/crds
 
 const (
-	AuthzedEnterpriseClusterResourceName = "authzedenterpriseclusters"
-	AuthzedEnterpriseClusterKind         = "AuthzedEnterpriseCluster"
+	SpiceDBClusterResourceName = "spicedbclusters"
+	SpiceDBClusterKind         = "SpiceDBCluster"
 )
 
-// AuthzedEnterpriseCluster defines a full Authzed Enterprise cluster
+// SpiceDBCluster defines all options for a full SpiceDB cluster
 //
 // +crd
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-type AuthzedEnterpriseCluster struct {
+type SpiceDBCluster struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -28,11 +28,10 @@ type AuthzedEnterpriseCluster struct {
 	Status ClusterStatus `json:"status,omitempty"`
 }
 
-// ClusterSpec holds the desired state of the Stack.
+// ClusterSpec holds the desired state of the cluster.
 type ClusterSpec struct {
 	// Config values to be passed to the cluster
 	// +optional
-	// TODO: map[string]interface?
 	Config map[string]string `json:"config,omitempty"`
 
 	// SecretName points to a secret (in the same namespace) that holds secret
@@ -42,7 +41,7 @@ type ClusterSpec struct {
 	SecretRef string `json:"secretName,omitempty"`
 }
 
-// ClusterStatus communicates the observed state of the Authzed Stack.
+// ClusterStatus communicates the observed state of the cluster.
 type ClusterStatus struct {
 	// ObservedGeneration represents the .metadata.generation that has been
 	// seen by the controller.
@@ -53,20 +52,17 @@ type ClusterStatus struct {
 	// SecretHash is a digest of the last applied secret
 	SecretHash string `json:"secretHash,omitempty"`
 
-	// CurrentMigrationName
-	CurrentMigrationName string `json:"currentMigrationName,omitempty"`
-
 	// Conditions for the current state of the Stack.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
-// AuthzedEnterpriseClusterList is a list of Stack resources
+// SpiceDBClusterList is a list of SpiceDBCluster resources
 //
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type AuthzedEnterpriseClusterList struct {
+type SpiceDBClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
 
-	Items []AuthzedEnterpriseCluster `json:"items"`
+	Items []SpiceDBCluster `json:"items"`
 }
