@@ -10,6 +10,7 @@ import (
 )
 
 var (
+	ctxSyncID                 = libctrl.NewContextKey[string]()
 	ctxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	ctxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
 	ctxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
