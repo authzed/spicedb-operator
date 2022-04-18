@@ -1,13 +1,13 @@
-# Authzed Operator
+# SpiceDB Operator
 
 ## Architecture
 
 - The operator watches all namespaces in a cluster.
-- The `Stack` object holds config for a single Authzed Enterprise stack
-- Other "dependent" objects (deployments, services, etc) will be created in response to a stack.
-- The operator watches all `Stack` objects in the cluster, unless they are marked explicitly `authzed.com/unmanaged` (for debugging)
-- The operator only watches dependent objects that are labelled for a stack.
-- A change in a dependent resource only triggers re-reconciliation of the `Stack`, which is then checked for consistency.
+- The `SpiceDBCluster` object holds config for a single SpiceDB Cluster 
+- Other "dependent" objects (deployments, services, etc) will be created in response to a `SpiceDBCluster`.
+- The operator watches all `SpiceDBCluster` objects in the cluster, unless they are marked explicitly `authzed.com/unmanaged` (for debugging)
+- The operator only watches dependent objects that are labelled as a component of a `SpiceDBCluster`.
+- A change in a dependent resource only triggers re-reconciliation of the `SpiceDBCluster`, which is then checked for consistency.
   - This may change in the future, but keeps the state machine simple for now.
 - Currently there's no leader election; just stop the old operator and start a new one, and only run one.
 
