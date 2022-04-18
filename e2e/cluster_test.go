@@ -74,6 +74,10 @@ var _ = Describe("SpiceDBClusters", func() {
 			g.Expect(deps.Items[0].Spec.Template.Spec.Containers[0].Image).To(Equal(image))
 			GinkgoWriter.Println(deps.Items[0].Status)
 			g.Expect(deps.Items[0].Status.AvailableReplicas).ToNot(BeZero())
+
+			endpoint, err := kclient.CoreV1().Endpoints(namespace).Get(ctx, owner, metav1.GetOptions{})
+			g.Expect(err).To(Succeed())
+			g.Expect(endpoint).ToNot(BeNil())
 		}).Should(Succeed())
 
 		By("not having startup warnings")
