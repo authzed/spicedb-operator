@@ -58,7 +58,6 @@ var (
 )
 
 // TODO: wait for a specific RV to be seen, with a timeout
-// TODO: tracing handler middleware
 // TODO: event emitting handler middleware
 // TODO: status set/unset middleware
 
@@ -78,7 +77,14 @@ type SpiceDBClusterHandler struct {
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	klog.V(4).Infof("syncing cluster %s/%s", r.cluster.Namespace, r.cluster.Name)
 
-	deploymentHandlerChain := libctrl.Chain(
+	middleware := []libctrl.Middleware{
+		libctrl.MakeMiddleware(SyncIDMiddleware),
+		libctrl.MakeMiddleware(KlogMiddleware(klog.KObj(r.cluster))),
+	}
+	chain := libctrl.ChainWithMiddleware(middleware...)
+	parallel := libctrl.ParallelWithMiddleware(middleware...)
+
+	deploymentHandlerChain := chain(
 		r.ensureDeployment,
 		r.cleanupJob,
 	).Handler(handlerDeploymentKey)
@@ -88,12 +94,12 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 		r.selfPauseCluster(handler.NoopHandler),
 	).WithID(handlerWaitForMigrationsKey)
 
-	libctrl.Chain(
+	chain(
 		r.pauseCluster,
 		r.secretAdopter,
 		r.checkConfigChanged,
 		r.validateConfig,
-		libctrl.Parallel(
+		parallel(
 			r.ensureServiceAccount,
 			r.ensureRole,
 			r.ensureRoleBinding,
@@ -101,13 +107,13 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 		),
 		ctxDeployments.HandleBuilder("deploymentsPre"),
 		ctxJobs.HandleBuilder("jobsPre"),
-		libctrl.Parallel(
+		parallel(
 			r.getDeployments,
 			r.getJobs,
 		),
 		r.checkMigrations(
 			deploymentHandlerChain,
-			libctrl.Chain(
+			chain(
 				r.runMigration,
 				waitForMigrationsChain.Builder(),
 			).Handler(handlerMigrationRunKey),
