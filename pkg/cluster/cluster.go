@@ -163,6 +163,7 @@ func (r *SpiceDBClusterHandler) waitForMigrationsHandler(handlers ...handler.Han
 			libctrl.WithRequeueAfter(r.requeue),
 		),
 		nn:                    r.cluster.NamespacedName(),
+		recorder:              r.recorder,
 		patchStatus:           r.PatchStatus,
 		generation:            r.cluster.Generation,
 		selfPause:             handlerSelfPauseKey.MustFind(handlers).ContextHandler.(*libctrl.SelfPauseHandler[*v1alpha1.SpiceDBCluster]),
@@ -205,6 +206,7 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 			libctrl.WithRequeueImmediate(r.requeue),
 		),
 		nn:              r.cluster.NamespacedName(),
+		recorder:        r.recorder,
 		secretName:      r.cluster.Spec.SecretRef,
 		secretIndexer:   r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
 		secretApplyFunc: r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
@@ -239,6 +241,7 @@ func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.
 		generation:   r.cluster.Generation,
 		status:       &r.cluster.Status,
 		patchStatus:  r.PatchStatus,
+		recorder:     r.recorder,
 		next:         handler.Handlers(next).MustOne(),
 	}, "validateConfig")
 }
@@ -299,6 +302,7 @@ func (r *SpiceDBClusterHandler) checkMigrations(next ...handler.Handler) handler
 			libctrl.WithDone(r.done),
 			libctrl.WithRequeueImmediate(r.requeue),
 		),
+		recorder:                r.recorder,
 		nextMigrationRunHandler: handlerMigrationRunKey.MustFind(next),
 		nextWaitForJobHandler:   handlerWaitForMigrationsKey.MustFind(next),
 		nextDeploymentHandler:   handlerDeploymentKey.MustFind(next),
@@ -386,6 +390,7 @@ type secretAdopterHandler struct {
 	libctrl.HandlerControls
 	nn         types.NamespacedName
 	secretName string
+	recorder   record.EventRecorder
 
 	// TODO: component
 	secretIndexer   cache.Indexer
@@ -411,8 +416,7 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 		secret, err = s.secretApplyFunc(ctx, applycorev1.Secret(s.secretName, s.nn.Namespace).WithLabels(map[string]string{
 			OwnerLabelKey: s.nn.Name,
 		}), forceOwned)
-		// TODO: events
-		// r.recorder.Event(secret, "Adopted", "ReferencedByCluster", "Secret was referenced as the secret source for an SpiceDBCluster; it has been labelled to mark it as part of the configuration for that cluster.")
+		s.recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for a SpiceDBCluster; it has been labelled to mark it as part of the configuration for that cluster.")
 	case 1:
 		var ok bool
 		secret, ok = secrets[0].(*corev1.Secret)
@@ -469,6 +473,7 @@ type validateConfigHandler struct {
 	uid          types.UID
 	status       *v1alpha1.ClusterStatus
 	generation   int64
+	recorder     record.EventRecorder
 
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
@@ -491,6 +496,7 @@ func (c *validateConfigHandler) Handle(ctx context.Context) {
 			c.Requeue()
 			return
 		}
+		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
 		// if the config is invalid, there's no work to do until it has changed
 		c.Done()
 		return
@@ -503,6 +509,7 @@ func (c *validateConfigHandler) Handle(ctx context.Context) {
 
 type migrationCheckHandler struct {
 	libctrl.HandlerControls
+	recorder record.EventRecorder
 
 	nextMigrationRunHandler handler.ContextHandler
 	nextWaitForJobHandler   handler.ContextHandler
@@ -539,6 +546,7 @@ func (m *migrationCheckHandler) Handle(ctx context.Context) {
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
+		m.recorder.Eventf(ctxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", ctxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}
@@ -559,6 +567,7 @@ type migrationRunHandler struct {
 	nn          types.NamespacedName
 	secretRef   string
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	recorder    record.EventBroadcaster
 
 	getJobs   func(ctx context.Context) []*batchv1.Job
 	applyJob  func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error
@@ -624,6 +633,7 @@ func (m *migrationRunHandler) Handle(ctx context.Context) {
 type waitForMigrationsHandler struct {
 	libctrl.HandlerControls
 	nn                    types.NamespacedName
+	recorder              record.EventRecorder
 	generation            int64
 	patchStatus           func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	selfPause             *libctrl.SelfPauseHandler[*v1alpha1.SpiceDBCluster]
@@ -646,6 +656,7 @@ func (m *waitForMigrationsHandler) Handle(ctx context.Context) {
 
 	// if done, go to the nextDeploymentHandler step
 	if jobConditionHasStatus(job, batchv1.JobComplete, corev1.ConditionTrue) {
+		m.recorder.Eventf(ctxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventMigrationsComplete, "Migrations completed for %s", ctxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}

@@ -11,6 +11,9 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -50,6 +53,10 @@ import (
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="rbac",resources=role,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="rbac",resources=rolebinding,verbs=get;list;watch;create;update;patch;delete
+
+func init() {
+	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
+}
 
 var (
 	// OwnedResources are always synced unless they're marked unmanaged
@@ -171,6 +178,13 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 	defer c.dependentQueue.ShutDown()
+
+	broadcaster := record.NewBroadcaster()
+	defer broadcaster.Shutdown()
+
+	broadcaster.StartStructuredLogging(0)
+	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: c.kclient.CoreV1().Events("")})
+	c.recorder = broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "spicedb-operator"})
 
 	for _, gvr := range OwnedResources {
 		klog.Info(fmt.Sprintf("Starting %s controller", gvr.Resource))
