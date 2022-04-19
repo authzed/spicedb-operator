@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -186,9 +187,15 @@ func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyCon
 	}
 
 	// Passthrough config is user-provided and only affects spicedb runtime.
-	for k, v := range c.Passthrough {
+	keys := make([]string, 0, len(c.Passthrough))
+	for k := range c.Passthrough {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(c.EnvPrefix, k)).WithValue(v))
+			WithName(ToEnvVarName(c.EnvPrefix, k)).WithValue(c.Passthrough[k]))
 	}
 
 	return envVars
@@ -324,18 +331,19 @@ func (c *Config) probeCmd() []string {
 	return probeCmd
 }
 
-func (c *Config) deployment(migrationHash, spiceDBConfigHash string) *applyappsv1.DeploymentApplyConfiguration {
+func (c *Config) deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
 	name := fmt.Sprintf("%s-spicedb", c.Name)
 	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.ownerRef()).
 		WithLabels(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
 		WithAnnotations(map[string]string{
 			SpiceDBMigrationRequirementsKey: migrationHash,
-			SpiceDBConfigKey:                spiceDBConfigHash,
 		}).
 		WithSpec(applyappsv1.DeploymentSpec().
 			WithReplicas(c.Replicas).
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
-			WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+			WithTemplate(applycorev1.PodTemplateSpec().
+				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+				WithLabels(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
