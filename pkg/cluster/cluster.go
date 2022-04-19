@@ -102,9 +102,9 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 		parallel(
 			r.ensureServiceAccount,
 			r.ensureRole,
-			r.ensureRoleBinding,
 			r.ensureService,
 		),
+		r.ensureRoleBinding,
 		ctxDeployments.HandleBuilder("deploymentsPre"),
 		ctxJobs.HandleBuilder("jobsPre"),
 		parallel(
@@ -355,19 +355,22 @@ func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 	), "ensureRole")
 }
 
-func (r *SpiceDBClusterHandler) ensureRoleBinding(...handler.Handler) handler.Handler {
-	return handler.NewHandler(newEnsureClusterComponent(r,
-		libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
-		func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
-			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
-		},
-		func(ctx context.Context, name string) error {
-			return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
-		},
-		func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
-			return ctxConfig.MustValue(ctx).roleBinding()
-		},
-	), "ensureRoleBinding")
+func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handler.Handler {
+	return handler.NewHandlerFromFunc(func(ctx context.Context) {
+		newEnsureClusterComponent(r,
+			libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
+			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
+				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
+			},
+			func(ctx context.Context, name string) error {
+				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+			},
+			func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
+				return ctxConfig.MustValue(ctx).roleBinding()
+			},
+		).Handle(ctx)
+		handler.Handlers(next).MustOne().Handle(ctx)
+	}, "ensureRoleBinding")
 }
 
 func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handler {
