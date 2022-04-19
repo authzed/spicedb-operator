@@ -689,14 +689,14 @@ func (m *deploymentHandler) Handle(ctx context.Context) {
 		ctx = ctxClusterStatus.WithValue(ctx, currentStatus)
 	}
 
-	migrationHash := ctxMigrationHash.Value(ctx)
+	migrationHash := ctxMigrationHash.MustValue(ctx)
 	config := ctxConfig.MustValue(ctx)
-	spiceDBConfigHash, err := libctrl.HashObject(config.SpiceConfig)
+	newDeployment := config.deployment(migrationHash)
+	deploymentHash, err := libctrl.HashObject(newDeployment)
 	if err != nil {
 		m.RequeueErr(err)
 		return
 	}
-	ctx = ctxSpiceConfigHash.WithValue(ctx, spiceDBConfigHash)
 
 	matchingObjs := make([]*appsv1.Deployment, 0)
 	extraObjs := make([]*appsv1.Deployment, 0)
@@ -705,21 +705,25 @@ func (m *deploymentHandler) Handle(ctx context.Context) {
 		if annotations == nil {
 			extraObjs = append(extraObjs, o)
 		}
-		if libctrl.SecureHashEqual(annotations[SpiceDBMigrationRequirementsKey], migrationHash) &&
-			libctrl.HashEqual(annotations[SpiceDBConfigKey], spiceDBConfigHash) {
+		if libctrl.HashEqual(annotations[SpiceDBConfigKey], deploymentHash) {
 			matchingObjs = append(matchingObjs, o)
 		} else {
 			extraObjs = append(extraObjs, o)
 		}
 	}
 
+	// deployment with correct hash exists
 	if len(matchingObjs) == 1 {
 		ctx = ctxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
 	}
-	// deployment with correct hash exists
+
+	// apply if no matching object in cluster
 	if len(matchingObjs) == 0 {
-		// apply if no matching object in cluster
-		deployment, err := m.applyDeployment(ctx, ctxConfig.MustValue(ctx).deployment(migrationHash, spiceDBConfigHash))
+		deployment, err := m.applyDeployment(ctx,
+			newDeployment.WithAnnotations(
+				map[string]string{SpiceDBConfigKey: deploymentHash},
+			),
+		)
 		if err != nil {
 			m.RequeueErr(err)
 			return

@@ -15,7 +15,6 @@ var (
 	ctxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
 	ctxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
 	ctxConfig                 = libctrl.NewContextDefaultingKey[*Config](nil)
-	ctxSpiceConfigHash        = libctrl.NewContextDefaultingKey[string]("")
 	ctxMigrationHash          = libctrl.NewContextDefaultingKey[string]("")
 	ctxDeployments            = libctrl.NewContextHandleDefaultingKey[[]*appsv1.Deployment](make([]*appsv1.Deployment, 0))
 	ctxJobs                   = libctrl.NewContextHandleDefaultingKey[[]*batchv1.Job](make([]*batchv1.Job, 0))
