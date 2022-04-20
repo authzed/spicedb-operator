@@ -50,6 +50,7 @@ type SpiceConfig struct {
 	SpiceDBCmd                   string
 	TLSSecretName                string
 	DispatchUpstreamCASecretName string
+	TelemetryTLSCASecretName     string
 	SecretName                   string
 	Passthrough                  map[string]string
 }
@@ -124,6 +125,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
 	}
 
+	if len(config["telemetryCASecretName"]) > 0 {
+		passthroughConfig["telemetryCAOverridePath"] = "/telemetry-tls/tls.crt"
+	}
+
 	// the rest of the config is passed through to spicedb
 	for k := range config {
 		passthroughConfig[k] = config[k]
@@ -173,6 +178,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 			SpiceDBCmd:                   spicedbCmd,
 			TLSSecretName:                config["tlsSecretName"],
 			DispatchUpstreamCASecretName: config["dispatchUpstreamCASecretName"],
+			TelemetryTLSCASecretName:     config["telemetryCASecretName"],
 			SecretName:                   secret.GetName(),
 			Passthrough:                  passthroughConfig,
 		},
@@ -316,24 +322,30 @@ func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := c.jobVolumes()
-	// TODO: validate that the secret exists before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the deployment
 	if len(c.TLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
 	}
 	if len(c.DispatchUpstreamCASecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("dispatch-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
 	}
+	if len(c.TelemetryTLSCASecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("telemetry-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TelemetryTLSCASecretName)))
+	}
 	return volumes
 }
 
 func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration {
 	volumeMounts := c.jobVolumeMounts()
-	// TODO: validate that the secret exists before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the deployment
 	if len(c.TLSSecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
 	}
 	if len(c.DispatchUpstreamCASecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("dispatch-tls").WithMountPath("/dispatch-tls").WithReadOnly(true))
+	}
+	if len(c.TelemetryTLSCASecretName) > 0 {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("telemetry-tls").WithMountPath("/telemetry-tls").WithReadOnly(true))
 	}
 	return volumeMounts
 }
