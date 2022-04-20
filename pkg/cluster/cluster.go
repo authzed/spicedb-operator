@@ -148,12 +148,19 @@ func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
 			libctrl.WithDone(r.done),
 			libctrl.WithRequeueImmediate(r.requeue),
 		),
+		getJobPods: func(ctx context.Context) []*corev1.Pod {
+			pod := libctrl.NewComponent[*corev1.Pod](r.informers, corev1.SchemeGroupVersion.WithResource("pods"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
+			return pod.List(r.cluster.NamespacedName())
+		},
 		getJobs: func(ctx context.Context) []*batchv1.Job {
 			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentMigrationJobLabelValue))
 			return job.List(r.cluster.NamespacedName())
 		},
 		deleteJob: func(ctx context.Context, name string) error {
 			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
+		},
+		deletePod: func(ctx context.Context, name string) error {
+			return r.kclient.CoreV1().Pods(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 	}, "cleanupJob")
 }
@@ -747,21 +754,26 @@ func (m *deploymentHandler) Handle(ctx context.Context) {
 
 type jobCleanupHandler struct {
 	libctrl.HandlerControls
-	getJobs   func(ctx context.Context) []*batchv1.Job
-	deleteJob func(ctx context.Context, name string) error
+	getJobPods func(ctx context.Context) []*corev1.Pod
+	getJobs    func(ctx context.Context) []*batchv1.Job
+	deleteJob  func(ctx context.Context, name string) error
+	deletePod  func(ctx context.Context, name string) error
 }
 
 // cleans up jobs that have completed and match the migration level of the current deployment
 // (other jobs will be cleaned up by the previous job sync, this is only concerned with cleaning up "latest" jobs)
 func (s *jobCleanupHandler) Handle(ctx context.Context) {
 	jobs := s.getJobs(ctx)
+	pods := s.getJobPods(ctx)
 	deployment := *ctxCurrentSpiceDeployment.MustValue(ctx)
-	if deployment.Annotations == nil || len(jobs) == 0 {
+	if deployment.Annotations == nil || len(jobs)+len(pods) == 0 {
 		s.Done()
 		return
 	}
 
+	jobNames := make(map[string]struct{})
 	for _, j := range jobs {
+		jobNames[j.Name] = struct{}{}
 		if j.Annotations == nil {
 			continue
 		}
@@ -775,5 +787,27 @@ func (s *jobCleanupHandler) Handle(ctx context.Context) {
 			}
 		}
 	}
+
+	for _, p := range pods {
+		labels := p.GetLabels()
+		if labels == nil {
+			continue
+		}
+		jobName, ok := labels["job-name"]
+		if !ok {
+			continue
+		}
+		if _, ok := jobNames[jobName]; ok {
+			// job still exists
+			s.Requeue()
+			return
+		}
+
+		if err := s.deletePod(ctx, p.GetName()); err != nil {
+			s.RequeueErr(err)
+			return
+		}
+	}
+
 	s.Done()
 }
