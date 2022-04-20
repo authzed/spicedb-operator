@@ -305,7 +305,9 @@ func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 			SpiceDBMigrationRequirementsKey: migrationHash,
 		}).
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
-			applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
+			applycorev1.PodTemplateSpec().WithLabels(
+				LabelsForComponent(c.Name, ComponentMigrationJobLabelValue),
+			).WithSpec(applycorev1.PodSpec().WithContainers(
 				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
 					applycorev1.EnvVar().WithName(envPrefix+"_LOG_LEVEL").WithValue(c.LogLevel),
 					applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
