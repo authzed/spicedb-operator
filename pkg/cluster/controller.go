@@ -50,6 +50,7 @@ import (
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups="",resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
@@ -74,6 +75,7 @@ var (
 		corev1.SchemeGroupVersion.WithResource("secrets"),
 		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
 		corev1.SchemeGroupVersion.WithResource("services"),
+		corev1.SchemeGroupVersion.WithResource("pods"),
 		batchv1.SchemeGroupVersion.WithResource("jobs"),
 		rbacv1.SchemeGroupVersion.WithResource("roles"),
 		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
