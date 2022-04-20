@@ -247,7 +247,11 @@ func (c *Controller) watchConfig() {
 			if !ok {
 				return
 			}
-			if !(event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Rename == fsnotify.Rename) {
+			if !(event.Op&fsnotify.Write == fsnotify.Write ||
+				event.Op&fsnotify.Create == fsnotify.Create ||
+				event.Op&fsnotify.Rename == fsnotify.Rename ||
+				// chmod is the event from a configmap reload in kube
+				event.Op&fsnotify.Chmod == fsnotify.Chmod) {
 				return
 			}
 			c.loadConfig()
