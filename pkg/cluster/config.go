@@ -41,16 +41,17 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
-	Name          string
-	Namespace     string
-	UID           string
-	Replicas      int32
-	PresharedKey  string
-	EnvPrefix     string
-	SpiceDBCmd    string
-	TLSSecretName string
-	SecretName    string
-	Passthrough   map[string]string
+	Name                         string
+	Namespace                    string
+	UID                          string
+	Replicas                     int32
+	PresharedKey                 string
+	EnvPrefix                    string
+	SpiceDBCmd                   string
+	TLSSecretName                string
+	DispatchUpstreamCASecretName string
+	SecretName                   string
+	Passthrough                  map[string]string
 }
 
 // NewConfig checks that the values in the config + the secret are sane
@@ -64,6 +65,9 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 	}
 	passthroughConfig["datastoreEngine"] = config["datastoreEngine"]
 	delete(config, "datastoreEngine")
+
+	// TODO: disable for memory engine
+	passthroughConfig["dispatchClusterEnabled"] = "true"
 
 	if secret == nil {
 		errs = append(errs, fmt.Errorf("secret must be provided"))
@@ -92,6 +96,8 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 	spicedbCmd := stringz.DefaultEmpty(config["cmd"], "spicedb")
 	delete(config, "cmd")
 
+	// TODO: strip secret names from passthrough config
+
 	// generate secret refs for tls if specified
 	if len(config["tlsSecretName"]) > 0 {
 		const (
@@ -112,7 +118,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		passthroughDefault("dashboardTLSCertPath", TLSCrt)
 		passthroughDefault("metricsTLSKeyPath", TLSKey)
 		passthroughDefault("metricsTLSCertPath", TLSCrt)
-		passthroughDefault("dispatchUpstreamCAPath", TLSCrt)
+	}
+
+	if len(config["dispatchUpstreamCASecretName"]) > 0 {
+		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
 	}
 
 	// the rest of the config is passed through to spicedb
@@ -155,16 +164,17 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 			DatastoreTLSSecretName: config["datastoreTLSSecretName"],
 		},
 		SpiceConfig: SpiceConfig{
-			Name:          nn.Name,
-			Namespace:     nn.Namespace,
-			UID:           string(uid),
-			PresharedKey:  string(psk),
-			Replicas:      int32(replicas),
-			EnvPrefix:     envPrefix,
-			SpiceDBCmd:    spicedbCmd,
-			TLSSecretName: config["tlsSecretName"],
-			SecretName:    secret.GetName(),
-			Passthrough:   passthroughConfig,
+			Name:                         nn.Name,
+			Namespace:                    nn.Namespace,
+			UID:                          string(uid),
+			PresharedKey:                 string(psk),
+			Replicas:                     int32(replicas),
+			EnvPrefix:                    envPrefix,
+			SpiceDBCmd:                   spicedbCmd,
+			TLSSecretName:                config["tlsSecretName"],
+			DispatchUpstreamCASecretName: config["dispatchUpstreamCASecretName"],
+			SecretName:                   secret.GetName(),
+			Passthrough:                  passthroughConfig,
 		},
 	}, nil
 }
@@ -310,6 +320,9 @@ func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	if len(c.TLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
 	}
+	if len(c.DispatchUpstreamCASecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("dispatch-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
+	}
 	return volumes
 }
 
@@ -318,6 +331,9 @@ func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfigu
 	// TODO: validate that the secret exists before we start applying the deployment
 	if len(c.TLSSecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
+	}
+	if len(c.DispatchUpstreamCASecretName) > 0 {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("dispatch-tls").WithMountPath("/dispatch-tls").WithReadOnly(true))
 	}
 	return volumeMounts
 }
