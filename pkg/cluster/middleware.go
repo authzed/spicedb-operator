@@ -13,7 +13,7 @@ import (
 
 func NewSyncID(size uint8) string {
 	buf := make([]byte, size)
-	rand.Read(buf) //nolint
+	rand.Read(buf) // nolint
 	str := base64.StdEncoding.EncodeToString(buf)
 	return str[:size]
 }
@@ -31,7 +31,7 @@ func SyncIDMiddleware(in handler.Handler) handler.Handler {
 func KlogMiddleware(ref klog.ObjectRef) libctrl.HandlerMiddleware {
 	return func(in handler.Handler) handler.Handler {
 		return handler.NewHandlerFromFunc(func(ctx context.Context) {
-			klog.V(5).Infof("%s: %s entering %s", ctxSyncID.MustValue(ctx), ref, in.ID())
+			klog.V(4).InfoS("entering handler", "syncID", ctxSyncID.MustValue(ctx), "object", ref, "handler", in.ID())
 			in.Handle(ctx)
 		}, in.ID())
 	}

@@ -12,6 +12,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -417,15 +419,16 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 		// secret is not in cache, which means it's not labelled for the cluster
 		// fetch it and add the label to it.
 		secret, err = s.secretApplyFunc(ctx, applycorev1.Secret(s.secretName, s.nn.Namespace).WithLabels(map[string]string{
-			OwnerLabelKey: s.nn.Name,
+			OwnerLabelKey:           s.nn.Name,
+			OperatorManagedLabelKey: OperatorManagedLabelValue,
 		}), forceOwned)
 		s.recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for a SpiceDBCluster; it has been labelled to mark it as part of the configuration for that cluster.")
 	case 1:
-		var ok bool
-		secret, ok = secrets[0].(*corev1.Secret)
+		u, ok := secrets[0].(*unstructured.Unstructured)
 		if !ok {
-			err = fmt.Errorf("non-secret object found in secret informer cache for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
+			err = fmt.Errorf("unknown object found in secret informer cache for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
 		}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &secret)
 	default:
 		err = fmt.Errorf("more than one secret found for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
 	}
