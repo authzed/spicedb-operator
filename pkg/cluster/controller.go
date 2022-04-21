@@ -323,11 +323,12 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 	key, ok := k.(string)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("non-string key found in queue, %T", key))
+		return true
 	}
 
 	gvr, namespace, name, err := SplitGVRMetaNamespaceKey(key)
 	if err != nil {
-		klog.Errorf("error parsing key %q, skipping", key)
+		utilruntime.HandleError(fmt.Errorf("error parsing key %q, skipping", key))
 		return true
 	}
 
@@ -346,7 +347,8 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		c.queue.AddAfter(key, after)
 	}
 
-	go sync(ctx, *gvr, namespace, name, done, requeue)
+	sync(ctx, *gvr, namespace, name, done, requeue)
+	cancel()
 	<-ctx.Done()
 
 	return true
