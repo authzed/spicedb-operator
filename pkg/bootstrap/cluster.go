@@ -18,7 +18,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
 
-// Bootstrap a cluster with the given config file
+// Cluster bootstraps a cluster with the given config file
 func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string) error {
 	if len(configPath) <= 0 {
 		klog.V(4).Info("bootstrap file path not specified")
@@ -50,7 +50,7 @@ func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string) 
 		_, err = dclient.
 			Resource(v1alpha1ClusterGVR).
 			Namespace(clusterSpec.Namespace).
-			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "authzed-operator"})
+			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "spicedb-operator"})
 		if err != nil {
 			return err
 		}
