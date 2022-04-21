@@ -22,8 +22,9 @@ type Options struct {
 	DebugFlags   *ctrlmanageropts.DebuggingOptions
 	DebugAddress string
 
-	BootstrapCRDs      bool
-	OperatorConfigPath string
+	BootstrapCRDs         bool
+	BootstrapSpicedbsPath string
+	OperatorConfigPath    string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -52,6 +53,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	namedFlagSets := &cliflag.NamedFlagSets{}
 	bootstrapFlags := namedFlagSets.FlagSet("bootstrap")
 	bootstrapFlags.BoolVar(&o.BootstrapCRDs, "crd", true, "if set, the operator will attempt to install/update the CRDs before starting up.")
+	bootstrapFlags.StringVar(&o.BootstrapSpicedbsPath, "bootstrap-spicedbs", "", "set a path to a config file for spicedbs to load on start up.")
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
 	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
@@ -87,6 +89,16 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return err
 	}
 
+	if o.BootstrapCRDs {
+		restConfig, err := f.ToRESTConfig()
+		if err != nil {
+			return err
+		}
+		if err := bootstrap.CRD(restConfig); err != nil {
+			return err
+		}
+	}
+
 	ctx := genericapiserver.SetupSignalContext()
 	ctrl, err := cluster.NewController(ctx, dclient, kclient, o.OperatorConfigPath)
 	if err != nil {
@@ -96,13 +108,8 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return ctx.Err()
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
-
-	if o.BootstrapCRDs {
-		restConfig, err := f.ToRESTConfig()
-		if err != nil {
-			return err
-		}
-		if err := bootstrap.CRD(restConfig); err != nil {
+	if len(o.BootstrapSpicedbsPath) > 0 {
+		if err := bootstrap.Cluster(ctx, dclient, o.BootstrapSpicedbsPath); err != nil {
 			return err
 		}
 	}
