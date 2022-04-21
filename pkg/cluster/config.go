@@ -20,6 +20,22 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
 
+// RawConfig has not been processed/validated yet
+type RawConfig map[string]string
+
+func (r RawConfig) Pop(key string) string {
+	v, ok := r[key]
+	if !ok {
+		return ""
+	}
+	delete(r, v)
+	return v
+}
+
+// Config holds all config needed to create clusters
+// Note: The config objects hold values from the passed secret for
+// hashing purposes; these should not be used directly (instead the secret
+// should be mounted)
 type Config struct {
 	MigrationConfig
 	SpiceConfig
@@ -56,57 +72,77 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[string]string, secret *corev1.Secret) (*Config, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawConfig, secret *corev1.Secret) (*Config, error) {
 	passthroughConfig := make(map[string]string, 0)
 	errs := make([]error, 0)
+	spiceConfig := SpiceConfig{
+		Name:                         nn.Name,
+		Namespace:                    nn.Namespace,
+		UID:                          string(uid),
+		TLSSecretName:                config.Pop("tlsSecretName"),
+		DispatchUpstreamCASecretName: config.Pop("dispatchUpstreamCASecretName"),
+		TelemetryTLSCASecretName:     config.Pop("telemetryCASecretName"),
+		EnvPrefix:                    stringz.DefaultEmpty(config.Pop("envPrefix"), "SPICEDB_"),
+		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
+	}
+	migrationConfig := MigrationConfig{
+		SpannerCredsSecretRef:  config.Pop("spannerCredentials"),
+		TargetSpiceDBImage:     image,
+		EnvPrefix:              spiceConfig.EnvPrefix,
+		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
+		DatastoreTLSSecretName: config.Pop("datastoreTLSSecretName"),
+	}
 
-	datastoreEngine, ok := config["datastoreEngine"]
-	if !ok {
+	datastoreEngine := config.Pop("datastoreEngine")
+	if len(datastoreEngine) == 0 {
 		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
 	}
-	passthroughConfig["datastoreEngine"] = config["datastoreEngine"]
-	delete(config, "datastoreEngine")
-
-	// TODO: disable for memory engine
-	passthroughConfig["dispatchClusterEnabled"] = "true"
+	migrationConfig.DatastoreEngine = datastoreEngine
+	passthroughConfig["datastoreEngine"] = datastoreEngine
+	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(datastoreEngine != "memory")
 
 	if secret == nil {
 		errs = append(errs, fmt.Errorf("secret must be provided"))
 	}
+
 	var datastoreURI, psk []byte
 	if secret != nil {
+		spiceConfig.SecretName = secret.GetName()
+
 		var ok bool
 		datastoreURI, ok = secret.Data["datastore_uri"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
+		migrationConfig.DatastoreURI = string(datastoreURI)
 		psk, ok = secret.Data["preshared_key"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
 		}
+		spiceConfig.PresharedKey = string(psk)
 	}
 
-	replicas, err := strconv.ParseInt(stringz.DefaultEmpty(config["replicas"], "2"), 10, 32)
+	defaultReplicas := "2"
+	if datastoreEngine == "memory" {
+		defaultReplicas = "1"
+	}
+	replicas, err := strconv.ParseInt(stringz.DefaultEmpty(config.Pop("replicas"), defaultReplicas), 10, 32)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid value for replicas %q: %w", replicas, err))
 	}
-	delete(config, "replicas")
-
-	envPrefix := stringz.DefaultEmpty(config["envPrefix"], "SPICEDB_")
-	delete(config, "envPrefix")
-	spicedbCmd := stringz.DefaultEmpty(config["cmd"], "spicedb")
-	delete(config, "cmd")
-
-	// TODO: strip secret names from passthrough config
+	spiceConfig.Replicas = int32(replicas)
+	if replicas > 1 && datastoreEngine == "memory" {
+		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
+	}
 
 	// generate secret refs for tls if specified
-	if len(config["tlsSecretName"]) > 0 {
+	if len(spiceConfig.TLSSecretName) > 0 {
 		const (
 			TLSKey = "/tls/tls.key"
 			TLSCrt = "/tls/tls.crt"
 		)
 		passthroughDefault := func(key string, fallback string) {
-			passthroughConfig[key] = stringz.DefaultEmpty(config[key], fallback)
+			passthroughConfig[key] = stringz.DefaultEmpty(config.Pop(key), fallback)
 		}
 		// set to the configured TLS secret unless explicitly set in config
 		passthroughDefault("grpcTLSKeyPath", TLSKey)
@@ -121,17 +157,17 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		passthroughDefault("metricsTLSCertPath", TLSCrt)
 	}
 
-	if len(config["dispatchUpstreamCASecretName"]) > 0 {
+	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 {
 		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
 	}
 
-	if len(config["telemetryCASecretName"]) > 0 {
+	if len(spiceConfig.TelemetryTLSCASecretName) > 0 {
 		passthroughConfig["telemetryCAOverridePath"] = "/telemetry-tls/tls.crt"
 	}
 
 	// the rest of the config is passed through to spicedb
 	for k := range config {
-		passthroughConfig[k] = config[k]
+		passthroughConfig[k] = config.Pop(k)
 	}
 
 	stripValues := []string{
@@ -155,33 +191,11 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		return nil, errors.NewAggregate(errs)
 	}
 
-	// Note: The config objects hold values from the passed secret for
-	// hashing purposes; these should not be used directly (instead the secret
-	// should be mounted)
+	spiceConfig.Passthrough = passthroughConfig
+
 	return &Config{
-		MigrationConfig: MigrationConfig{
-			DatastoreEngine:        datastoreEngine,
-			DatastoreURI:           string(datastoreURI),
-			SpannerCredsSecretRef:  config["spannerCredentials"],
-			TargetSpiceDBImage:     image,
-			EnvPrefix:              envPrefix,
-			SpiceDBCmd:             spicedbCmd,
-			DatastoreTLSSecretName: config["datastoreTLSSecretName"],
-		},
-		SpiceConfig: SpiceConfig{
-			Name:                         nn.Name,
-			Namespace:                    nn.Namespace,
-			UID:                          string(uid),
-			PresharedKey:                 string(psk),
-			Replicas:                     int32(replicas),
-			EnvPrefix:                    envPrefix,
-			SpiceDBCmd:                   spicedbCmd,
-			TLSSecretName:                config["tlsSecretName"],
-			DispatchUpstreamCASecretName: config["dispatchUpstreamCASecretName"],
-			TelemetryTLSCASecretName:     config["telemetryCASecretName"],
-			SecretName:                   secret.GetName(),
-			Passthrough:                  passthroughConfig,
-		},
+		MigrationConfig: migrationConfig,
+		SpiceConfig:     spiceConfig,
 	}, nil
 }
 
@@ -266,7 +280,6 @@ func (c *Config) service() *applycorev1.ServiceApplyConfiguration {
 				applycorev1.ServicePort().WithName("grpc").WithPort(50051),
 				applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
 				applycorev1.ServicePort().WithName("gateway").WithPort(8443),
-				applycorev1.ServicePort().WithName("prometheus").WithPort(9090),
 			),
 		)
 }
