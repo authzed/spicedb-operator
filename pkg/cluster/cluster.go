@@ -77,8 +77,6 @@ type SpiceDBClusterHandler struct {
 // Handle inspects the current SpiceDBCluster object and ensures
 // the desired state is persisted on the cluster.
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
-	klog.V(4).Infof("syncing cluster %s/%s", r.cluster.Namespace, r.cluster.Name)
-
 	middleware := []libctrl.Middleware{
 		libctrl.MakeMiddleware(SyncIDMiddleware),
 		libctrl.MakeMiddleware(KlogMiddleware(klog.KObj(r.cluster))),
@@ -134,6 +132,7 @@ func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handle
 		next:        handler.Handlers(next).MustOne(),
 		patchStatus: r.PatchStatus,
 		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
+			klog.V(4).InfoS("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
 			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, forceOwned)
 		},
 		deleteDeployment: func(ctx context.Context, name string) error {
@@ -157,9 +156,11 @@ func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
 			return job.List(r.cluster.NamespacedName())
 		},
 		deleteJob: func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting job", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		deletePod: func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting job pod", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.CoreV1().Pods(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 	}, "cleanupJob")
@@ -214,12 +215,15 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 			libctrl.WithDone(r.done),
 			libctrl.WithRequeueImmediate(r.requeue),
 		),
-		nn:              r.cluster.NamespacedName(),
-		recorder:        r.recorder,
-		secretName:      r.cluster.Spec.SecretRef,
-		secretIndexer:   r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
-		secretApplyFunc: r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
-		next:            handler.Handlers(next).MustOne(),
+		nn:            r.cluster.NamespacedName(),
+		recorder:      r.recorder,
+		secretName:    r.cluster.Spec.SecretRef,
+		secretIndexer: r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
+		secretApplyFunc: func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
+			klog.V(4).InfoS("updating secret", "namespace", *secret.Namespace, "name", *secret.Name)
+			return r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply(ctx, secret, opts)
+		},
+		next: handler.Handlers(next).MustOne(),
 	}, "adoptSecret")
 }
 
@@ -294,10 +298,12 @@ func (r *SpiceDBClusterHandler) runMigration(next ...handler.Handler) handler.Ha
 			return job.List(r.cluster.NamespacedName())
 		},
 		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
+			klog.V(4).InfoS("creating migration job", "namespace", *job.Namespace, "name", *job.Name)
 			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, forceOwned)
 			return err
 		},
 		deleteJob: func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting migration job", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.BatchV1().Jobs(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		patchStatus: r.PatchStatus,
@@ -338,9 +344,11 @@ func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler
 	return handler.NewHandler(newEnsureClusterComponent(r,
 		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceAccountLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
+			klog.V(4).InfoS("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
 		},
 		func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting serviceaccount", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
@@ -353,9 +361,11 @@ func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 	return handler.NewHandler(newEnsureClusterComponent(r,
 		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleLabel)),
 		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
+			klog.V(4).InfoS("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
 		},
 		func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting role", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
@@ -369,9 +379,11 @@ func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handl
 		newEnsureClusterComponent(r,
 			libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentRoleBindingLabel)),
 			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
+				klog.V(4).InfoS("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
 				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
 			},
 			func(ctx context.Context, name string) error {
+				klog.V(4).InfoS("deleting rolebinding", "namespace", r.cluster.Namespace, "name", name)
 				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 			},
 			func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
@@ -386,9 +398,11 @@ func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handle
 	return handler.NewHandler(newEnsureClusterComponent(r,
 		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), OwningClusterIndex, SelectorForComponent(r.cluster.Name, ComponentServiceLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
+			klog.V(4).InfoS("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, forceOwned)
 		},
 		func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting service", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.CoreV1().Services(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
@@ -434,8 +448,9 @@ func (s *secretAdopterHandler) Handle(ctx context.Context) {
 		u, ok := secrets[0].(*unstructured.Unstructured)
 		if !ok {
 			err = fmt.Errorf("unknown object found in secret informer cache for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
+		} else {
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &secret)
 		}
-		err = runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &secret)
 	default:
 		err = fmt.Errorf("more than one secret found for %s/%s; should not be possible", s.nn.Namespace, s.secretName)
 	}
