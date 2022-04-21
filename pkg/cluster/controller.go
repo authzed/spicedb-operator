@@ -193,8 +193,8 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	c.recorder = broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "spicedb-operator"})
 
 	for _, gvr := range OwnedResources {
-		klog.Info(fmt.Sprintf("Starting %s controller", gvr.Resource))
-		defer klog.Info(fmt.Sprintf("Stopping %s controller", gvr.Resource))
+		klog.V(3).InfoS("starting controller", "resource", gvr.Resource)
+		defer klog.V(3).InfoS("stopping controller", "resource", gvr.Resource)
 	}
 
 	for i := 0; i < numThreads; i++ {
@@ -280,6 +280,7 @@ func (c *Controller) loadConfig() {
 	if len(c.configFilePath) == 0 {
 		return
 	}
+	klog.V(3).InfoS("loading config", "path", c.configFilePath)
 	file, err := os.Open(c.configFilePath)
 	if err != nil {
 		panic(err)
@@ -296,6 +297,7 @@ func (c *Controller) loadConfig() {
 	if len(c.config.ImageName)+len(c.config.ImageTag)+len(c.config.ImageDigest) == 0 {
 		panic(fmt.Errorf("unable to load config from %s", c.configFilePath))
 	}
+	klog.V(4).InfoS("updated config", "path", c.configFilePath, "config", c.config)
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
@@ -381,7 +383,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, klog.KObj(&cluster))
+	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
 
 	r := SpiceDBClusterHandler{
 		done:      done,
@@ -423,7 +425,7 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 		return
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, objMeta)
+	klog.V(4).InfoS("syncing external object", "gvr", gvr, "obj", klog.KObj(objMeta))
 
 	clusterLabels := objMeta.GetLabels()
 	clusterName, ok := clusterLabels[OwnerLabelKey]
