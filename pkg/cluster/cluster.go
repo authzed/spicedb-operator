@@ -136,6 +136,7 @@ func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handle
 			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, forceOwned)
 		},
 		deleteDeployment: func(ctx context.Context, name string) error {
+			klog.V(4).InfoS("deleting deployment", "namespace", r.cluster.Namespace, "name", name)
 			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 	}, "ensureDeployment")
@@ -740,6 +741,14 @@ func (m *deploymentHandler) Handle(ctx context.Context) {
 	// deployment with correct hash exists
 	if len(matchingObjs) == 1 {
 		ctx = ctxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
+
+		// delete extra objects
+		for _, o := range extraObjs {
+			if err := m.deleteDeployment(ctx, o.GetName()); err != nil {
+				m.RequeueErr(err)
+				return
+			}
+		}
 	}
 
 	// apply if no matching object in cluster
@@ -754,14 +763,6 @@ func (m *deploymentHandler) Handle(ctx context.Context) {
 			return
 		}
 		ctx = ctxCurrentSpiceDeployment.WithValue(ctx, deployment)
-	}
-
-	// delete extra objects
-	for _, o := range extraObjs {
-		if err := m.deleteDeployment(ctx, o.GetName()); err != nil {
-			m.RequeueErr(err)
-			return
-		}
 	}
 
 	m.next.Handle(ctx)

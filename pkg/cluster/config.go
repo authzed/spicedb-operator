@@ -8,9 +8,11 @@ import (
 
 	"github.com/fatih/camelcase"
 	"github.com/jzelinskie/stringz"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -383,6 +385,9 @@ func (c *Config) deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 		}).
 		WithSpec(applyappsv1.DeploymentSpec().
 			WithReplicas(c.Replicas).
+			WithStrategy(applyappsv1.DeploymentStrategy().
+				WithType(appsv1.RollingUpdateDeploymentStrategyType).
+				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
 			WithTemplate(applycorev1.PodTemplateSpec().
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
