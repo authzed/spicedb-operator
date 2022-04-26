@@ -26,9 +26,13 @@ func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string) 
 	}
 
 	f, err := os.Open(configPath)
+	defer f.Close()
 	if errors.Is(err, os.ErrNotExist) {
 		klog.V(4).Info("no bootstrap file present, skipping bootstrapping")
 		return nil
+	}
+	if err != nil {
+		return err
 	}
 
 	decoder := yaml.NewYAMLToJSONDecoder(ioutil.NopCloser(bufio.NewReader(f)))
