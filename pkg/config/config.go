@@ -89,6 +89,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
 	}
 	migrationConfig := MigrationConfig{
+		LogLevel:               config.Pop("logLevel"),
 		SpannerCredsSecretRef:  config.Pop("spannerCredentials"),
 		TargetSpiceDBImage:     image,
 		EnvPrefix:              spiceConfig.EnvPrefix,
