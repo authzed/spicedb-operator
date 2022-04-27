@@ -143,7 +143,7 @@ func TestValidateConfigHandler(t *testing.T) {
 
 			ctx := context.Background()
 			ctx = handlercontext.CtxSecret.WithValue(ctx, tt.existingSecret)
-			ctx = handlercontext.CtxClusterNN.WithValue(ctx, types.NamespacedName{"test", "test"})
+			ctx = handlercontext.CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
 			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 
 			var called handler.Key

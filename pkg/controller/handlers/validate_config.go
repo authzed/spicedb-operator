@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -67,7 +67,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 			c.Requeue()
 			return
 		}
-		c.recorder.Eventf(currentStatus, v1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
+		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
 		// if the config is invalid, there's no work to do until it has changed
 		c.Done()
 		return

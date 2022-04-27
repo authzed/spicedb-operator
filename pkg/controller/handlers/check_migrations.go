@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
@@ -69,7 +69,7 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
-		m.recorder.Eventf(handlercontext.CtxClusterStatus.MustValue(ctx), v1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", handlercontext.CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(handlercontext.CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", handlercontext.CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}
