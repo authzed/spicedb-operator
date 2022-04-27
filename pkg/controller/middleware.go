@@ -1,4 +1,4 @@
-package cluster
+package controller
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
@@ -20,9 +21,9 @@ func NewSyncID(size uint8) string {
 
 func SyncIDMiddleware(in handler.Handler) handler.Handler {
 	return handler.NewHandlerFromFunc(func(ctx context.Context) {
-		_, ok := ctxSyncID.Value(ctx)
+		_, ok := handlercontext.CtxSyncID.Value(ctx)
 		if !ok {
-			ctx = ctxSyncID.WithValue(ctx, NewSyncID(5))
+			ctx = handlercontext.CtxSyncID.WithValue(ctx, NewSyncID(5))
 		}
 		in.Handle(ctx)
 	}, in.ID())
@@ -31,7 +32,7 @@ func SyncIDMiddleware(in handler.Handler) handler.Handler {
 func KlogMiddleware(ref klog.ObjectRef) libctrl.HandlerMiddleware {
 	return func(in handler.Handler) handler.Handler {
 		return handler.NewHandlerFromFunc(func(ctx context.Context) {
-			klog.V(4).InfoS("entering handler", "syncID", ctxSyncID.MustValue(ctx), "object", ref, "handler", in.ID())
+			klog.V(4).InfoS("entering handler", "syncID", handlercontext.CtxSyncID.MustValue(ctx), "object", ref, "handler", in.ID())
 			in.Handle(ctx)
 		}, in.ID())
 	}

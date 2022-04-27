@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 // Cluster bootstraps a cluster with the given config file
@@ -54,7 +55,7 @@ func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string) 
 		_, err = dclient.
 			Resource(v1alpha1ClusterGVR).
 			Namespace(clusterSpec.Namespace).
-			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "spicedb-operator"})
+			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: metadata.FieldManager})
 		if err != nil {
 			return err
 		}

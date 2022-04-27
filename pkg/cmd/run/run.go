@@ -12,8 +12,8 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
 	"github.com/authzed/spicedb-operator/pkg/bootstrap"
-	"github.com/authzed/spicedb-operator/pkg/cluster"
-	"github.com/authzed/spicedb-operator/pkg/manager"
+	"github.com/authzed/spicedb-operator/pkg/controller"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 )
 
 // Options contains the input to the run command.
@@ -100,7 +100,7 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 	}
 
 	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := cluster.NewController(ctx, dclient, kclient, o.OperatorConfigPath)
+	ctrl, err := controller.NewController(ctx, dclient, kclient, o.OperatorConfigPath)
 	if err != nil {
 		return err
 	}
