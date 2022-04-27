@@ -159,7 +159,7 @@ func WriteConfig(operatorConfig controller.OperatorConfig) string {
 		Expect(err).To(Succeed())
 		ConfigFileName = file.Name()
 	} else {
-		file, err = os.OpenFile(ConfigFileName, os.O_WRONLY, os.ModeAppend)
+		file, err = os.OpenFile(ConfigFileName, os.O_WRONLY|os.O_TRUNC, os.ModeAppend)
 		Expect(err).To(Succeed())
 	}
 	defer func() {

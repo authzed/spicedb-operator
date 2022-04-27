@@ -345,6 +345,17 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	name := fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:15])
 	envPrefix := c.SpiceConfig.EnvPrefix
+	envVars := []*applycorev1.EnvVarApplyConfiguration{
+		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
+		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
+		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
+		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets"))),
+	}
+	if c.DatastoreEngine == "spanner" && len(c.Passthrough["spannerEmulatorHost"]) > 0 {
+		emulatorEnvName := ToEnvVarName(envPrefix, "spannerEmulatorHost")
+		envVars = append(envVars, applycorev1.EnvVar().
+			WithName(emulatorEnvName).WithValue(c.Passthrough["spannerEmulatorHost"]))
+	}
 	return applybatchv1.Job(name, c.Namespace).
 		WithOwnerReferences(c.OwnerRef()).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
@@ -356,10 +367,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
 			).WithSpec(applycorev1.PodSpec().WithContainers(
 				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
-					applycorev1.EnvVar().WithName(envPrefix+"_LOG_LEVEL").WithValue(c.LogLevel),
-					applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
-					applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
-					applycorev1.EnvVar().WithName(envPrefix+"_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets"))),
+					envVars...,
 				).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
 					applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
 					applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
