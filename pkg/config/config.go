@@ -1,4 +1,4 @@
-package cluster
+package config
 
 import (
 	"fmt"
@@ -20,6 +20,7 @@ import (
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 // RawConfig has not been processed/validated yet
@@ -34,8 +35,8 @@ func (r RawConfig) Pop(key string) string {
 	return v
 }
 
-// Config holds all config needed to create clusters
-// Note: The config objects hold values from the passed secret for
+// Config holds all values required to create and manage a cluster.
+// Note: The config object holds values from referenced secrets for
 // hashing purposes; these should not be used directly (instead the secret
 // should be mounted)
 type Config struct {
@@ -233,7 +234,7 @@ func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyCon
 	return envVars
 }
 
-func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
+func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 	return applymetav1.OwnerReference().
 		WithName(c.Name).
 		WithKind(v1alpha1.SpiceDBClusterKind).
@@ -241,16 +242,16 @@ func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
-func (c *Config) serviceAccount() *applycorev1.ServiceAccountApplyConfiguration {
+func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	return applycorev1.ServiceAccount(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentServiceAccountLabel)).
-		WithOwnerReferences(c.ownerRef())
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
+		WithOwnerReferences(c.OwnerRef())
 }
 
-func (c *Config) role() *applyrbacv1.RoleApplyConfiguration {
+func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	return applyrbacv1.Role(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentRoleLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithRules(
 			applyrbacv1.PolicyRule().
 				WithAPIGroups("").
@@ -259,10 +260,10 @@ func (c *Config) role() *applyrbacv1.RoleApplyConfiguration {
 		)
 }
 
-func (c *Config) roleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
+func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	return applyrbacv1.RoleBinding(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentRoleBindingLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleBindingLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithRoleRef(applyrbacv1.RoleRef().
 			WithKind("Role").
 			WithName(c.Name),
@@ -272,12 +273,12 @@ func (c *Config) roleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	)
 }
 
-func (c *Config) service() *applycorev1.ServiceApplyConfiguration {
+func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	return applycorev1.Service(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentServiceLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithSpec(applycorev1.ServiceSpec().
-			WithSelector(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
+			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 			WithPorts(
 				applycorev1.ServicePort().WithName("grpc").WithPort(50051),
 				applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
@@ -310,18 +311,18 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 	return volumeMounts
 }
 
-func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
+func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	name := fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:15])
 	envPrefix := c.SpiceConfig.EnvPrefix
 	return applybatchv1.Job(name, c.Namespace).
-		WithOwnerReferences(c.ownerRef()).
-		WithLabels(LabelsForComponent(c.Name, ComponentMigrationJobLabelValue)).
+		WithOwnerReferences(c.OwnerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
 		WithAnnotations(map[string]string{
-			SpiceDBMigrationRequirementsKey: migrationHash,
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
 		}).
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
-				LabelsForComponent(c.Name, ComponentMigrationJobLabelValue),
+				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
 			).WithSpec(applycorev1.PodSpec().WithContainers(
 				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
 					applycorev1.EnvVar().WithName(envPrefix+"_LOG_LEVEL").WithValue(c.LogLevel),
@@ -339,7 +340,7 @@ func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := c.jobVolumes()
-	// TODO: validate that the secrets exist before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
 	}
@@ -354,7 +355,7 @@ func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 
 func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration {
 	volumeMounts := c.jobVolumeMounts()
-	// TODO: validate that the secrets exist before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
 	}
@@ -376,12 +377,12 @@ func (c *Config) probeCmd() []string {
 	return probeCmd
 }
 
-func (c *Config) deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
+func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
 	name := fmt.Sprintf("%s-spicedb", c.Name)
-	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.ownerRef()).
-		WithLabels(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
+	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 		WithAnnotations(map[string]string{
-			SpiceDBMigrationRequirementsKey: migrationHash,
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
 		}).
 		WithSpec(applyappsv1.DeploymentSpec().
 			WithReplicas(c.Replicas).
@@ -391,7 +392,7 @@ func (c *Config) deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
 			WithTemplate(applycorev1.PodTemplateSpec().
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
-				WithLabels(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
+				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").

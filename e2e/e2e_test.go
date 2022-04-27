@@ -45,7 +45,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/authzed/spicedb-operator/pkg/bootstrap"
-	"github.com/authzed/spicedb-operator/pkg/cluster"
+	"github.com/authzed/spicedb-operator/pkg/controller"
 )
 
 func listsep(c rune) bool {
@@ -136,11 +136,11 @@ func StartOperator() {
 
 	Expect(bootstrap.CRD(restConfig)).To(Succeed())
 
-	opconfig := cluster.OperatorConfig{
+	opconfig := controller.OperatorConfig{
 		ImageName: "spicedb",
 		ImageTag:  "dev",
 	}
-	ctrl, err := cluster.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig))
+	ctrl, err := controller.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig))
 	Expect(err).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -150,7 +150,7 @@ func StartOperator() {
 
 var ConfigFileName = ""
 
-func WriteConfig(operatorConfig cluster.OperatorConfig) string {
+func WriteConfig(operatorConfig controller.OperatorConfig) string {
 	out, err := yaml.Marshal(operatorConfig)
 	Expect(err).To(Succeed())
 	var file *os.File
@@ -285,7 +285,7 @@ func Provision() (string, func(), error) {
 		kind.CreateWithKubeconfigPath(kubeconfig),
 	)
 	if err != nil {
-		err = fmt.Errorf("failed to create kind cluster: %w", err)
+		err = fmt.Errorf("failed to create kind controller: %w", err)
 		return kubeconfig, deprovision, err
 	}
 
