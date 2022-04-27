@@ -268,6 +268,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						Namespace: "test",
 					},
 					StringData: map[string]string{
+						"logLevel":          "debug",
 						"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 						"preshared_key":     "testtesttesttest",
