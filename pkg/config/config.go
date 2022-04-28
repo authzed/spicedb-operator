@@ -291,7 +291,7 @@ func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
 	if len(c.DatastoreTLSSecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DatastoreTLSSecretName)))
+		volumes = append(volumes, applycorev1.Volume().WithName("spicedb-db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DatastoreTLSSecretName)))
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.SpannerCredsSecretRef).WithItems(
