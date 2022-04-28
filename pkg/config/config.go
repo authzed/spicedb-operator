@@ -1,15 +1,18 @@
-package cluster
+package config
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/fatih/camelcase"
 	"github.com/jzelinskie/stringz"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -17,8 +20,25 @@ import (
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
+// RawConfig has not been processed/validated yet
+type RawConfig map[string]string
+
+func (r RawConfig) Pop(key string) string {
+	v, ok := r[key]
+	if !ok {
+		return ""
+	}
+	delete(r, v)
+	return v
+}
+
+// Config holds all values required to create and manage a cluster.
+// Note: The config object holds values from referenced secrets for
+// hashing purposes; these should not be used directly (instead the secret
+// should be mounted)
 type Config struct {
 	MigrationConfig
 	SpiceConfig
@@ -40,65 +60,93 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
-	Name          string
-	Namespace     string
-	UID           string
-	Replicas      int32
-	PresharedKey  string
-	EnvPrefix     string
-	SpiceDBCmd    string
-	TLSSecretName string
-	SecretName    string
-	Passthrough   map[string]string
+	Name                         string
+	Namespace                    string
+	UID                          string
+	Replicas                     int32
+	PresharedKey                 string
+	EnvPrefix                    string
+	SpiceDBCmd                   string
+	TLSSecretName                string
+	DispatchUpstreamCASecretName string
+	TelemetryTLSCASecretName     string
+	SecretName                   string
+	Passthrough                  map[string]string
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[string]string, secret *corev1.Secret) (*Config, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawConfig, secret *corev1.Secret) (*Config, error) {
 	passthroughConfig := make(map[string]string, 0)
 	errs := make([]error, 0)
+	spiceConfig := SpiceConfig{
+		Name:                         nn.Name,
+		Namespace:                    nn.Namespace,
+		UID:                          string(uid),
+		TLSSecretName:                config.Pop("tlsSecretName"),
+		DispatchUpstreamCASecretName: config.Pop("dispatchUpstreamCASecretName"),
+		TelemetryTLSCASecretName:     config.Pop("telemetryCASecretName"),
+		EnvPrefix:                    stringz.DefaultEmpty(config.Pop("envPrefix"), "SPICEDB_"),
+		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
+	}
+	migrationConfig := MigrationConfig{
+		LogLevel:               stringz.DefaultEmpty(config.Pop("logLevel"), "info"),
+		SpannerCredsSecretRef:  config.Pop("spannerCredentials"),
+		TargetSpiceDBImage:     image,
+		EnvPrefix:              spiceConfig.EnvPrefix,
+		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
+		DatastoreTLSSecretName: config.Pop("datastoreTLSSecretName"),
+	}
 
-	datastoreEngine, ok := config["datastoreEngine"]
-	if !ok {
+	datastoreEngine := config.Pop("datastoreEngine")
+	if len(datastoreEngine) == 0 {
 		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
 	}
-	passthroughConfig["datastoreEngine"] = config["datastoreEngine"]
-	delete(config, "datastoreEngine")
+	migrationConfig.DatastoreEngine = datastoreEngine
+	passthroughConfig["datastoreEngine"] = datastoreEngine
+	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(datastoreEngine != "memory")
 
 	if secret == nil {
 		errs = append(errs, fmt.Errorf("secret must be provided"))
 	}
+
 	var datastoreURI, psk []byte
 	if secret != nil {
+		spiceConfig.SecretName = secret.GetName()
+
 		var ok bool
 		datastoreURI, ok = secret.Data["datastore_uri"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
+		migrationConfig.DatastoreURI = string(datastoreURI)
 		psk, ok = secret.Data["preshared_key"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
 		}
+		spiceConfig.PresharedKey = string(psk)
 	}
 
-	replicas, err := strconv.ParseInt(stringz.DefaultEmpty(config["replicas"], "2"), 10, 32)
+	defaultReplicas := "2"
+	if datastoreEngine == "memory" {
+		defaultReplicas = "1"
+	}
+	replicas, err := strconv.ParseInt(stringz.DefaultEmpty(config.Pop("replicas"), defaultReplicas), 10, 32)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid value for replicas %q: %w", replicas, err))
 	}
-	delete(config, "replicas")
-
-	envPrefix := stringz.DefaultEmpty(config["envPrefix"], "SPICEDB_")
-	delete(config, "envPrefix")
-	spicedbCmd := stringz.DefaultEmpty(config["cmd"], "spicedb")
-	delete(config, "cmd")
+	spiceConfig.Replicas = int32(replicas)
+	if replicas > 1 && datastoreEngine == "memory" {
+		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
+	}
 
 	// generate secret refs for tls if specified
-	if len(config["tlsSecretName"]) > 0 {
+	if len(spiceConfig.TLSSecretName) > 0 {
 		const (
 			TLSKey = "/tls/tls.key"
 			TLSCrt = "/tls/tls.crt"
 		)
 		passthroughDefault := func(key string, fallback string) {
-			passthroughConfig[key] = stringz.DefaultEmpty(config[key], fallback)
+			passthroughConfig[key] = stringz.DefaultEmpty(config.Pop(key), fallback)
 		}
 		// set to the configured TLS secret unless explicitly set in config
 		passthroughDefault("grpcTLSKeyPath", TLSKey)
@@ -111,12 +159,19 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		passthroughDefault("dashboardTLSCertPath", TLSCrt)
 		passthroughDefault("metricsTLSKeyPath", TLSKey)
 		passthroughDefault("metricsTLSCertPath", TLSCrt)
-		passthroughDefault("dispatchUpstreamCAPath", TLSCrt)
+	}
+
+	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 {
+		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
+	}
+
+	if len(spiceConfig.TelemetryTLSCASecretName) > 0 {
+		passthroughConfig["telemetryCAOverridePath"] = "/telemetry-tls/tls.crt"
 	}
 
 	// the rest of the config is passed through to spicedb
 	for k := range config {
-		passthroughConfig[k] = config[k]
+		passthroughConfig[k] = config.Pop(k)
 	}
 
 	stripValues := []string{
@@ -140,31 +195,11 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config map[
 		return nil, errors.NewAggregate(errs)
 	}
 
-	// Note: The config objects hold values from the passed secret for
-	// hashing purposes; these should not be used directly (instead the secret
-	// should be mounted)
+	spiceConfig.Passthrough = passthroughConfig
+
 	return &Config{
-		MigrationConfig: MigrationConfig{
-			DatastoreEngine:        datastoreEngine,
-			DatastoreURI:           string(datastoreURI),
-			SpannerCredsSecretRef:  config["spannerCredentials"],
-			TargetSpiceDBImage:     image,
-			EnvPrefix:              envPrefix,
-			SpiceDBCmd:             spicedbCmd,
-			DatastoreTLSSecretName: config["datastoreTLSSecretName"],
-		},
-		SpiceConfig: SpiceConfig{
-			Name:          nn.Name,
-			Namespace:     nn.Namespace,
-			UID:           string(uid),
-			PresharedKey:  string(psk),
-			Replicas:      int32(replicas),
-			EnvPrefix:     envPrefix,
-			SpiceDBCmd:    spicedbCmd,
-			TLSSecretName: config["tlsSecretName"],
-			SecretName:    secret.GetName(),
-			Passthrough:   passthroughConfig,
-		},
+		MigrationConfig: migrationConfig,
+		SpiceConfig:     spiceConfig,
 	}, nil
 }
 
@@ -186,15 +221,21 @@ func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyCon
 	}
 
 	// Passthrough config is user-provided and only affects spicedb runtime.
-	for k, v := range c.Passthrough {
+	keys := make([]string, 0, len(c.Passthrough))
+	for k := range c.Passthrough {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(c.EnvPrefix, k)).WithValue(v))
+			WithName(ToEnvVarName(c.EnvPrefix, k)).WithValue(c.Passthrough[k]))
 	}
 
 	return envVars
 }
 
-func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
+func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 	return applymetav1.OwnerReference().
 		WithName(c.Name).
 		WithKind(v1alpha1.SpiceDBClusterKind).
@@ -202,16 +243,16 @@ func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
-func (c *Config) serviceAccount() *applycorev1.ServiceAccountApplyConfiguration {
+func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	return applycorev1.ServiceAccount(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentServiceAccountLabel)).
-		WithOwnerReferences(c.ownerRef())
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
+		WithOwnerReferences(c.OwnerRef())
 }
 
-func (c *Config) role() *applyrbacv1.RoleApplyConfiguration {
+func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	return applyrbacv1.Role(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentRoleLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithRules(
 			applyrbacv1.PolicyRule().
 				WithAPIGroups("").
@@ -220,10 +261,10 @@ func (c *Config) role() *applyrbacv1.RoleApplyConfiguration {
 		)
 }
 
-func (c *Config) roleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
+func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	return applyrbacv1.RoleBinding(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentRoleBindingLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleBindingLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithRoleRef(applyrbacv1.RoleRef().
 			WithKind("Role").
 			WithName(c.Name),
@@ -233,17 +274,16 @@ func (c *Config) roleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	)
 }
 
-func (c *Config) service() *applycorev1.ServiceApplyConfiguration {
+func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	return applycorev1.Service(c.Name, c.Namespace).
-		WithLabels(LabelsForComponent(c.Name, ComponentServiceLabel)).
-		WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
+		WithOwnerReferences(c.OwnerRef()).
 		WithSpec(applycorev1.ServiceSpec().
-			WithSelector(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
+			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 			WithPorts(
 				applycorev1.ServicePort().WithName("grpc").WithPort(50051),
 				applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
 				applycorev1.ServicePort().WithName("gateway").WithPort(8443),
-				applycorev1.ServicePort().WithName("prometheus").WithPort(9090),
 			),
 		)
 }
@@ -272,17 +312,19 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 	return volumeMounts
 }
 
-func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
+func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	name := fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:15])
 	envPrefix := c.SpiceConfig.EnvPrefix
 	return applybatchv1.Job(name, c.Namespace).
-		WithOwnerReferences(c.ownerRef()).
-		WithLabels(LabelsForComponent(c.Name, ComponentMigrationJobLabelValue)).
+		WithOwnerReferences(c.OwnerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
 		WithAnnotations(map[string]string{
-			SpiceDBMigrationRequirementsKey: migrationHash,
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
 		}).
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
-			applycorev1.PodTemplateSpec().WithSpec(applycorev1.PodSpec().WithContainers(
+			applycorev1.PodTemplateSpec().WithLabels(
+				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
+			).WithSpec(applycorev1.PodSpec().WithContainers(
 				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
 					applycorev1.EnvVar().WithName(envPrefix+"_LOG_LEVEL").WithValue(c.LogLevel),
 					applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
@@ -299,18 +341,30 @@ func (c *Config) migrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := c.jobVolumes()
-	// TODO: validate that the secret exists before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
+	}
+	if len(c.DispatchUpstreamCASecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("dispatch-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
+	}
+	if len(c.TelemetryTLSCASecretName) > 0 {
+		volumes = append(volumes, applycorev1.Volume().WithName("telemetry-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TelemetryTLSCASecretName)))
 	}
 	return volumes
 }
 
 func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration {
 	volumeMounts := c.jobVolumeMounts()
-	// TODO: validate that the secret exists before we start applying the deployment
+	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
+	}
+	if len(c.DispatchUpstreamCASecretName) > 0 {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("dispatch-tls").WithMountPath("/dispatch-tls").WithReadOnly(true))
+	}
+	if len(c.TelemetryTLSCASecretName) > 0 {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("telemetry-tls").WithMountPath("/telemetry-tls").WithReadOnly(true))
 	}
 	return volumeMounts
 }
@@ -324,18 +378,22 @@ func (c *Config) probeCmd() []string {
 	return probeCmd
 }
 
-func (c *Config) deployment(migrationHash, spiceDBConfigHash string) *applyappsv1.DeploymentApplyConfiguration {
+func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
 	name := fmt.Sprintf("%s-spicedb", c.Name)
-	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.ownerRef()).
-		WithLabels(LabelsForComponent(c.Name, ComponentSpiceDBLabelValue)).
+	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 		WithAnnotations(map[string]string{
-			SpiceDBMigrationRequirementsKey: migrationHash,
-			SpiceDBConfigKey:                spiceDBConfigHash,
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
 		}).
 		WithSpec(applyappsv1.DeploymentSpec().
 			WithReplicas(c.Replicas).
+			WithStrategy(applyappsv1.DeploymentStrategy().
+				WithType(appsv1.RollingUpdateDeploymentStrategyType).
+				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
-			WithTemplate(applycorev1.PodTemplateSpec().WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+			WithTemplate(applycorev1.PodTemplateSpec().
+				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").

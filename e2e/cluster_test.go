@@ -28,7 +28,8 @@ import (
 	"k8s.io/client-go/util/cert"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/cluster"
+	"github.com/authzed/spicedb-operator/pkg/controller"
+	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 var (
@@ -51,7 +52,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		Eventually(func(g Gomega) {
 			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentMigrationJobLabelValue, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(jobs.Items)).To(BeZero())
@@ -67,13 +68,17 @@ var _ = Describe("SpiceDBClusters", func() {
 		Eventually(func(g Gomega) {
 			var err error
 			deps, err = kclient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentSpiceDBLabelValue, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(deps.Items)).To(Equal(1))
 			g.Expect(deps.Items[0].Spec.Template.Spec.Containers[0].Image).To(Equal(image))
 			GinkgoWriter.Println(deps.Items[0].Status)
 			g.Expect(deps.Items[0].Status.AvailableReplicas).ToNot(BeZero())
+
+			endpoint, err := kclient.CoreV1().Endpoints(namespace).Get(ctx, owner, metav1.GetOptions{})
+			g.Expect(err).To(Succeed())
+			g.Expect(endpoint).ToNot(BeNil())
 		}).Should(Succeed())
 
 		By("not having startup warnings")
@@ -98,35 +103,35 @@ var _ = Describe("SpiceDBClusters", func() {
 		// dependent resources should all be cleaned up
 		Eventually(func(g Gomega) {
 			list, err := kclient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentSpiceDBLabelValue, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(list.Items)).To(BeZero())
 		}).Should(Succeed())
 		Eventually(func(g Gomega) {
 			list, err := kclient.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentServiceLabel, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentServiceLabel, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(list.Items)).To(BeZero())
 		}).Should(Succeed())
 		Eventually(func(g Gomega) {
 			list, err := kclient.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentServiceAccountLabel, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentServiceAccountLabel, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(list.Items)).To(BeZero())
 		}).Should(Succeed())
 		Eventually(func(g Gomega) {
 			list, err := kclient.RbacV1().Roles(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentRoleLabel, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentRoleLabel, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(list.Items)).To(BeZero())
 		}).Should(Succeed())
 		Eventually(func(g Gomega) {
 			list, err := kclient.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", cluster.ComponentLabelKey, cluster.ComponentRoleBindingLabel, cluster.OwnerLabelKey, owner),
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentRoleBindingLabel, metadata.OwnerLabelKey, owner),
 			})
 			g.Expect(err).To(Succeed())
 			g.Expect(len(list.Items)).To(BeZero())
@@ -150,7 +155,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		Eventually(func(g Gomega) {
 			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: fmt.Sprintf("%s=%s", cluster.ComponentLabelKey, cluster.ComponentMigrationJobLabelValue),
+				LabelSelector: fmt.Sprintf("%s=%s", metadata.ComponentLabelKey, metadata.ComponentMigrationJobLabelValue),
 			})
 			Expect(err).To(Succeed())
 
@@ -263,6 +268,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						Namespace: "test",
 					},
 					StringData: map[string]string{
+						"logLevel":          "debug",
 						"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 						"preshared_key":     "testtesttesttest",
@@ -426,7 +432,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						var imageName string
 
 						BeforeAll(func() {
-							newConfig := cluster.OperatorConfig{
+							newConfig := controller.OperatorConfig{
 								ImageTag:  "updated",
 								ImageName: "spicedb",
 							}

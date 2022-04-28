@@ -15,7 +15,10 @@ func (c *SpiceDBCluster) NamespacedName() types.NamespacedName {
 	}
 }
 
-const ConditionTypeValidating = "Validating"
+const (
+	ConditionTypeValidating   = "Validating"
+	ConditionValidatingFailed = "ValidatingFailed"
+)
 
 func NewValidatingConfigCondition(secretHash string) metav1.Condition {
 	return metav1.Condition{
@@ -29,7 +32,7 @@ func NewValidatingConfigCondition(secretHash string) metav1.Condition {
 
 func NewInvalidConfigCondition(secretHash string, err error) metav1.Condition {
 	return metav1.Condition{
-		Type:               "ValidatingFailed",
+		Type:               ConditionValidatingFailed,
 		Status:             metav1.ConditionTrue,
 		Reason:             "InvalidConfig",
 		LastTransitionTime: metav1.NewTime(time.Now()),
