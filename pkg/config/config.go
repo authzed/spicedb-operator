@@ -23,6 +23,14 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
+const (
+	dbTLSVolume        = "db-tls"
+	spannerVolume      = "spanner"
+	tlsVolume          = "tls"
+	dispatchTLSVolume  = "dispatch-tls"
+	telemetryTLSVolume = "telemetry-tls"
+)
+
 // RawConfig has not been processed/validated yet
 type RawConfig map[string]string
 
@@ -291,10 +299,10 @@ func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
 	if len(c.DatastoreTLSSecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("spicedb-db-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DatastoreTLSSecretName)))
+		volumes = append(volumes, applycorev1.Volume().WithName(dbTLSVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DatastoreTLSSecretName)))
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("spanner").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.SpannerCredsSecretRef).WithItems(
+		volumes = append(volumes, applycorev1.Volume().WithName(spannerVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.SpannerCredsSecretRef).WithItems(
 			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
 		)))
 	}
@@ -304,10 +312,10 @@ func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration {
 	volumeMounts := make([]*applycorev1.VolumeMountApplyConfiguration, 0)
 	if len(c.DatastoreTLSSecretName) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("db-tls").WithMountPath("/db-tls").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(dbTLSVolume).WithMountPath("/spicedb-db-tls").WithReadOnly(true))
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("spanner").WithMountPath("/spanner-credentials").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath("/spanner-credentials").WithReadOnly(true))
 	}
 	return volumeMounts
 }
@@ -343,13 +351,13 @@ func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := c.jobVolumes()
 	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
+		volumes = append(volumes, applycorev1.Volume().WithName(tlsVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
 	}
 	if len(c.DispatchUpstreamCASecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("dispatch-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
+		volumes = append(volumes, applycorev1.Volume().WithName(dispatchTLSVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
 	}
 	if len(c.TelemetryTLSCASecretName) > 0 {
-		volumes = append(volumes, applycorev1.Volume().WithName("telemetry-tls").WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TelemetryTLSCASecretName)))
+		volumes = append(volumes, applycorev1.Volume().WithName(telemetryTLSVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TelemetryTLSCASecretName)))
 	}
 	return volumes
 }
@@ -358,13 +366,13 @@ func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfigu
 	volumeMounts := c.jobVolumeMounts()
 	// TODO: validate that the secrets exist before we start applying the Deployment
 	if len(c.TLSSecretName) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("tls").WithMountPath("/tls").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(tlsVolume).WithMountPath("/tls").WithReadOnly(true))
 	}
 	if len(c.DispatchUpstreamCASecretName) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("dispatch-tls").WithMountPath("/dispatch-tls").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(dispatchTLSVolume).WithMountPath("/dispatch-tls").WithReadOnly(true))
 	}
 	if len(c.TelemetryTLSCASecretName) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName("telemetry-tls").WithMountPath("/telemetry-tls").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(telemetryTLSVolume).WithMountPath("/telemetry-tls").WithReadOnly(true))
 	}
 	return volumeMounts
 }
