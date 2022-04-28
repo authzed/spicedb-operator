@@ -1,4 +1,4 @@
-package cluster
+package controller
 
 import (
 	"context"
@@ -39,20 +39,25 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/manager"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen rbac:roleName=spicedb-operator paths="../../pkg/..." output:rbac:dir=../../config/rbac
 
-// +kubebuilder:rbac:groups="authzed.com",resources=spicedbclusters,verbs=get;watch;list;create;update;delete
+// +kubebuilder:rbac:groups="authzed.com",resources=spicedbclusters,verbs=get;watch;list;create;update;patch;delete
+// +kubebuilder:rbac:groups="authzed.com",resources=spicedbclusters/status,verbs=get;watch;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups="",resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="rbac",resources=role,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="rbac",resources=rolebinding,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=endpoints,verbs=get;list;watch
+// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=roles,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=rolebindings,verbs=get;list;watch;create;update;patch;delete
 
 func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
@@ -70,13 +75,12 @@ var (
 		corev1.SchemeGroupVersion.WithResource("secrets"),
 		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
 		corev1.SchemeGroupVersion.WithResource("services"),
+		corev1.SchemeGroupVersion.WithResource("pods"),
 		batchv1.SchemeGroupVersion.WithResource("jobs"),
 		rbacv1.SchemeGroupVersion.WithResource("roles"),
 		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 	}
 )
-
-const OwningClusterIndex = "owning-cluster"
 
 type OperatorConfig struct {
 	ImageName   string `json:"imageName"`
@@ -134,7 +138,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
-			options.LabelSelector = ManagedDependentSelector.String()
+			options.LabelSelector = metadata.ManagedDependentSelector.String()
 		},
 	)
 
@@ -151,7 +155,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	for _, gvr := range ExternalResources {
 		gvr := gvr
 		inf := externalInformerFactory.ForResource(gvr).Informer()
-		if err := inf.AddIndexers(cache.Indexers{OwningClusterIndex: GetClusterKeyFromLabel}); err != nil {
+		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromLabel}); err != nil {
 			return nil, err
 		}
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -187,8 +191,8 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	c.recorder = broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "spicedb-operator"})
 
 	for _, gvr := range OwnedResources {
-		klog.Info(fmt.Sprintf("Starting %s controller", gvr.Resource))
-		defer klog.Info(fmt.Sprintf("Stopping %s controller", gvr.Resource))
+		klog.V(3).InfoS("starting controller", "resource", gvr.Resource)
+		defer klog.V(3).InfoS("stopping controller", "resource", gvr.Resource)
 	}
 
 	for i := 0; i < numThreads; i++ {
@@ -243,7 +247,11 @@ func (c *Controller) watchConfig() {
 			if !ok {
 				return
 			}
-			if !(event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Rename == fsnotify.Rename) {
+			if !(event.Op&fsnotify.Write == fsnotify.Write ||
+				event.Op&fsnotify.Create == fsnotify.Create ||
+				event.Op&fsnotify.Rename == fsnotify.Rename ||
+				// chmod is the event from a configmap reload in kube
+				event.Op&fsnotify.Chmod == fsnotify.Chmod) {
 				return
 			}
 			c.loadConfig()
@@ -270,6 +278,7 @@ func (c *Controller) loadConfig() {
 	if len(c.configFilePath) == 0 {
 		return
 	}
+	klog.V(3).InfoS("loading config", "path", c.configFilePath)
 	file, err := os.Open(c.configFilePath)
 	if err != nil {
 		panic(err)
@@ -286,10 +295,11 @@ func (c *Controller) loadConfig() {
 	if len(c.config.ImageName)+len(c.config.ImageTag)+len(c.config.ImageDigest) == 0 {
 		panic(fmt.Errorf("unable to load config from %s", c.configFilePath))
 	}
+	klog.V(4).InfoS("updated config", "path", c.configFilePath, "config", c.config)
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
-	key, err := GVRMetaNamespaceKeyFunc(gvr, obj)
+	key, err := metadata.GVRMetaNamespaceKeyFunc(gvr, obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -311,11 +321,12 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 	key, ok := k.(string)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("non-string key found in queue, %T", key))
+		return true
 	}
 
-	gvr, namespace, name, err := SplitGVRMetaNamespaceKey(key)
+	gvr, namespace, name, err := metadata.SplitGVRMetaNamespaceKey(key)
 	if err != nil {
-		klog.Errorf("error parsing key %q, skipping", key)
+		utilruntime.HandleError(fmt.Errorf("error parsing key %q, skipping", key))
 		return true
 	}
 
@@ -334,7 +345,8 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		c.queue.AddAfter(key, after)
 	}
 
-	go sync(ctx, *gvr, namespace, name, done, requeue)
+	sync(ctx, *gvr, namespace, name, done, requeue)
+	cancel()
 	<-ctx.Done()
 
 	return true
@@ -345,7 +357,7 @@ type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespa
 
 // syncOwnedResource is called when SpiceDBCluster is updated
 func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
-	if gvr.GroupResource() != spiceDBClusterGR {
+	if gvr != OwnedResources[0] {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String()))
 		done()
 		return
@@ -371,7 +383,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, klog.KObj(&cluster))
+	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
 
 	r := SpiceDBClusterHandler{
 		done:      done,
@@ -413,10 +425,10 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 		return
 	}
 
-	klog.V(4).Infof("syncing %s %s", gvr, objMeta)
+	klog.V(4).InfoS("syncing external object", "gvr", gvr, "obj", klog.KObj(objMeta))
 
 	clusterLabels := objMeta.GetLabels()
-	clusterName, ok := clusterLabels[OwnerLabelKey]
+	clusterName, ok := clusterLabels[metadata.OwnerLabelKey]
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName()))
 		done()
@@ -424,5 +436,5 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 	}
 
 	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
-	c.queue.AddRateLimited(GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
+	c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
 }

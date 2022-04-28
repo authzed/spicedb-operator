@@ -20,7 +20,7 @@ type Controller interface {
 	controller.Debuggable
 	controller.HealthCheckable
 
-	Start(context.Context, int)
+	Start(ctx context.Context, numThreads int)
 }
 
 // Manager ties a set of controllers to be lifecyled together and exposes common
@@ -68,7 +68,7 @@ func (m *Manager) StartControllers(ctx context.Context, controllers ...Controlle
 			return m.srv.ListenAndServe()
 		})
 
-		// stop health / debug server when ctx is cancelled
+		// stop health / debug server when context is cancelled
 		errG.Go(func() error {
 			<-ctx.Done()
 			return m.srv.Shutdown(ctx)
