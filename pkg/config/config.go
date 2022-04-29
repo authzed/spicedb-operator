@@ -39,7 +39,7 @@ func (r RawConfig) Pop(key string) string {
 	if !ok {
 		return ""
 	}
-	delete(r, v)
+	delete(r, key)
 	return v
 }
 
