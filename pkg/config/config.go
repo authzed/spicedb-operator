@@ -39,7 +39,7 @@ func (r RawConfig) Pop(key string) string {
 	if !ok {
 		return ""
 	}
-	delete(r, v)
+	delete(r, key)
 	return v
 }
 
@@ -79,6 +79,7 @@ type SpiceConfig struct {
 	DispatchUpstreamCASecretName string
 	TelemetryTLSCASecretName     string
 	SecretName                   string
+	ExtraPodLabels               map[string]string
 	Passthrough                  map[string]string
 }
 
@@ -95,6 +96,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		TelemetryTLSCASecretName:     config.Pop("telemetryCASecretName"),
 		EnvPrefix:                    stringz.DefaultEmpty(config.Pop("envPrefix"), "SPICEDB_"),
 		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
+		ExtraPodLabels:               make(map[string]string, 0),
 	}
 	migrationConfig := MigrationConfig{
 		LogLevel:               stringz.DefaultEmpty(config.Pop("logLevel"), "info"),
@@ -145,6 +147,16 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 	spiceConfig.Replicas = int32(replicas)
 	if replicas > 1 && datastoreEngine == "memory" {
 		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
+	}
+
+	extraPodLabelPairs := strings.Split(config.Pop("extraPodLabels"), ",")
+	for _, p := range extraPodLabelPairs {
+		k, v, ok := strings.Cut(p, "=")
+		if !ok {
+			// TODO add a warning
+			continue
+		}
+		spiceConfig.ExtraPodLabels[k] = v
 	}
 
 	// generate secret refs for tls if specified
@@ -402,6 +414,7 @@ func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 			WithTemplate(applycorev1.PodTemplateSpec().
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
+				WithLabels(c.ExtraPodLabels).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
