@@ -177,8 +177,6 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		passthroughDefault("httpTLSCertPath", TLSCrt)
 		passthroughDefault("dashboardTLSKeyPath", TLSKey)
 		passthroughDefault("dashboardTLSCertPath", TLSCrt)
-		passthroughDefault("metricsTLSKeyPath", TLSKey)
-		passthroughDefault("metricsTLSCertPath", TLSCrt)
 	}
 
 	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 {
