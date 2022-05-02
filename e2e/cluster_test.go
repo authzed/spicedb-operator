@@ -44,13 +44,13 @@ type datastoreDef struct {
 	definedObjs       int
 	datastoreUri      string
 	datastoreEngine   string
-	datastoreSetup    func() error
+	datastoreSetup    func(namespace string) error
 	clusterSetup      func(kclient kubernetes.Interface, namespace string) error
 	passthroughConfig map[string]string
 }
 
 var (
-	noop        = func() error { return nil }
+	noop        = func(namespace string) error { return nil }
 	clusterNoop = func(kclient kubernetes.Interface, namespace string) error { return nil }
 )
 
@@ -78,13 +78,16 @@ var datastoreDefs = []datastoreDef{
 		definedObjs:     2,
 		datastoreUri:    "projects/fake-project-id/instances/fake-instance/databases/fake-database-id",
 		datastoreEngine: "spanner",
-		datastoreSetup: func() error {
+		datastoreSetup: func(namespace string) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			PortForward(namespace, "spanner-0", []string{"9010"}, ctx.Done())
+			defer cancel()
+
 			os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")
 
 			time.Sleep(2 * time.Second)
 
 			// Create instance
-			ctx := context.Background()
 			instancesClient, err := instances.NewInstanceAdminClient(ctx)
 			if err != nil {
 				return err
@@ -474,10 +477,15 @@ var _ = Describe("SpiceDBClusters", func() {
 					g.Expect(err).To(Succeed())
 					g.Expect(out.Status.ReadyReplicas).ToNot(BeZero())
 				}).Should(Succeed())
+				Eventually(func(g Gomega) {
+					out, err := kclient.CoreV1().Pods(testNamespace).Get(context.Background(), db.GetName()+"-0", metav1.GetOptions{})
+					g.Expect(err).To(Succeed())
+					g.Expect(out.Status.Phase).To(Equal(corev1.PodRunning))
+				}).Should(Succeed())
 				By(fmt.Sprintf("%s running.", dsDef.label))
 
 				Eventually(func(g Gomega) {
-					err = dsDef.datastoreSetup()
+					err = dsDef.datastoreSetup(testNamespace)
 					Expect(err).To(Succeed())
 				}).Should(Succeed())
 				By(fmt.Sprintf("%s setup complete.", dsDef.label))
