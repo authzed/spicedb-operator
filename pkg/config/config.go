@@ -351,10 +351,9 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
 		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets"))),
 	}
-	if c.DatastoreEngine == "spanner" && len(c.Passthrough["spannerEmulatorHost"]) > 0 {
-		emulatorEnvName := ToEnvVarName(envPrefix, "spannerEmulatorHost")
+	if c.DatastoreEngine == "spanner" && len(c.Passthrough["datastoreSpannerEmulatorHost"]) > 0 {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(emulatorEnvName).WithValue(c.Passthrough["spannerEmulatorHost"]))
+			WithName(ToEnvVarName(envPrefix, "datastoreSpannerEmulatorHost")).WithValue(c.Passthrough["datastoreSpannerEmulatorHost"]))
 	}
 	return applybatchv1.Job(name, c.Namespace).
 		WithOwnerReferences(c.OwnerRef()).
