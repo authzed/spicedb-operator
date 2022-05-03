@@ -138,8 +138,8 @@ var datastoreDefs = []datastoreDef{
 			return err
 		},
 		passthroughConfig: map[string]string{
-			"spannerEmulatorHost": "spanner-service:9010",
-			"spannerCredentials":  "spanner-credentials",
+			"datastoreSpannerEmulatorHost": "spanner-service:9010",
+			"spannerCredentials":           "spanner-credentials",
 		},
 	},
 	{
