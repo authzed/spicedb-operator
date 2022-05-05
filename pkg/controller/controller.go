@@ -283,7 +283,8 @@ func (c *Controller) loadConfig(path string) {
 	if err := decoder.Decode(&config); err != nil {
 		panic(err)
 	}
-	if len(config.ImageName)+len(config.ImageTag)+len(config.ImageDigest) == 0 {
+
+	if len(config.ImageName)+len(config.ImageTag) == 0 && len(config.ImageName)+len(config.ImageDigest) == 0 {
 		panic(fmt.Errorf("unable to load config from %s", path))
 	}
 
