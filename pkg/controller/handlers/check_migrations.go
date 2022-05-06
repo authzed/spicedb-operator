@@ -67,6 +67,12 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 		}
 	}
 
+	// don't handle migrations at all if `skipMigrations` is set
+	if handlercontext.CtxConfig.MustValue(ctx).SkipMigrations {
+		m.nextDeploymentHandler.Handle(ctx)
+		return
+	}
+
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
 		m.recorder.Eventf(handlercontext.CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", handlercontext.CtxConfig.MustValue(ctx).TargetSpiceDBImage)
