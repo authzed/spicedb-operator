@@ -34,10 +34,11 @@ func TestValidateConfigHandler(t *testing.T) {
 		expectDone        bool
 	}{
 		{
-			name:          "valid config, no changes",
+			name:          "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
 			rawConfig: map[string]string{
 				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
 			},
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
@@ -46,6 +47,24 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: false,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
+		},
+		{
+			name:          "valid config with warnings",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
+			rawConfig: map[string]string{
+				"datastoreEngine": "cockroachdb",
+				"extraPodLabels":  "wrong:format",
+			},
+			existingSecret: &corev1.Secret{
+				Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("testtest"),
+				},
+			},
+			expectPatchStatus: true,
+			expectConditions:  []string{"ConfigurationWarning"},
 			expectStatusImage: "image",
 			expectNext:        nextKey,
 		},
@@ -97,6 +116,29 @@ func TestValidateConfigHandler(t *testing.T) {
 			}}}},
 			rawConfig: map[string]string{
 				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
+			},
+			existingSecret: &corev1.Secret{
+				Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("testtest"),
+				},
+			},
+			expectPatchStatus: true,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
+		},
+		{
+			name: "detects when warnings are fixed",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image", Conditions: []metav1.Condition{{
+				Type:    "ConfigurationWarning",
+				Status:  metav1.ConditionTrue,
+				Message: "[couldn't parse extra pod label \"wrong:format\": labels should be of the form k=v,k2=v2, no TLS configured, consider setting \"tlsSecretName\"]",
+			}}}},
+			rawConfig: map[string]string{
+				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
+				"extraPodLabels":  "correct=format,good=value",
 			},
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
@@ -168,6 +210,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			h.Handle(ctx)
 
 			cluster := handlercontext.CtxClusterStatus.MustValue(ctx)
+			t.Log(cluster.Status.Conditions)
 			for _, c := range tt.expectConditions {
 				require.True(t, cluster.IsStatusConditionTrue(c))
 			}

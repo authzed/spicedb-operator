@@ -4,6 +4,7 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
@@ -54,7 +55,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	nn := handlercontext.CtxClusterNN.MustValue(ctx)
-	validatedConfig, err := config.NewConfig(nn, c.uid, c.spiceDBImage, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
+	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.spiceDBImage, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
@@ -71,11 +72,24 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		c.Done()
 		return
 	}
+
+	var warningCondition *metav1.Condition
+	if warning != nil {
+		cond := v1alpha1.NewConfigWarningCondition(warning)
+		warningCondition = &cond
+	}
+
 	// Remove invalid config status and set image
 	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionValidatingFailed) ||
-		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage {
+		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage ||
+		currentStatus.IsStatusConditionChanged(v1alpha1.ConditionTypeConfigWarnings, warningCondition) {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionValidatingFailed)
 		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
+		if warningCondition != nil {
+			currentStatus.SetStatusCondition(*warningCondition)
+		} else {
+			currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeConfigWarnings)
+		}
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
 			c.Requeue()
 			return

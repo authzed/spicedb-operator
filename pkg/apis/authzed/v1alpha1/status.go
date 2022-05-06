@@ -43,3 +43,18 @@ func (c *SpiceDBCluster) IsStatusConditionFalse(conditionType string) bool {
 func (c *SpiceDBCluster) IsStatusConditionPresentAndEqual(conditionType string, status metav1.ConditionStatus) bool {
 	return meta.IsStatusConditionPresentAndEqual(c.Status.Conditions, conditionType, status)
 }
+
+// IsStatusConditionChanged returns true if the passed in condition is different
+// from the condition of the same type.
+func (c *SpiceDBCluster) IsStatusConditionChanged(conditionType string, condition *metav1.Condition) bool {
+	existing := c.FindStatusCondition(conditionType)
+	if existing == nil && condition == nil {
+		return false
+	}
+	// if only one is nil, the condition has changed
+	if (existing == nil && condition != nil) || (existing != nil && condition == nil) {
+		return true
+	}
+	// if not nil, changed if the message or reason is different
+	return existing.Message != condition.Message || existing.Reason != condition.Reason
+}
