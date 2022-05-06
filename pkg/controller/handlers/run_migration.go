@@ -6,7 +6,6 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	"k8s.io/klog/v2"
 
@@ -51,7 +50,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	// TODO: setting status is unconditional, should happen in a separate handler
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
 	config := handlercontext.CtxConfig.MustValue(ctx)
-	meta.SetStatusCondition(&currentStatus.Status.Conditions, v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
+	currentStatus.SetStatusCondition(v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
 	if err := m.patchStatus(ctx, currentStatus); err != nil {
 		m.RequeueErr(err)
 		return

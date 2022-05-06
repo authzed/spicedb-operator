@@ -177,9 +177,7 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 func (r *SpiceDBClusterHandler) checkConfigChanged(next ...handler.Handler) handler.Handler {
 	return handlers.NewConfigChangedHandler(
 		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
-		r.cluster.NewStatusPatch(),
-		r.cluster.GetObjectMeta(),
-		&r.cluster.Status,
+		r.cluster,
 		r.PatchStatus,
 		handler.Handlers(next).MustOne(),
 	)

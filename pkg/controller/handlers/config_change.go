@@ -3,9 +3,6 @@ package handlers
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
@@ -14,19 +11,15 @@ import (
 
 type ConfigChangedHandler struct {
 	libctrl.HandlerControls
-	currentStatus *v1alpha1.SpiceDBCluster
-	obj           metav1.Object
-	status        *v1alpha1.ClusterStatus
-	patchStatus   func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
-	next          handler.ContextHandler
+	cluster     *v1alpha1.SpiceDBCluster
+	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	next        handler.ContextHandler
 }
 
-func NewConfigChangedHandler(ctrls libctrl.HandlerControls, currentStatus *v1alpha1.SpiceDBCluster, obj metav1.Object, status *v1alpha1.ClusterStatus, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
+func NewConfigChangedHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.SpiceDBCluster, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ConfigChangedHandler{
 		HandlerControls: ctrls,
-		currentStatus:   currentStatus,
-		obj:             obj,
-		status:          status,
+		cluster:         cluster,
 		patchStatus:     patchStatus,
 		next:            next,
 	}, "checkConfigChanged")
@@ -34,15 +27,15 @@ func NewConfigChangedHandler(ctrls libctrl.HandlerControls, currentStatus *v1alp
 
 func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	secretHash := handlercontext.CtxSecretHash.Value(ctx)
-	if c.obj.GetGeneration() != c.status.ObservedGeneration || secretHash != c.status.SecretHash {
-		c.currentStatus.Status.ObservedGeneration = c.obj.GetGeneration()
-		c.currentStatus.Status.SecretHash = secretHash
-		meta.SetStatusCondition(&c.currentStatus.Status.Conditions, v1alpha1.NewValidatingConfigCondition(secretHash))
-		if err := c.patchStatus(ctx, c.currentStatus); err != nil {
+	if c.cluster.GetGeneration() != c.cluster.Status.ObservedGeneration || secretHash != c.cluster.Status.SecretHash {
+		c.cluster.Status.ObservedGeneration = c.cluster.GetGeneration()
+		c.cluster.Status.SecretHash = secretHash
+		c.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
+		if err := c.patchStatus(ctx, c.cluster); err != nil {
 			c.RequeueErr(err)
 			return
 		}
 	}
-	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, c.currentStatus)
+	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, c.cluster)
 	c.next.Handle(ctx)
 }

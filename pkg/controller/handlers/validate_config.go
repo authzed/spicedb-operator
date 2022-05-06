@@ -4,7 +4,6 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
@@ -46,8 +45,8 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
 	// TODO: unconditional status change can be a separate handler
 	// config is either valid or invalid, remove validating condition
-	if condition := meta.FindStatusCondition(currentStatus.Status.Conditions, v1alpha1.ConditionTypeValidating); condition != nil {
-		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionTypeValidating)
+	if condition := currentStatus.FindStatusCondition(v1alpha1.ConditionTypeValidating); condition != nil {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
 			c.Requeue()
 			return
@@ -58,11 +57,11 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	validatedConfig, err := config.NewConfig(nn, c.uid, c.spiceDBImage, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
-		if existing := meta.FindStatusCondition(currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
+		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
 			c.Done()
 			return
 		}
-		meta.SetStatusCondition(&currentStatus.Status.Conditions, failedCondition)
+		currentStatus.SetStatusCondition(failedCondition)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
 			c.Requeue()
 			return
@@ -72,9 +71,11 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		c.Done()
 		return
 	}
-	// Remove invalid config status
-	if meta.IsStatusConditionTrue(currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed) {
-		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed)
+	// Remove invalid config status and set image
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionValidatingFailed) ||
+		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionValidatingFailed)
+		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
 			c.Requeue()
 			return
