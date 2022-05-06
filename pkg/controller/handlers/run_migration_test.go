@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 
@@ -119,7 +118,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.True(t, meta.IsStatusConditionTrue(handlercontext.CtxClusterStatus.MustValue(ctx).Status.Conditions, v1alpha1.ConditionTypeMigrating))
+			require.True(t, handlercontext.CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectNext, nextCalled)

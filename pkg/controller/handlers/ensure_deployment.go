@@ -4,7 +4,6 @@ import (
 	"context"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -41,8 +40,8 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	// TODO: unconditional status change can be a separate handler
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
 	// remove migrating condition if present
-	if meta.IsStatusConditionTrue(currentStatus.Status.Conditions, v1alpha1.ConditionTypeMigrating) {
-		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionTypeMigrating)
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
 			m.RequeueErr(err)
 			return

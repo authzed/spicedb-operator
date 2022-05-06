@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -28,14 +27,15 @@ func TestValidateConfigHandler(t *testing.T) {
 
 		expectNext        handler.Key
 		expectEvents      []string
+		expectStatusImage string
 		expectPatchStatus bool
 		expectConditions  []string
 		expectRequeue     bool
 		expectDone        bool
 	}{
 		{
-			name:          "valid config",
-			currentStatus: &v1alpha1.SpiceDBCluster{},
+			name:          "valid config, no changes",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
 			rawConfig: map[string]string{
 				"datastoreEngine": "cockroachdb",
 			},
@@ -45,7 +45,9 @@ func TestValidateConfigHandler(t *testing.T) {
 					"preshared_key": []byte("testtest"),
 				},
 			},
-			expectNext: nextKey,
+			expectPatchStatus: false,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
 		},
 		{
 			name:          "invalid config",
@@ -103,6 +105,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: true,
+			expectStatusImage: "image",
 			expectNext:        nextKey,
 		},
 		{
@@ -166,9 +169,10 @@ func TestValidateConfigHandler(t *testing.T) {
 
 			cluster := handlercontext.CtxClusterStatus.MustValue(ctx)
 			for _, c := range tt.expectConditions {
-				require.True(t, meta.IsStatusConditionTrue(cluster.Status.Conditions, c))
+				require.True(t, cluster.IsStatusConditionTrue(c))
 			}
 			require.Equal(t, len(tt.expectConditions), len(cluster.Status.Conditions))
+			require.Equal(t, tt.expectStatusImage, cluster.Status.Image)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)
 			require.Equal(t, tt.expectNext, called)
 			require.Equal(t, tt.expectRequeue, ctrls.RequeueCallCount() == 1)

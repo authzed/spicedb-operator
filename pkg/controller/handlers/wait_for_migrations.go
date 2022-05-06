@@ -7,7 +7,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/record"
 
@@ -44,7 +43,7 @@ func (m *WaitForMigrationsHandler) Handle(ctx context.Context) {
 		config := handlercontext.CtxConfig.MustValue(ctx)
 		err := fmt.Errorf("migration job failed: %s", c.Message)
 		runtime.HandleError(err)
-		meta.SetStatusCondition(&currentStatus.Status.Conditions, v1alpha1.NewMigrationFailedCondition(config.DatastoreEngine, "head", err))
+		currentStatus.SetStatusCondition(v1alpha1.NewMigrationFailedCondition(config.DatastoreEngine, "head", err))
 		handlercontext.CtxSelfPauseObject.WithValue(ctx, currentStatus)
 		m.nextSelfPause.Handle(ctx)
 		return

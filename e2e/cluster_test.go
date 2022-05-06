@@ -15,7 +15,6 @@ import (
 	"github.com/onsi/gomega/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -149,7 +148,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 
 			GinkgoWriter.Println(c.Status)
-			condition := meta.FindStatusCondition(c.Status.Conditions, "Migrating")
+			condition := c.FindStatusCondition("Migrating")
 			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition("cockroachdb", "head")))
 		}).Should(Succeed())
 
@@ -211,7 +210,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				out, err := client.Resource(v1alpha1ClusterGVR).Namespace("test").Get(ctx, "test", metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
-				condition := meta.FindStatusCondition(c.Status.Conditions, "ValidatingFailed")
+				condition := c.FindStatusCondition("ValidatingFailed")
 				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
 			}).Should(Succeed())
 		})
