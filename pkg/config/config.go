@@ -72,6 +72,7 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
+	SkipMigrations               bool
 	Name                         string
 	Namespace                    string
 	UID                          string
@@ -102,6 +103,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		EnvPrefix:                    stringz.DefaultEmpty(config.Pop("envPrefix"), "SPICEDB_"),
 		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
 		ExtraPodLabels:               make(map[string]string, 0),
+		SkipMigrations:               config.Pop("skipMigrations") == "true",
 	}
 	migrationConfig := MigrationConfig{
 		LogLevel:               stringz.DefaultEmpty(config.Pop("logLevel"), "info"),
@@ -407,6 +409,9 @@ func (c *Config) probeCmd() []string {
 }
 
 func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
+	if c.SkipMigrations {
+		migrationHash = "skipped"
+	}
 	name := fmt.Sprintf("%s-spicedb", c.Name)
 	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
