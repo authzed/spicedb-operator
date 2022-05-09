@@ -193,11 +193,11 @@ func TestValidateConfigHandler(t *testing.T) {
 
 			var called handler.Key
 			h := &ValidateConfigHandler{
-				ControlDoneRequeue: ctrls,
-				uid:                "uid",
-				rawConfig:          tt.rawConfig,
-				spiceDBImage:       "image",
-				generation:         1,
+				ControlAll:   ctrls,
+				uid:          "uid",
+				rawConfig:    tt.rawConfig,
+				spiceDBImage: "image",
+				generation:   1,
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil

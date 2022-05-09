@@ -97,7 +97,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 
 			var called handler.Key
 			h := &DeploymentHandler{
-				ControlRequeueErr: ctrls,
+				ControlAll: ctrls,
 				applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 					applyCalled = true
 					return nil, nil

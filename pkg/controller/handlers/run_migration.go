@@ -78,7 +78,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 		// apply if no matching object in controller
 		err := m.applyJob(ctx, handlercontext.CtxConfig.MustValue(ctx).MigrationJob(migrationHash))
 		if err != nil {
-			m.RequeueErr(err)
+			m.RequeueAPIErr(err)
 			return
 		}
 	}
@@ -86,7 +86,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	// delete extra objects
 	for _, o := range extraObjs {
 		if err := m.deleteJob(ctx, o.GetName()); err != nil {
-			m.RequeueErr(err)
+			m.RequeueAPIErr(err)
 			return
 		}
 	}
