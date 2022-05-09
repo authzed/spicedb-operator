@@ -16,8 +16,10 @@ func (c *SpiceDBCluster) NamespacedName() types.NamespacedName {
 }
 
 const (
-	ConditionTypeValidating   = "Validating"
-	ConditionValidatingFailed = "ValidatingFailed"
+	ConditionTypeValidating     = "Validating"
+	ConditionValidatingFailed   = "ValidatingFailed"
+	ConditionTypeMigrating      = "Migrating"
+	ConditionTypeConfigWarnings = "ConfigurationWarning"
 )
 
 func NewValidatingConfigCondition(secretHash string) metav1.Condition {
@@ -40,17 +42,15 @@ func NewInvalidConfigCondition(secretHash string, err error) metav1.Condition {
 	}
 }
 
-func NewVerifyingMigrationCondition() metav1.Condition {
+func NewConfigWarningCondition(warning error) metav1.Condition {
 	return metav1.Condition{
-		Type:               "Migrating",
+		Type:               ConditionTypeConfigWarnings,
 		Status:             metav1.ConditionTrue,
-		Reason:             "VerifyingMigrationLevel",
+		Reason:             "WarningsPresent",
 		LastTransitionTime: metav1.NewTime(time.Now()),
-		Message:            "Checking if cluster's datastore is migrated",
+		Message:            warning.Error(),
 	}
 }
-
-const ConditionTypeMigrating = "Migrating"
 
 func NewMigratingCondition(engine, headRevision string) metav1.Condition {
 	return metav1.Condition{

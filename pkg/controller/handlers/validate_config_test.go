@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -28,16 +27,18 @@ func TestValidateConfigHandler(t *testing.T) {
 
 		expectNext        handler.Key
 		expectEvents      []string
+		expectStatusImage string
 		expectPatchStatus bool
 		expectConditions  []string
 		expectRequeue     bool
 		expectDone        bool
 	}{
 		{
-			name:          "valid config",
-			currentStatus: &v1alpha1.SpiceDBCluster{},
+			name:          "valid config, no changes, no warnings",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
 			rawConfig: map[string]string{
 				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
 			},
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
@@ -45,7 +46,27 @@ func TestValidateConfigHandler(t *testing.T) {
 					"preshared_key": []byte("testtest"),
 				},
 			},
-			expectNext: nextKey,
+			expectPatchStatus: false,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
+		},
+		{
+			name:          "valid config with warnings",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
+			rawConfig: map[string]string{
+				"datastoreEngine": "cockroachdb",
+				"extraPodLabels":  "wrong:format",
+			},
+			existingSecret: &corev1.Secret{
+				Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("testtest"),
+				},
+			},
+			expectPatchStatus: true,
+			expectConditions:  []string{"ConfigurationWarning"},
+			expectStatusImage: "image",
+			expectNext:        nextKey,
 		},
 		{
 			name:          "invalid config",
@@ -95,6 +116,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			}}}},
 			rawConfig: map[string]string{
 				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
 			},
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
@@ -103,6 +125,29 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: true,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
+		},
+		{
+			name: "detects when warnings are fixed",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image", Conditions: []metav1.Condition{{
+				Type:    "ConfigurationWarning",
+				Status:  metav1.ConditionTrue,
+				Message: "[couldn't parse extra pod label \"wrong:format\": labels should be of the form k=v,k2=v2, no TLS configured, consider setting \"tlsSecretName\"]",
+			}}}},
+			rawConfig: map[string]string{
+				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret",
+				"extraPodLabels":  "correct=format,good=value",
+			},
+			existingSecret: &corev1.Secret{
+				Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("testtest"),
+				},
+			},
+			expectPatchStatus: true,
+			expectStatusImage: "image",
 			expectNext:        nextKey,
 		},
 		{
@@ -148,11 +193,11 @@ func TestValidateConfigHandler(t *testing.T) {
 
 			var called handler.Key
 			h := &ValidateConfigHandler{
-				ControlDoneRequeue: ctrls,
-				uid:                "uid",
-				rawConfig:          tt.rawConfig,
-				spiceDBImage:       "image",
-				generation:         1,
+				ControlAll:   ctrls,
+				uid:          "uid",
+				rawConfig:    tt.rawConfig,
+				spiceDBImage: "image",
+				generation:   1,
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
@@ -165,10 +210,12 @@ func TestValidateConfigHandler(t *testing.T) {
 			h.Handle(ctx)
 
 			cluster := handlercontext.CtxClusterStatus.MustValue(ctx)
+			t.Log(cluster.Status.Conditions)
 			for _, c := range tt.expectConditions {
-				require.True(t, meta.IsStatusConditionTrue(cluster.Status.Conditions, c))
+				require.True(t, cluster.IsStatusConditionTrue(c))
 			}
 			require.Equal(t, len(tt.expectConditions), len(cluster.Status.Conditions))
+			require.Equal(t, tt.expectStatusImage, cluster.Status.Image)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)
 			require.Equal(t, tt.expectNext, called)
 			require.Equal(t, tt.expectRequeue, ctrls.RequeueCallCount() == 1)

@@ -31,6 +31,10 @@ const (
 	telemetryTLSVolume = "telemetry-tls"
 )
 
+// Warning is an issue with configuration that we will report as undesirable
+// but which don't prevent the cluster from starting (i.e. no TLS config)
+type Warning error
+
 // RawConfig has not been processed/validated yet
 type RawConfig map[string]string
 
@@ -68,6 +72,7 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
+	SkipMigrations               bool
 	Name                         string
 	Namespace                    string
 	UID                          string
@@ -84,9 +89,10 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawConfig, secret *corev1.Secret) (*Config, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawConfig, secret *corev1.Secret) (*Config, Warning, error) {
 	passthroughConfig := make(map[string]string, 0)
 	errs := make([]error, 0)
+	warnings := make([]error, 0)
 	spiceConfig := SpiceConfig{
 		Name:                         nn.Name,
 		Namespace:                    nn.Namespace,
@@ -97,6 +103,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		EnvPrefix:                    stringz.DefaultEmpty(config.Pop("envPrefix"), "SPICEDB_"),
 		SpiceDBCmd:                   stringz.DefaultEmpty(config.Pop("cmd"), "spicedb"),
 		ExtraPodLabels:               make(map[string]string, 0),
+		SkipMigrations:               config.Pop("skipMigrations") == "true",
 	}
 	migrationConfig := MigrationConfig{
 		LogLevel:               stringz.DefaultEmpty(config.Pop("logLevel"), "info"),
@@ -149,14 +156,16 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
 	}
 
-	extraPodLabelPairs := strings.Split(config.Pop("extraPodLabels"), ",")
-	for _, p := range extraPodLabelPairs {
-		k, v, ok := strings.Cut(p, "=")
-		if !ok {
-			// TODO add a warning
-			continue
+	if labels := config.Pop("extraPodLabels"); len(labels) > 0 {
+		extraPodLabelPairs := strings.Split(labels, ",")
+		for _, p := range extraPodLabelPairs {
+			k, v, ok := strings.Cut(p, "=")
+			if !ok {
+				warnings = append(warnings, fmt.Errorf("couldn't parse extra pod label %q: labels should be of the form k=v,k2=v2", p))
+				continue
+			}
+			spiceConfig.ExtraPodLabels[k] = v
 		}
-		spiceConfig.ExtraPodLabels[k] = v
 	}
 
 	// generate secret refs for tls if specified
@@ -177,6 +186,8 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		passthroughDefault("httpTLSCertPath", TLSCrt)
 		passthroughDefault("dashboardTLSKeyPath", TLSKey)
 		passthroughDefault("dashboardTLSCertPath", TLSCrt)
+	} else {
+		warnings = append(warnings, fmt.Errorf("no TLS configured, consider setting %q", "tlsSecretName"))
 	}
 
 	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 {
@@ -209,16 +220,17 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, config RawC
 		}
 	}
 
-	if len(errs) > 0 {
-		return nil, errors.NewAggregate(errs)
-	}
-
 	spiceConfig.Passthrough = passthroughConfig
+
+	warning := Warning(errors.NewAggregate(warnings))
+	if len(errs) > 0 {
+		return nil, warning, errors.NewAggregate(errs)
+	}
 
 	return &Config{
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
-	}, nil
+	}, warning, nil
 }
 
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
@@ -397,6 +409,9 @@ func (c *Config) probeCmd() []string {
 }
 
 func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
+	if c.SkipMigrations {
+		migrationHash = "skipped"
+	}
 	name := fmt.Sprintf("%s-spicedb", c.Name)
 	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).

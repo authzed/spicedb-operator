@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
@@ -55,7 +54,7 @@ func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string) 
 		_, err = dclient.
 			Resource(v1alpha1ClusterGVR).
 			Namespace(clusterSpec.Namespace).
-			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: metadata.FieldManager})
+			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metadata.PatchForceOwned)
 		if err != nil {
 			return err
 		}

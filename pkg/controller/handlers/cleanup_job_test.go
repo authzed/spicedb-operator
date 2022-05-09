@@ -157,7 +157,7 @@ func TestCleanupJobsHandler(t *testing.T) {
 			deletedPods := make([]string, 0)
 			deletedJobs := make([]string, 0)
 			h := &JobCleanupHandler{
-				ControlDoneRequeueErr: ctrls,
+				ControlAll: ctrls,
 				getJobs: func(ctx context.Context) []*batchv1.Job {
 					return tt.existingJobs
 				},
