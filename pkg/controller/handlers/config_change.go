@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -13,36 +12,41 @@ import (
 )
 
 type ConfigChangedHandler struct {
-	libctrl.HandlerControls
-	currentStatus *v1alpha1.SpiceDBCluster
-	obj           metav1.Object
-	status        *v1alpha1.ClusterStatus
-	patchStatus   func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
-	next          handler.ContextHandler
+	libctrl.ControlAll
+	cluster     *v1alpha1.SpiceDBCluster
+	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	next        handler.ContextHandler
 }
 
-func NewConfigChangedHandler(ctrls libctrl.HandlerControls, currentStatus *v1alpha1.SpiceDBCluster, obj metav1.Object, status *v1alpha1.ClusterStatus, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
+func NewConfigChangedHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.SpiceDBCluster, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ConfigChangedHandler{
-		HandlerControls: ctrls,
-		currentStatus:   currentStatus,
-		obj:             obj,
-		status:          status,
-		patchStatus:     patchStatus,
-		next:            next,
+		ControlAll:  ctrls,
+		cluster:     cluster,
+		patchStatus: patchStatus,
+		next:        next,
 	}, "checkConfigChanged")
 }
 
 func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	secretHash := handlercontext.CtxSecretHash.Value(ctx)
-	if c.obj.GetGeneration() != c.status.ObservedGeneration || secretHash != c.status.SecretHash {
-		c.currentStatus.Status.ObservedGeneration = c.obj.GetGeneration()
-		c.currentStatus.Status.SecretHash = secretHash
-		meta.SetStatusCondition(&c.currentStatus.Status.Conditions, v1alpha1.NewValidatingConfigCondition(secretHash))
-		if err := c.patchStatus(ctx, c.currentStatus); err != nil {
-			c.RequeueErr(err)
+	status := &v1alpha1.SpiceDBCluster{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       v1alpha1.SpiceDBClusterKind,
+			APIVersion: v1alpha1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{Namespace: c.cluster.Namespace, Name: c.cluster.Name, Generation: c.cluster.Generation},
+		Status:     *c.cluster.Status.DeepCopy(),
+	}
+
+	if c.cluster.GetGeneration() != status.Status.ObservedGeneration || secretHash != status.Status.SecretHash {
+		status.Status.ObservedGeneration = c.cluster.GetGeneration()
+		status.Status.SecretHash = secretHash
+		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
+		if err := c.patchStatus(ctx, status); err != nil {
+			c.RequeueAPIErr(err)
 			return
 		}
 	}
-	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, c.currentStatus)
+	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, status)
 	c.next.Handle(ctx)
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/onsi/gomega/types"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -149,7 +148,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 
 			GinkgoWriter.Println(c.Status)
-			condition := meta.FindStatusCondition(c.Status.Conditions, "Migrating")
+			condition := c.FindStatusCondition("Migrating")
 			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition("cockroachdb", "head")))
 		}).Should(Succeed())
 
@@ -211,8 +210,68 @@ var _ = Describe("SpiceDBClusters", func() {
 				out, err := client.Resource(v1alpha1ClusterGVR).Namespace("test").Get(ctx, "test", metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
-				condition := meta.FindStatusCondition(c.Status.Conditions, "ValidatingFailed")
+				condition := c.FindStatusCondition("ValidatingFailed")
 				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
+			}).Should(Succeed())
+		})
+	})
+
+	Describe("With skipMigrations=true", func() {
+		It("Starts SpiceDB without migrating", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+
+			secret := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "spicedb",
+					Namespace: "test",
+				},
+				StringData: map[string]string{
+					"logLevel":          "debug",
+					"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
+					"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+					"preshared_key":     "testtesttesttest",
+				},
+			}
+			_, err := kclient.CoreV1().Secrets("test").Create(ctx, &secret, metav1.CreateOptions{})
+			Expect(err).To(Succeed())
+			DeferCleanup(kclient.CoreV1().Secrets("test").Delete, ctx, secret.Name, metav1.DeleteOptions{})
+
+			aec := &v1alpha1.SpiceDBCluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       v1alpha1.SpiceDBClusterKind,
+					APIVersion: v1alpha1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+				},
+				Spec: v1alpha1.ClusterSpec{
+					Config: map[string]string{
+						"skipMigrations":  "true",
+						"datastoreEngine": "cockroachdb",
+						"envPrefix":       "SPICEDB_ENTERPRISE",
+						"cmd":             "spicedb-enterprise",
+					},
+					SecretRef: "spicedb",
+				},
+			}
+			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aec)
+			Expect(err).To(Succeed())
+			_, err = client.Resource(v1alpha1ClusterGVR).Namespace("test").Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+			Expect(err).To(Succeed())
+			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace("test").Delete, ctx, "test", metav1.DeleteOptions{})
+
+			var deps *appsv1.DeploymentList
+			Eventually(func(g Gomega) {
+				var err error
+				deps, err = kclient.AppsV1().Deployments(aec.Namespace).List(ctx, metav1.ListOptions{
+					LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, aec.Name),
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(len(deps.Items)).To(Equal(1))
+				GinkgoWriter.Println(deps.Items[0].Name)
+				fmt.Println(deps)
 			}).Should(Succeed())
 		})
 	})

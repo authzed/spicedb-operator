@@ -4,7 +4,7 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
@@ -18,7 +18,7 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	libctrl.ControlDoneRequeue
+	libctrl.ControlAll
 	rawConfig    map[string]string
 	spiceDBImage string
 	uid          types.UID
@@ -31,14 +31,14 @@ type ValidateConfigHandler struct {
 
 func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawConfig map[string]string, spicedbImage string, generation int64, status *v1alpha1.ClusterStatus, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ValidateConfigHandler{
-		ControlDoneRequeue: ctrls,
-		uid:                uid,
-		rawConfig:          rawConfig,
-		spiceDBImage:       spicedbImage,
-		generation:         generation,
-		patchStatus:        patchStatus,
-		recorder:           recorder,
-		next:               next,
+		ControlAll:   ctrls,
+		uid:          uid,
+		rawConfig:    rawConfig,
+		spiceDBImage: spicedbImage,
+		generation:   generation,
+		patchStatus:  patchStatus,
+		recorder:     recorder,
+		next:         next,
 	}, "validateConfig")
 }
 
@@ -46,8 +46,8 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
 	// TODO: unconditional status change can be a separate handler
 	// config is either valid or invalid, remove validating condition
-	if condition := meta.FindStatusCondition(currentStatus.Status.Conditions, v1alpha1.ConditionTypeValidating); condition != nil {
-		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionTypeValidating)
+	if condition := currentStatus.FindStatusCondition(v1alpha1.ConditionTypeValidating); condition != nil {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
 			c.Requeue()
 			return
@@ -55,16 +55,16 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	nn := handlercontext.CtxClusterNN.MustValue(ctx)
-	validatedConfig, err := config.NewConfig(nn, c.uid, c.spiceDBImage, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
+	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.spiceDBImage, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
-		if existing := meta.FindStatusCondition(currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
+		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
 			c.Done()
 			return
 		}
-		meta.SetStatusCondition(&currentStatus.Status.Conditions, failedCondition)
+		currentStatus.SetStatusCondition(failedCondition)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.Requeue()
+			c.RequeueAPIErr(err)
 			return
 		}
 		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
@@ -72,11 +72,26 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		c.Done()
 		return
 	}
-	// Remove invalid config status
-	if meta.IsStatusConditionTrue(currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed) {
-		meta.RemoveStatusCondition(&currentStatus.Status.Conditions, v1alpha1.ConditionValidatingFailed)
+
+	var warningCondition *metav1.Condition
+	if warning != nil {
+		cond := v1alpha1.NewConfigWarningCondition(warning)
+		warningCondition = &cond
+	}
+
+	// Remove invalid config status and set image
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionValidatingFailed) ||
+		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage ||
+		currentStatus.IsStatusConditionChanged(v1alpha1.ConditionTypeConfigWarnings, warningCondition) {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionValidatingFailed)
+		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
+		if warningCondition != nil {
+			currentStatus.SetStatusCondition(*warningCondition)
+		} else {
+			currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeConfigWarnings)
+		}
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.Requeue()
+			c.RequeueAPIErr(err)
 			return
 		}
 	}

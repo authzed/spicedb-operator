@@ -66,6 +66,12 @@ func TestCheckMigrationsHandler(t *testing.T) {
 			expectNext:          HandlerWaitForMigrationsKey,
 		},
 		{
+			name:                "check deployment if skipMigrations = true",
+			config:              config.Config{SpiceConfig: config.SpiceConfig{SkipMigrations: true}},
+			existingDeployments: []*appsv1.Deployment{{}},
+			expectNext:          HandlerDeploymentKey,
+		},
+		{
 			name:   "check deployment if deployment is up to date",
 			config: config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{

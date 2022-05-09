@@ -100,7 +100,7 @@ func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handle
 		),
 		func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 			klog.V(4).InfoS("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
-			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, metadata.ForceOwned)
+			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, name string) error {
 			klog.V(4).InfoS("deleting deployment", "namespace", r.cluster.Namespace, "name", name)
@@ -177,9 +177,7 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 func (r *SpiceDBClusterHandler) checkConfigChanged(next ...handler.Handler) handler.Handler {
 	return handlers.NewConfigChangedHandler(
 		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
-		r.cluster.NewStatusPatch(),
-		r.cluster.GetObjectMeta(),
-		&r.cluster.Status,
+		r.cluster,
 		r.PatchStatus,
 		handler.Handlers(next).MustOne(),
 	)
@@ -236,7 +234,7 @@ func (r *SpiceDBClusterHandler) runMigration(next ...handler.Handler) handler.Ha
 		),
 		r.PatchStatus,
 		func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
-			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, metadata.ForceOwned)
+			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, metadata.ApplyForceOwned)
 			return err
 		},
 		func(ctx context.Context, name string) error {
@@ -274,7 +272,7 @@ func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler
 		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceAccountLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
 			klog.V(4).InfoS("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
-			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, metadata.ForceOwned)
+			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, name string) error {
 			klog.V(4).InfoS("deleting serviceaccount", "namespace", r.cluster.Namespace, "name", name)
@@ -291,7 +289,7 @@ func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleLabel)),
 		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
 			klog.V(4).InfoS("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
-			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, metadata.ForceOwned)
+			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, name string) error {
 			klog.V(4).InfoS("deleting role", "namespace", r.cluster.Namespace, "name", name)
@@ -309,7 +307,7 @@ func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handl
 			libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleBindingLabel)),
 			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
 				klog.V(4).InfoS("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
-				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, metadata.ForceOwned)
+				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 			},
 			func(ctx context.Context, name string) error {
 				klog.V(4).InfoS("deleting rolebinding", "namespace", r.cluster.Namespace, "name", name)
@@ -328,7 +326,7 @@ func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handle
 		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
 			klog.V(4).InfoS("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
-			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, metadata.ForceOwned)
+			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, name string) error {
 			klog.V(4).InfoS("deleting service", "namespace", r.cluster.Namespace, "name", name)
