@@ -38,6 +38,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -105,7 +106,7 @@ type Controller struct {
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string) (*Controller, error) {
+func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
 		client:         dclient,
@@ -127,8 +128,16 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
+			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
 		})
 	}
+	if len(staticClusterPath) > 0 {
+		StaticClusterResource := libctrl.FileGroupVersion.WithResource(staticClusterPath)
+		inf := fileInformerFactory.ForResource(StaticClusterResource).Informer()
+		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
+			UpdateFunc: func(_, obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
+			DeleteFunc: func(obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
 		})
 	}
 

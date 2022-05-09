@@ -100,7 +100,7 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 	}
 
 	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := controller.NewController(ctx, dclient, kclient, o.OperatorConfigPath)
+	ctrl, err := controller.NewController(ctx, dclient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
 	if err != nil {
 		return err
 	}
@@ -108,11 +108,6 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return ctx.Err()
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
-	if len(o.BootstrapSpicedbsPath) > 0 {
-		if err := bootstrap.Cluster(ctx, dclient, o.BootstrapSpicedbsPath); err != nil {
-			return err
-		}
-	}
 
 	return mgr.StartControllers(ctx, ctrl)
 }
