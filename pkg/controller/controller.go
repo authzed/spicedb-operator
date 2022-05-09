@@ -1,14 +1,18 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
+	"go.uber.org/atomic"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -100,8 +104,12 @@ type Controller struct {
 	kclient        kubernetes.Interface
 
 	// config
-	configLock sync.RWMutex
-	config     OperatorConfig
+	configLock     sync.RWMutex
+	config         OperatorConfig
+	lastConfigHash atomic.Uint64
+
+	// static spicedb instances
+	lastStaticHash atomic.Uint64
 }
 
 var _ manager.Controller = &Controller{}
@@ -120,8 +128,6 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		return nil, err
 	}
 
-	// TODO: ensure listers/indexers work so that other control loops can
-	// just ask for the current config file from the cache
 	if len(configFilePath) > 0 {
 		ConfigFileResource = libctrl.FileGroupVersion.WithResource(configFilePath)
 		inf := fileInformerFactory.ForResource(ConfigFileResource).Informer()
@@ -132,12 +138,20 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		})
 	}
 	if len(staticClusterPath) > 0 {
+		handleStaticSpicedbs := func() {
+			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
+			if err != nil {
+				utilruntime.HandleError(err)
+				return
+			}
+			c.lastStaticHash.Store(hash)
+		}
 		StaticClusterResource := libctrl.FileGroupVersion.WithResource(staticClusterPath)
 		inf := fileInformerFactory.ForResource(StaticClusterResource).Informer()
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
-			UpdateFunc: func(_, obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
-			DeleteFunc: func(obj interface{}) { utilruntime.HandleError(bootstrap.Cluster(ctx, c.client, staticClusterPath)) },
+			AddFunc:    func(obj interface{}) { handleStaticSpicedbs() },
+			UpdateFunc: func(_, obj interface{}) { handleStaticSpicedbs() },
+			DeleteFunc: func(obj interface{}) { handleStaticSpicedbs() },
 		})
 	}
 
@@ -260,17 +274,31 @@ func (c *Controller) loadConfig(path string) {
 	defer func() {
 		utilruntime.HandleError(file.Close())
 	}()
-	decoder := yaml.NewYAMLOrJSONDecoder(file, 100)
-	func() {
-		c.configLock.Lock()
-		defer c.configLock.Unlock()
-		if err := decoder.Decode(&c.config); err != nil {
-			panic(err)
-		}
-	}()
-	if len(c.config.ImageName)+len(c.config.ImageTag)+len(c.config.ImageDigest) == 0 {
+	contents, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
+	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
+	var config OperatorConfig
+	if err := decoder.Decode(&config); err != nil {
+		panic(err)
+	}
+	if len(config.ImageName)+len(config.ImageTag)+len(config.ImageDigest) == 0 {
 		panic(fmt.Errorf("unable to load config from %s", path))
 	}
+
+	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {
+		func() {
+			c.configLock.Lock()
+			defer c.configLock.Unlock()
+			c.config = config
+		}()
+		c.lastConfigHash.Store(hash)
+	} else {
+		// config hasn't changed
+		return
+	}
+
 	klog.V(4).InfoS("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
