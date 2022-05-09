@@ -31,7 +31,9 @@ const (
 )
 
 var (
-	ForceOwned               = metav1.ApplyOptions{FieldManager: FieldManager, Force: true}
+	force                    = true
+	ApplyForceOwned          = metav1.ApplyOptions{FieldManager: FieldManager, Force: true}
+	PatchForceOwned          = metav1.PatchOptions{FieldManager: FieldManager, Force: &force}
 	ManagedDependentSelector = MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 )
 

@@ -14,7 +14,7 @@ import (
 )
 
 type DeploymentHandler struct {
-	libctrl.ControlRequeueErr
+	libctrl.ControlAll
 	applyDeployment  func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
 	deleteDeployment func(ctx context.Context, name string) error
 	patchStatus      func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
@@ -28,11 +28,11 @@ func NewEnsureDeploymentHandler(ctrls libctrl.HandlerControls,
 	next handler.ContextHandler,
 ) handler.Handler {
 	return handler.NewHandler(&DeploymentHandler{
-		ControlRequeueErr: ctrls,
-		deleteDeployment:  deleteDeployment,
-		applyDeployment:   applyDeployment,
-		patchStatus:       patchStatus,
-		next:              next,
+		ControlAll:       ctrls,
+		deleteDeployment: deleteDeployment,
+		applyDeployment:  applyDeployment,
+		patchStatus:      patchStatus,
+		next:             next,
 	}, "ensureDeployment")
 }
 
@@ -43,7 +43,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
-			m.RequeueErr(err)
+			m.RequeueAPIErr(err)
 			return
 		}
 		ctx = handlercontext.CtxClusterStatus.WithValue(ctx, currentStatus)
@@ -79,7 +79,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		// delete extra objects
 		for _, o := range extraObjs {
 			if err := m.deleteDeployment(ctx, o.GetName()); err != nil {
-				m.RequeueErr(err)
+				m.RequeueAPIErr(err)
 				return
 			}
 		}
@@ -93,7 +93,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			),
 		)
 		if err != nil {
-			m.RequeueErr(err)
+			m.RequeueAPIErr(err)
 			return
 		}
 		ctx = handlercontext.CtxCurrentSpiceDeployment.WithValue(ctx, deployment)

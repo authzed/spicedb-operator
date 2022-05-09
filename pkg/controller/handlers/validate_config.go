@@ -18,7 +18,7 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	libctrl.ControlDoneRequeue
+	libctrl.ControlAll
 	rawConfig    map[string]string
 	spiceDBImage string
 	uid          types.UID
@@ -31,14 +31,14 @@ type ValidateConfigHandler struct {
 
 func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawConfig map[string]string, spicedbImage string, generation int64, status *v1alpha1.ClusterStatus, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ValidateConfigHandler{
-		ControlDoneRequeue: ctrls,
-		uid:                uid,
-		rawConfig:          rawConfig,
-		spiceDBImage:       spicedbImage,
-		generation:         generation,
-		patchStatus:        patchStatus,
-		recorder:           recorder,
-		next:               next,
+		ControlAll:   ctrls,
+		uid:          uid,
+		rawConfig:    rawConfig,
+		spiceDBImage: spicedbImage,
+		generation:   generation,
+		patchStatus:  patchStatus,
+		recorder:     recorder,
+		next:         next,
 	}, "validateConfig")
 }
 
@@ -64,7 +64,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		}
 		currentStatus.SetStatusCondition(failedCondition)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.Requeue()
+			c.RequeueAPIErr(err)
 			return
 		}
 		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
@@ -91,7 +91,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 			currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeConfigWarnings)
 		}
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.Requeue()
+			c.RequeueAPIErr(err)
 			return
 		}
 	}

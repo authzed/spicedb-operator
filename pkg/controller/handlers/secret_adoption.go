@@ -25,7 +25,7 @@ type SecretApplyFunc func(ctx context.Context, secret *applycorev1.SecretApplyCo
 
 // TODO: generic adoption handler
 type SecretAdopterHandler struct {
-	libctrl.ControlRequeueErr
+	libctrl.ControlAll
 	secretName string
 	recorder   record.EventRecorder
 
@@ -37,10 +37,10 @@ type SecretAdopterHandler struct {
 
 func NewSecretAdoptionHandler(ctrls libctrl.HandlerControls, recorder record.EventRecorder, secretName string, secretIndexer cache.Indexer, secretApplyFunc SecretApplyFunc, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&SecretAdopterHandler{
-		ControlRequeueErr: ctrls,
-		recorder:          recorder,
-		secretName:        secretName,
-		secretIndexer:     secretIndexer,
+		ControlAll:    ctrls,
+		recorder:      recorder,
+		secretName:    secretName,
+		secretIndexer: secretIndexer,
 		secretApplyFunc: func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
 			klog.V(4).InfoS("updating secret", "namespace", *secret.Namespace, "name", *secret.Name)
 			return secretApplyFunc(ctx, secret, opts)
@@ -68,9 +68,9 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 			applycorev1.Secret(s.secretName, nn.Namespace).WithLabels(map[string]string{
 				metadata.OwnerLabelKey:           nn.Name,
 				metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-			}), metadata.ForceOwned)
+			}), metadata.ApplyForceOwned)
 		if err != nil {
-			s.RequeueErr(err)
+			s.RequeueAPIErr(err)
 			return
 		}
 		s.recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for a SpiceDBCluster; it has been labelled to mark it as part of the configuration for that controller.")
@@ -111,8 +111,8 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 		delete(labels, metadata.OwnerLabelKey)
 		delete(labels, metadata.OperatorManagedLabelKey)
 		secret := applycorev1.Secret(old.Name, old.Namespace).WithLabels(labels)
-		if _, err := s.secretApplyFunc(ctx, secret, metadata.ForceOwned); err != nil {
-			s.RequeueErr(err)
+		if _, err := s.secretApplyFunc(ctx, secret, metadata.ApplyForceOwned); err != nil {
+			s.RequeueAPIErr(err)
 			return
 		}
 	}

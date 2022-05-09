@@ -13,7 +13,7 @@ import (
 )
 
 type JobCleanupHandler struct {
-	libctrl.ControlDoneRequeueErr
+	libctrl.ControlAll
 	getJobPods func(ctx context.Context) []*corev1.Pod
 	getJobs    func(ctx context.Context) []*batchv1.Job
 	deleteJob  func(ctx context.Context, name string) error
@@ -27,11 +27,11 @@ func NewJobCleanupHandler(ctrls libctrl.HandlerControls,
 	deletePod func(ctx context.Context, name string) error,
 ) handler.Handler {
 	return handler.NewHandler(&JobCleanupHandler{
-		ControlDoneRequeueErr: ctrls,
-		getJobPods:            getJobPods,
-		getJobs:               getJobs,
-		deleteJob:             deleteJob,
-		deletePod:             deletePod,
+		ControlAll: ctrls,
+		getJobPods: getJobPods,
+		getJobs:    getJobs,
+		deleteJob:  deleteJob,
+		deletePod:  deletePod,
 	}, "cleanupJob")
 }
 
@@ -55,7 +55,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 			deployment.Annotations[metadata.SpiceDBMigrationRequirementsKey]) &&
 			jobConditionHasStatus(j, batchv1.JobComplete, corev1.ConditionTrue) {
 			if err := s.deleteJob(ctx, j.GetName()); err != nil {
-				s.RequeueErr(err)
+				s.RequeueAPIErr(err)
 				return
 			}
 		}
@@ -77,7 +77,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 		}
 
 		if err := s.deletePod(ctx, p.GetName()); err != nil {
-			s.RequeueErr(err)
+			s.RequeueAPIErr(err)
 			return
 		}
 	}

@@ -12,7 +12,7 @@ import (
 )
 
 type ConfigChangedHandler struct {
-	libctrl.HandlerControls
+	libctrl.ControlAll
 	cluster     *v1alpha1.SpiceDBCluster
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
@@ -20,10 +20,10 @@ type ConfigChangedHandler struct {
 
 func NewConfigChangedHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.SpiceDBCluster, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ConfigChangedHandler{
-		HandlerControls: ctrls,
-		cluster:         cluster,
-		patchStatus:     patchStatus,
-		next:            next,
+		ControlAll:  ctrls,
+		cluster:     cluster,
+		patchStatus: patchStatus,
+		next:        next,
 	}, "checkConfigChanged")
 }
 
@@ -43,7 +43,7 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 		status.Status.SecretHash = secretHash
 		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
 		if err := c.patchStatus(ctx, status); err != nil {
-			c.RequeueErr(err)
+			c.RequeueAPIErr(err)
 			return
 		}
 	}

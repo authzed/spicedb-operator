@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,6 +41,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 		expectEvents        []string
 		expectNext          bool
 		expectRequeueErr    error
+		expectRequeueAPIErr error
 		expectRequeue       bool
 		expectCtxSecretHash string
 		expectCtxSecret     *corev1.Secret
@@ -72,6 +74,13 @@ func TestSecretAdopterHandler(t *testing.T) {
 			expectCtxSecret:     testSecret,
 		},
 		{
+			name:                "transient error adopting secret",
+			secretName:          "secret",
+			secretApplyErr:      apierrors.NewTooManyRequestsError("server having issues"),
+			expectApply:         true,
+			expectRequeueAPIErr: apierrors.NewTooManyRequestsError("server having issues"),
+		},
+		{
 			name:       "multiple secrets",
 			secretName: "secret",
 			secretsInIndex: []*corev1.Secret{testSecret, {
@@ -91,17 +100,17 @@ func TestSecretAdopterHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeControlRequeueErr{}
+			ctrls := &fake.FakeControlAll{}
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromLabel})
 			IndexAddUnstructured(t, indexer, tt.secretsInIndex)
 			recorder := record.NewFakeRecorder(1)
 			applyCalled := false
 			nextCalled := false
 			s := &SecretAdopterHandler{
-				ControlRequeueErr: ctrls,
-				secretName:        tt.secretName,
-				recorder:          recorder,
-				secretIndexer:     indexer,
+				ControlAll:    ctrls,
+				secretName:    tt.secretName,
+				recorder:      recorder,
+				secretIndexer: indexer,
 				secretApplyFunc: func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
 					applyCalled = true
 					return tt.secretApplyResult, tt.secretApplyErr
@@ -124,6 +133,10 @@ func TestSecretAdopterHandler(t *testing.T) {
 			if tt.expectRequeueErr != nil {
 				require.Equal(t, 1, ctrls.RequeueErrCallCount())
 				require.Equal(t, tt.expectRequeueErr, ctrls.RequeueErrArgsForCall(0))
+			}
+			if tt.expectRequeueAPIErr != nil {
+				require.Equal(t, 1, ctrls.RequeueAPIErrCallCount())
+				require.Equal(t, tt.expectRequeueAPIErr, ctrls.RequeueAPIErrArgsForCall(0))
 			}
 			require.Equal(t, tt.expectRequeue, ctrls.RequeueCallCount() == 1)
 		})
