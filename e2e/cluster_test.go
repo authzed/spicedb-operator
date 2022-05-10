@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
-	"time"
 
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
@@ -85,13 +84,17 @@ var datastoreDefs = []datastoreDef{
 
 			os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")
 
-			time.Sleep(2 * time.Second)
+			var instancesClient *instances.InstanceAdminClient
+			Eventually(func() *instances.InstanceAdminClient {
+				// Create instance
+				client, err := instances.NewInstanceAdminClient(ctx)
+				if err != nil {
+					return nil
+				}
+				instancesClient = client
+				return client
+			}).Should(Not(BeNil()))
 
-			// Create instance
-			instancesClient, err := instances.NewInstanceAdminClient(ctx)
-			if err != nil {
-				return err
-			}
 			defer func() { instancesClient.Close() }()
 
 			createInstanceOp, err := instancesClient.CreateInstance(ctx, &instance.CreateInstanceRequest{
