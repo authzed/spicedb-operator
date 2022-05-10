@@ -86,7 +86,7 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 		Eventually(func(g Gomega) {
 			g.Expect(logger.RunLogs()).To(Succeed())
 			assert(g)
-		}).Should(Succeed())
+		}).WithTimeout(4 * time.Minute).Should(Succeed())
 	}()
 }
 

@@ -288,7 +288,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			GinkgoWriter.Println(c.Status)
 			condition := c.FindStatusCondition("Migrating")
-			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition("cockroachdb", "head")))
+			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
 		}).Should(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -372,66 +372,6 @@ var _ = Describe("SpiceDBClusters", func() {
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 				condition := c.FindStatusCondition("ValidatingFailed")
 				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
-			}).Should(Succeed())
-		})
-	})
-
-	Describe("With skipMigrations=true", func() {
-		It("Starts SpiceDB without migrating", func() {
-			ctx, cancel := context.WithCancel(context.Background())
-			DeferCleanup(cancel)
-
-			secret := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "spicedb",
-					Namespace: "test",
-				},
-				StringData: map[string]string{
-					"logLevel":          "debug",
-					"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
-					"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-					"preshared_key":     "testtesttesttest",
-				},
-			}
-			_, err := kclient.CoreV1().Secrets("test").Create(ctx, &secret, metav1.CreateOptions{})
-			Expect(err).To(Succeed())
-			DeferCleanup(kclient.CoreV1().Secrets("test").Delete, ctx, secret.Name, metav1.DeleteOptions{})
-
-			aec := &v1alpha1.SpiceDBCluster{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       v1alpha1.SpiceDBClusterKind,
-					APIVersion: v1alpha1.SchemeGroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test",
-					Namespace: "test",
-				},
-				Spec: v1alpha1.ClusterSpec{
-					Config: map[string]string{
-						"skipMigrations":  "true",
-						"datastoreEngine": "cockroachdb",
-						"envPrefix":       "SPICEDB_ENTERPRISE",
-						"cmd":             "spicedb-enterprise",
-					},
-					SecretRef: "spicedb",
-				},
-			}
-			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aec)
-			Expect(err).To(Succeed())
-			_, err = client.Resource(v1alpha1ClusterGVR).Namespace("test").Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
-			Expect(err).To(Succeed())
-			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace("test").Delete, ctx, "test", metav1.DeleteOptions{})
-
-			var deps *appsv1.DeploymentList
-			Eventually(func(g Gomega) {
-				var err error
-				deps, err = kclient.AppsV1().Deployments(aec.Namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, aec.Name),
-				})
-				g.Expect(err).To(Succeed())
-				g.Expect(len(deps.Items)).To(Equal(1))
-				GinkgoWriter.Println(deps.Items[0].Name)
-				fmt.Println(deps)
 			}).Should(Succeed())
 		})
 	})
@@ -573,6 +513,68 @@ var _ = Describe("SpiceDBClusters", func() {
 							})
 						})
 					})
+				})
+			})
+
+			When("a valid SpiceDBCluster and skipped migrations", Ordered, func() {
+				var spiceCluster *v1alpha1.SpiceDBCluster
+
+				It("Starts SpiceDB without migrating", func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					DeferCleanup(cancel)
+
+					secret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb-nomigrate",
+							Namespace: testNamespace,
+						},
+						StringData: map[string]string{
+							"logLevel":          "debug",
+							"datastore_uri":     dsDef.datastoreUri,
+							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+							"preshared_key":     "testtesttesttest",
+						},
+					}
+					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(kclient.CoreV1().Secrets(testNamespace).Delete, ctx, secret.Name, metav1.DeleteOptions{})
+
+					spiceCluster = &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test-nomigrate-%s", dsDef.label),
+							Namespace: testNamespace,
+						},
+						Spec: v1alpha1.ClusterSpec{
+							Config: map[string]string{
+								"skipMigrations":  "true",
+								"datastoreEngine": dsDef.datastoreEngine,
+								"envPrefix":       "SPICEDB_ENTERPRISE",
+								"cmd":             "spicedb-enterprise",
+							},
+							SecretRef: "spicedb-nomigrate",
+						},
+					}
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Delete, ctx, spiceCluster.Name, metav1.DeleteOptions{})
+
+					var deps *appsv1.DeploymentList
+					Eventually(func(g Gomega) {
+						var err error
+						deps, err = kclient.AppsV1().Deployments(spiceCluster.Namespace).List(ctx, metav1.ListOptions{
+							LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, spiceCluster.Name),
+						})
+						g.Expect(err).To(Succeed())
+						g.Expect(len(deps.Items)).To(Equal(1))
+						GinkgoWriter.Println(deps.Items[0].Name)
+						fmt.Println(deps)
+					}).Should(Succeed())
 				})
 			})
 
