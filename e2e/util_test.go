@@ -72,7 +72,7 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 		ErrOut: io.MultiWriter(writers...),
 	}, true)
 	logger.Follow = true
-	logger.IgnoreLogErrors = true
+	logger.IgnoreLogErrors = false
 	logger.Object = obj
 	logger.RESTClientGetter = util.NewFactory(ClientGetter{})
 	logger.LogsForObject = polymorphichelpers.LogsForObjectFn
@@ -84,12 +84,8 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 	go func() {
 		defer GinkgoRecover()
 		Eventually(func(g Gomega) {
-			// TODO Re-enable checking for success when source of
-			// "watch closed before UntilWithoutRetry timeout" issue is found
-			// g.Expect(logger.RunLogs()).To(Succeed())
-			if err := logger.RunLogs(); err == nil {
-				assert(g)
-			}
+			g.Expect(logger.RunLogs()).To(Succeed())
+			assert(g)
 		}).Should(Succeed())
 	}()
 }
