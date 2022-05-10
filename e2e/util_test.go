@@ -66,27 +66,27 @@ func TailF(obj runtime.Object) {
 // Tail follows the logs from the object and passes them to a set of writers.
 // This is useful to e.g. write to a buffer and assert properties of the logs.
 func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
-	logger := logs.NewLogsOptions(genericclioptions.IOStreams{
-		In:     os.Stdin,
-		Out:    io.MultiWriter(writers...),
-		ErrOut: io.MultiWriter(writers...),
-	}, true)
-	logger.Follow = true
-	logger.IgnoreLogErrors = false
-	logger.Object = obj
-	logger.RESTClientGetter = util.NewFactory(ClientGetter{})
-	logger.LogsForObject = polymorphichelpers.LogsForObjectFn
-	logger.ConsumeRequestFn = logs.DefaultConsumeRequest
-	var err error
-	logger.Options, err = logger.ToLogOptions()
-	Expect(err).To(Succeed())
-	Expect(logger.Validate()).To(Succeed())
 	go func() {
 		defer GinkgoRecover()
+		logger := logs.NewLogsOptions(genericclioptions.IOStreams{
+			In:     os.Stdin,
+			Out:    io.MultiWriter(writers...),
+			ErrOut: io.MultiWriter(writers...),
+		}, true)
+		logger.Follow = false
+		logger.IgnoreLogErrors = false
+		logger.Object = obj
+		logger.RESTClientGetter = util.NewFactory(ClientGetter{})
+		logger.LogsForObject = polymorphichelpers.LogsForObjectFn
+		logger.ConsumeRequestFn = logs.DefaultConsumeRequest
+		var err error
+		logger.Options, err = logger.ToLogOptions()
+		Expect(err).To(Succeed())
+		Expect(logger.Validate()).To(Succeed())
 		Eventually(func(g Gomega) {
 			g.Expect(logger.RunLogs()).To(Succeed())
 			assert(g)
-		}).WithTimeout(4 * time.Minute).Should(Succeed())
+		}).WithTimeout(4 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 	}()
 }
 
