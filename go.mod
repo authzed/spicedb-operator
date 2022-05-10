@@ -15,6 +15,7 @@ require (
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.4.0
 	github.com/stretchr/testify v1.7.0
+	go.uber.org/atomic v1.7.0
 	go.uber.org/zap v1.19.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	k8s.io/api v0.23.5
@@ -120,7 +121,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.4.1 // indirect
 	go.opentelemetry.io/proto/otlp v0.7.0 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/crypto v0.0.0-20220131195533-30dcbda58838 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect

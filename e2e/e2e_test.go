@@ -140,7 +140,7 @@ func StartOperator() {
 		ImageName: "authzed-spicedb-enterprise",
 		ImageTag:  "dev",
 	}
-	ctrl, err := controller.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig))
+	ctrl, err := controller.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig), "")
 	Expect(err).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())

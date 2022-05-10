@@ -1,16 +1,20 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/cespare/xxhash/v2"
+	"go.uber.org/atomic"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
@@ -20,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -39,6 +42,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/bootstrap"
+	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -80,6 +85,8 @@ var (
 		rbacv1.SchemeGroupVersion.WithResource("roles"),
 		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 	}
+
+	ConfigFileResource schema.GroupVersionResource
 )
 
 type OperatorConfig struct {
@@ -97,32 +104,55 @@ type Controller struct {
 	kclient        kubernetes.Interface
 
 	// config
-	configFilePath string
-	configWatcher  *fsnotify.Watcher
 	configLock     sync.RWMutex
 	config         OperatorConfig
+	lastConfigHash atomic.Uint64
+
+	// static spicedb instances
+	lastStaticHash atomic.Uint64
 }
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string) (*Controller, error) {
+func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
 		client:         dclient,
 		queue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 		dependentQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_components_queue"),
 		informers:      make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
-		configFilePath: configFilePath,
 	}
+
+	fileInformerFactory, err := libctrl.NewFileInformerFactory()
+	if err != nil {
+		return nil, err
+	}
+
 	if len(configFilePath) > 0 {
-		var err error
-		c.configWatcher, err = fsnotify.NewWatcher()
-		if err != nil {
-			return nil, err
+		ConfigFileResource = libctrl.FileGroupVersion.WithResource(configFilePath)
+		inf := fileInformerFactory.ForResource(ConfigFileResource).Informer()
+		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
+			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
+			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
+		})
+	}
+	if len(staticClusterPath) > 0 {
+		handleStaticSpicedbs := func() {
+			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
+			if err != nil {
+				utilruntime.HandleError(err)
+				return
+			}
+			c.lastStaticHash.Store(hash)
 		}
-		if err := c.configWatcher.Add(configFilePath); err != nil {
-			return nil, err
-		}
+		StaticClusterResource := libctrl.FileGroupVersion.WithResource(staticClusterPath)
+		inf := fileInformerFactory.ForResource(StaticClusterResource).Informer()
+		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj interface{}) { handleStaticSpicedbs() },
+			UpdateFunc: func(_, obj interface{}) { handleStaticSpicedbs() },
+			DeleteFunc: func(obj interface{}) { handleStaticSpicedbs() },
+		})
 	}
 
 	ownedInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
@@ -166,14 +196,13 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		c.informers[gvr] = externalInformerFactory
 	}
 
-	c.loadConfig()
-
 	// start informers
 	ownedInformerFactory.Start(ctx.Done())
 	externalInformerFactory.Start(ctx.Done())
+	fileInformerFactory.Start(ctx.Done())
 	ownedInformerFactory.WaitForCacheSync(ctx.Done())
 	externalInformerFactory.WaitForCacheSync(ctx.Done())
-	go c.watchConfig()
+	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
 	return c, nil
 }
@@ -201,10 +230,6 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	}
 
 	<-ctx.Done()
-
-	if c.configWatcher != nil {
-		klog.Error(c.configWatcher.Close())
-	}
 }
 
 func (c *Controller) Name() string {
@@ -237,65 +262,55 @@ func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIn
 	return factory.ForResource(gvr).Informer()
 }
 
-func (c *Controller) watchConfig() {
-	if len(c.configFilePath) == 0 {
+func (c *Controller) loadConfig(path string) {
+	if len(path) == 0 {
 		return
 	}
-	for {
-		select {
-		case event, ok := <-c.configWatcher.Events:
-			if !ok {
-				return
-			}
-			if !(event.Op&fsnotify.Write == fsnotify.Write ||
-				event.Op&fsnotify.Create == fsnotify.Create ||
-				event.Op&fsnotify.Rename == fsnotify.Rename ||
-				// chmod is the event from a configmap reload in kube
-				event.Op&fsnotify.Chmod == fsnotify.Chmod) {
-				return
-			}
-			c.loadConfig()
-
-			// requeue all clusters when config changes
-			clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-			for _, cluster := range clusters {
-				c.enqueue(v1alpha1ClusterGVR, c.queue, cluster)
-			}
-		case err, ok := <-c.configWatcher.Errors:
-			if !ok {
-				return
-			}
-			utilruntime.HandleError(fmt.Errorf("error watching config file: %w", err))
-		}
-	}
-}
-
-func (c *Controller) loadConfig() {
-	if len(c.configFilePath) == 0 {
-		return
-	}
-	klog.V(3).InfoS("loading config", "path", c.configFilePath)
-	file, err := os.Open(c.configFilePath)
+	klog.V(3).InfoS("loading config", "path", path)
+	file, err := os.Open(path)
 	if err != nil {
 		panic(err)
 	}
 	defer func() {
 		utilruntime.HandleError(file.Close())
 	}()
-	decoder := yaml.NewYAMLOrJSONDecoder(file, 100)
-	c.configLock.Lock()
-	defer c.configLock.Unlock()
-	if err := decoder.Decode(&c.config); err != nil {
+	contents, err := ioutil.ReadAll(file)
+	if err != nil {
 		panic(err)
 	}
-	if len(c.config.ImageName)+len(c.config.ImageTag)+len(c.config.ImageDigest) == 0 {
-		panic(fmt.Errorf("unable to load config from %s", c.configFilePath))
+	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
+	var config OperatorConfig
+	if err := decoder.Decode(&config); err != nil {
+		panic(err)
 	}
-	klog.V(4).InfoS("updated config", "path", c.configFilePath, "config", c.config)
+
+	if len(config.ImageName)+len(config.ImageTag) == 0 && len(config.ImageName)+len(config.ImageDigest) == 0 {
+		panic(fmt.Errorf("unable to load config from %s", path))
+	}
+
+	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {
+		func() {
+			c.configLock.Lock()
+			defer c.configLock.Unlock()
+			c.config = config
+		}()
+		c.lastConfigHash.Store(hash)
+	} else {
+		// config hasn't changed
+		return
+	}
+
+	klog.V(4).InfoS("updated config", "path", path, "config", c.config)
+
+	// requeue all clusters
+	clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	for _, cluster := range clusters {
+		c.enqueue(v1alpha1ClusterGVR, c.queue, cluster)
+	}
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
