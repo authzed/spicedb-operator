@@ -34,28 +34,7 @@ Spin up a new `kind` cluster and run tests:
 PROVISION=true IMAGES=spicedb:dev ginkgo --tags=e2e -r
 ```
 
-Run against apiserver+etcd only (not all tests will run):
-```sh
-PROVISION=false APISERVER_ONLY=true ginkgo --tags=e2e -r
-```
-
 Run with `go test` (ginkgo has better signal handling, prefer ginkgo to `go test`)
 ```sh
 go test -tags=e2e ./...
 ```
-
-## Notes
-
-- `client-go` is used instead of frameworks like kubebuilder/operator-sdk/kudo
-- Design closely mimics modern kubernetes controllers, see references
-- Re-uses patterns from k/k when possible
-
-## References
-
-- https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md
-- https://github.com/kubernetes/community/blob/master/contributors/devel/sig-api-machinery/controllers.md
-- https://github.com/kcp-dev/kcp/
-- https://github.com/kubernetes/kubernetes/tree/master/staging/src/k8s.io/controller-manager
-- https://github.com/openshift/cluster-monitoring-operator/blob/07a11b1094072e1d1eea32939ac22f3e4abff095/pkg/alert/rule_controller.go
-- https://github.com/operator-framework/operator-lifecycle-manager/blob/master/pkg/controller/operators/olm/operator.go
-- https://book.kubebuilder.io/reference/markers/rbac.html
