@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spanner-service
+  labels:
+    app: spanner
+spec:
+  type: LoadBalancer
+  ports:
+    - name: grpc
+      port: 9010
+      targetPort: 9010
+      protocol: TCP
+    - name: rest
+      port: 9020
+      targetPort: 9020
+      protocol: TCP
+  selector:
+    app: spanner
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spanner
+spec:
+  serviceName: spanner-service
+  selector:
+    matchLabels:
+      app: spanner
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: spanner
+    spec:
+      containers:
+        - name: spanner
+          image: gcr.io/cloud-spanner-emulator/emulator:1.4.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9010
+            - containerPort: 9020
