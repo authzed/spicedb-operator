@@ -8,11 +8,16 @@ import (
 	_ "embed"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 
+	database "cloud.google.com/go/spanner/admin/database/apiv1"
+	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
+	adminpb "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
+	"google.golang.org/genproto/googleapis/spanner/admin/instance/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,12 +36,150 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
+type datastoreDef struct {
+	description       string
+	label             string
+	definition        []byte
+	definedObjs       int
+	datastoreUri      string
+	datastoreEngine   string
+	datastoreSetup    func(namespace string) error
+	clusterSetup      func(kclient kubernetes.Interface, namespace string) error
+	passthroughConfig map[string]string
+}
+
+var (
+	noop        = func(namespace string) error { return nil }
+	clusterNoop = func(kclient kubernetes.Interface, namespace string) error { return nil }
+)
+
 var (
 	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 
 	//go:embed cockroach.yaml
 	cockroachyaml []byte
+
+	//go:embed postgresql.yaml
+	postgresqlyaml []byte
+
+	//go:embed mysql.yaml
+	mysqlyaml []byte
+
+	//go:embed spanner.yaml
+	spanneryaml []byte
 )
+
+var datastoreDefs = []datastoreDef{
+	{
+		description:     "With Spanner",
+		label:           "spanner",
+		definition:      spanneryaml,
+		definedObjs:     2,
+		datastoreUri:    "projects/fake-project-id/instances/fake-instance/databases/fake-database-id",
+		datastoreEngine: "spanner",
+		datastoreSetup: func(namespace string) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			PortForward(namespace, "spanner-0", []string{"9010"}, ctx.Done())
+			defer cancel()
+
+			os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")
+
+			var instancesClient *instances.InstanceAdminClient
+			Eventually(func() *instances.InstanceAdminClient {
+				// Create instance
+				client, err := instances.NewInstanceAdminClient(ctx)
+				if err != nil {
+					return nil
+				}
+				instancesClient = client
+				return client
+			}).Should(Not(BeNil()))
+
+			defer func() { instancesClient.Close() }()
+
+			createInstanceOp, err := instancesClient.CreateInstance(ctx, &instance.CreateInstanceRequest{
+				Parent:     "projects/fake-project-id",
+				InstanceId: "fake-instance",
+				Instance: &instance.Instance{
+					Config:      "emulator-config",
+					DisplayName: "Test Instance",
+					NodeCount:   1,
+				},
+			})
+			Expect(err).To(Succeed())
+			spannerInstance, err := createInstanceOp.Wait(ctx)
+			Expect(err).To(Succeed())
+
+			// Create db
+			adminClient, err := database.NewDatabaseAdminClient(ctx)
+			Expect(err).To(Succeed())
+			defer adminClient.Close()
+
+			dbID := "fake-database-id"
+			op, err := adminClient.CreateDatabase(ctx, &adminpb.CreateDatabaseRequest{
+				Parent:          spannerInstance.Name,
+				CreateStatement: "CREATE DATABASE `" + dbID + "`",
+			})
+			Expect(err).To(Succeed())
+
+			_, err = op.Wait(ctx)
+			Expect(err).To(Succeed())
+			return err
+		},
+		clusterSetup: func(kclient kubernetes.Interface, namespace string) error {
+			secret := corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "spanner-credentials",
+					Namespace: namespace,
+				},
+				StringData: map[string]string{
+					"credentials.json": "{}",
+				},
+			}
+			_, err := kclient.CoreV1().Secrets(namespace).Create(context.Background(), &secret, metav1.CreateOptions{})
+			Expect(err).To(Succeed())
+			return err
+		},
+		passthroughConfig: map[string]string{
+			"datastoreSpannerEmulatorHost": "spanner-service:9010",
+			"spannerCredentials":           "spanner-credentials",
+		},
+	},
+	{
+		description:     "With CockroachDB",
+		label:           "cockroachdb",
+		definition:      cockroachyaml,
+		definedObjs:     5,
+		datastoreUri:    "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
+		datastoreEngine: "cockroachdb",
+		datastoreSetup:  noop,
+		clusterSetup:    clusterNoop,
+	},
+	{
+		description:     "With Postgresql",
+		label:           "postgresql",
+		definition:      postgresqlyaml,
+		definedObjs:     2,
+		datastoreUri:    "postgresql://postgres:testpassword@postgresql-db-public:5432/postgres?sslmode=disable",
+		datastoreEngine: "postgres",
+		datastoreSetup:  noop,
+		clusterSetup:    clusterNoop,
+	},
+	{
+		description:     "With MySQL",
+		label:           "mysql",
+		definition:      mysqlyaml,
+		definedObjs:     2,
+		datastoreUri:    "root:password@tcp(mysql-public:3306)/mysql?parseTime=true",
+		datastoreEngine: "mysql",
+		datastoreSetup:  noop,
+		clusterSetup:    clusterNoop,
+	},
+}
+
+func (def datastoreDef) namespace() string {
+	return fmt.Sprintf("test-%s", def.label)
+}
 
 var _ = Describe("SpiceDBClusters", func() {
 	var (
@@ -72,7 +215,6 @@ var _ = Describe("SpiceDBClusters", func() {
 			g.Expect(err).To(Succeed())
 			g.Expect(len(deps.Items)).To(Equal(1))
 			g.Expect(deps.Items[0].Spec.Template.Spec.Containers[0].Image).To(Equal(image))
-			GinkgoWriter.Println(deps.Items[0].Status)
 			g.Expect(deps.Items[0].Status.AvailableReplicas).ToNot(BeZero())
 
 			endpoint, err := kclient.CoreV1().Endpoints(namespace).Get(ctx, owner, metav1.GetOptions{})
@@ -137,8 +279,8 @@ var _ = Describe("SpiceDBClusters", func() {
 		}).Should(Succeed())
 	}
 
-	AssertMigrationsCompleted := func(image string, args func() (string, string)) {
-		namespace, name := args()
+	AssertMigrationsCompleted := func(image string, args func() (string, string, string)) {
+		namespace, name, datastoreEngine := args()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		Eventually(func(g Gomega) {
@@ -149,7 +291,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			GinkgoWriter.Println(c.Status)
 			condition := c.FindStatusCondition("Migrating")
-			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition("cockroachdb", "head")))
+			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
 		}).Should(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -162,6 +304,25 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			job := &jobs.Items[len(jobs.Items)-1]
 			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(image))
+			if datastoreEngine == "spanner" {
+				var spannerVolume corev1.Volume
+				for _, v := range job.Spec.Template.Spec.Volumes {
+					if v.Name == "spanner" {
+						spannerVolume = v
+						continue
+					}
+				}
+				Expect(spannerVolume).NotTo(BeNil())
+
+				var volMount corev1.VolumeMount
+				for _, mount := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
+					if mount.Name == "spanner" {
+						volMount = mount
+					}
+				}
+				Expect(volMount).NotTo(BeNil())
+			}
+
 			TailF(job)
 			Eventually(func(g Gomega) {
 				job, err := kclient.BatchV1().Jobs(namespace).Get(ctx, job.Name, metav1.GetOptions{})
@@ -182,6 +343,8 @@ var _ = Describe("SpiceDBClusters", func() {
 	})
 
 	Describe("With invalid config", func() {
+		testNamespace := "test"
+
 		It("Reports invalid config on the status", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
@@ -192,7 +355,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test",
-					Namespace: "test",
+					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.ClusterSpec{
 					Config:    map[string]string{},
@@ -201,13 +364,13 @@ var _ = Describe("SpiceDBClusters", func() {
 			}
 			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aec)
 			Expect(err).To(Succeed())
-			_, err = client.Resource(v1alpha1ClusterGVR).Namespace("test").Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+			_, err = client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 			Expect(err).To(Succeed())
-			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace("test").Delete, ctx, "test", metav1.DeleteOptions{})
+			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Delete, ctx, "test", metav1.DeleteOptions{})
 
 			var c *v1alpha1.SpiceDBCluster
 			Eventually(func(g Gomega) {
-				out, err := client.Resource(v1alpha1ClusterGVR).Namespace("test").Get(ctx, "test", metav1.GetOptions{})
+				out, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Get(ctx, "test", metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
 				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
 				condition := c.FindStatusCondition("ValidatingFailed")
@@ -216,310 +379,353 @@ var _ = Describe("SpiceDBClusters", func() {
 		})
 	})
 
-	Describe("With skipMigrations=true", func() {
-		It("Starts SpiceDB without migrating", func() {
-			ctx, cancel := context.WithCancel(context.Background())
-			DeferCleanup(cancel)
+	for _, dsDef := range datastoreDefs {
+		dsDef := dsDef
+		testNamespace := dsDef.namespace()
+		Describe(dsDef.description, Ordered, Label(dsDef.label), func() {
+			BeforeAll(func() {
+				CreateNamespace(testNamespace)
+				DeferCleanup(DeleteNamespace, testNamespace)
 
-			secret := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "spicedb",
-					Namespace: "test",
-				},
-				StringData: map[string]string{
-					"logLevel":          "debug",
-					"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
-					"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-					"preshared_key":     "testtesttesttest",
-				},
-			}
-			_, err := kclient.CoreV1().Secrets("test").Create(ctx, &secret, metav1.CreateOptions{})
-			Expect(err).To(Succeed())
-			DeferCleanup(kclient.CoreV1().Secrets("test").Delete, ctx, secret.Name, metav1.DeleteOptions{})
+				dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
+				Expect(err).To(Succeed())
+				mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+				decoder := yaml.NewYAMLToJSONDecoder(ioutil.NopCloser(bytes.NewReader(dsDef.definition)))
+				objs := make([]*unstructured.Unstructured, 0, 5)
+				var db *appsv1.StatefulSet
+				for {
+					o := map[string]interface{}{}
+					if err := decoder.Decode(&o); err != nil {
+						break
+					}
+					u := unstructured.Unstructured{
+						Object: o,
+					}
+					objs = append(objs, &u)
+					gvk := u.GroupVersionKind()
+					if gvk.Kind == "StatefulSet" {
+						Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &db)).To(Succeed())
+					}
+					mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(mapping.Resource).Namespace(testNamespace).Create(context.Background(), &u, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(client.Resource(mapping.Resource).Namespace(testNamespace).Delete, context.Background(), u.GetName(), metav1.DeleteOptions{})
+				}
+				Expect(len(objs)).To(Equal(dsDef.definedObjs))
 
-			aec := &v1alpha1.SpiceDBCluster{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       v1alpha1.SpiceDBClusterKind,
-					APIVersion: v1alpha1.SchemeGroupVersion.String(),
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test",
-					Namespace: "test",
-				},
-				Spec: v1alpha1.ClusterSpec{
-					Config: map[string]string{
-						"skipMigrations":  "true",
-						"datastoreEngine": "cockroachdb",
+				By(fmt.Sprintf("waiting for %s to start...", dsDef.label))
+				Eventually(func(g Gomega) {
+					out, err := kclient.AppsV1().StatefulSets(testNamespace).Get(context.Background(), db.GetName(), metav1.GetOptions{})
+					g.Expect(err).To(Succeed())
+					g.Expect(out.Status.ReadyReplicas).ToNot(BeZero())
+				}).Should(Succeed())
+				Eventually(func(g Gomega) {
+					out, err := kclient.CoreV1().Pods(testNamespace).Get(context.Background(), db.GetName()+"-0", metav1.GetOptions{})
+					g.Expect(err).To(Succeed())
+					g.Expect(out.Status.Phase).To(Equal(corev1.PodRunning))
+				}).Should(Succeed())
+				By(fmt.Sprintf("%s running.", dsDef.label))
+
+				Eventually(func(g Gomega) {
+					err = dsDef.datastoreSetup(testNamespace)
+					Expect(err).To(Succeed())
+				}).Should(Succeed())
+				By(fmt.Sprintf("%s setup complete.", dsDef.label))
+
+				Eventually(func(g Gomega) {
+					err = dsDef.clusterSetup(kclient, testNamespace)
+					Expect(err).To(Succeed())
+				}).Should(Succeed())
+				By(fmt.Sprintf("%s cluster setup complete.", dsDef.label))
+			})
+
+			When("a valid SpiceDBCluster is created (no TLS)", Ordered, func() {
+				var cluster *v1alpha1.SpiceDBCluster
+
+				BeforeAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					DeferCleanup(cancel)
+
+					secret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb",
+							Namespace: testNamespace,
+						},
+						StringData: map[string]string{
+							"logLevel":          "debug",
+							"datastore_uri":     dsDef.datastoreUri,
+							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+							"preshared_key":     "testtesttesttest",
+						},
+					}
+					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+
+					config := map[string]string{
+						"datastoreEngine": dsDef.datastoreEngine,
 						"envPrefix":       "SPICEDB_ENTERPRISE",
 						"cmd":             "spicedb-enterprise",
-					},
-					SecretRef: "spicedb",
-				},
-			}
-			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aec)
-			Expect(err).To(Succeed())
-			_, err = client.Resource(v1alpha1ClusterGVR).Namespace("test").Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
-			Expect(err).To(Succeed())
-			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace("test").Delete, ctx, "test", metav1.DeleteOptions{})
-
-			var deps *appsv1.DeploymentList
-			Eventually(func(g Gomega) {
-				var err error
-				deps, err = kclient.AppsV1().Deployments(aec.Namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, aec.Name),
-				})
-				g.Expect(err).To(Succeed())
-				g.Expect(len(deps.Items)).To(Equal(1))
-				GinkgoWriter.Println(deps.Items[0].Name)
-				fmt.Println(deps)
-			}).Should(Succeed())
-		})
-	})
-
-	Describe("With CockroachDB", Ordered, Label("cockroachdb"), func() {
-		BeforeAll(func() {
-			dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
-			Expect(err).To(Succeed())
-			mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-			decoder := yaml.NewYAMLToJSONDecoder(ioutil.NopCloser(bytes.NewReader(cockroachyaml)))
-			objs := make([]*unstructured.Unstructured, 0, 4)
-			var crdb *appsv1.StatefulSet
-			for {
-				o := map[string]interface{}{}
-				if err := decoder.Decode(&o); err != nil {
-					break
-				}
-				u := unstructured.Unstructured{
-					Object: o,
-				}
-				objs = append(objs, &u)
-				gvk := u.GroupVersionKind()
-				if gvk.Kind == "StatefulSet" {
-					Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &crdb)).To(Succeed())
-				}
-				mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-				Expect(err).To(Succeed())
-				_, err = client.Resource(mapping.Resource).Namespace("test").Create(context.Background(), &u, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-				DeferCleanup(client.Resource(mapping.Resource).Namespace("test").Delete, context.Background(), u.GetName(), metav1.DeleteOptions{})
-			}
-			Expect(len(objs)).To(Equal(5))
-
-			By("waiting for crdb to start...")
-			Eventually(func(g Gomega) {
-				out, err := kclient.AppsV1().StatefulSets("test").Get(context.Background(), crdb.GetName(), metav1.GetOptions{})
-				g.Expect(err).To(Succeed())
-				g.Expect(out.Status.ReadyReplicas).ToNot(BeZero())
-			}).Should(Succeed())
-			By("crdb running.")
-		})
-
-		When("a valid SpiceDBCluster is created (no TLS)", Ordered, func() {
-			var cluster *v1alpha1.SpiceDBCluster
-
-			BeforeAll(func() {
-				ctx, cancel := context.WithCancel(context.Background())
-				DeferCleanup(cancel)
-
-				secret := corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "spicedb",
-						Namespace: "test",
-					},
-					StringData: map[string]string{
-						"logLevel":          "debug",
-						"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
-						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-						"preshared_key":     "testtesttesttest",
-					},
-				}
-				_, err := kclient.CoreV1().Secrets("test").Create(ctx, &secret, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-
-				cluster = &v1alpha1.SpiceDBCluster{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       v1alpha1.SpiceDBClusterKind,
-						APIVersion: v1alpha1.SchemeGroupVersion.String(),
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test",
-						Namespace: "test",
-					},
-					Spec: v1alpha1.ClusterSpec{
-						Config: map[string]string{
-							"datastoreEngine": "cockroachdb",
-							"envPrefix":       "SPICEDB_ENTERPRISE",
-							"cmd":             "spicedb-enterprise",
+					}
+					for k, v := range dsDef.passthroughConfig {
+						config[k] = v
+					}
+					cluster = &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
 						},
-						SecretRef: "spicedb",
-					},
-				}
-				u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
-				Expect(err).To(Succeed())
-				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-
-				AssertMigrationsCompleted("authzed-spicedb-enterprise:dev", func() (string, string) { return cluster.Namespace, cluster.Name })
-			})
-
-			AfterAll(func() {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-
-				Expect(client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Delete(ctx, cluster.Name, metav1.DeleteOptions{})).To(Succeed())
-
-				AssertDependentResourceCleanup(cluster.Namespace, cluster.Name, "spicedb")
-
-				Expect(kclient.CoreV1().Secrets(cluster.Namespace).Delete(ctx, "spicedb", metav1.DeleteOptions{})).To(Succeed())
-			})
-
-			Describe("with a migrated datastore", func() {
-				It("creates a spicedb cluster", func() {
-					AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
-						func() (string, string) { return cluster.Namespace, cluster.Name },
-						Not(ContainSubstring("ERROR: kuberesolver")))
-				})
-				When("the spicedb cluster is running", func() {
-					It("cleans up the migration job", func() {
-						AssertMigrationJobCleanup(func() (string, string) {
-							return cluster.Namespace, cluster.Name
-						})
-					})
-				})
-			})
-		})
-
-		When("a valid SpiceDBCluster is created (with TLS)", Ordered, func() {
-			var spiceCluster *v1alpha1.SpiceDBCluster
-
-			BeforeAll(func() {
-				ctx, cancel := context.WithCancel(context.Background())
-				DeferCleanup(cancel)
-
-				spiceCluster = &v1alpha1.SpiceDBCluster{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       v1alpha1.SpiceDBClusterKind,
-						APIVersion: v1alpha1.SchemeGroupVersion.String(),
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test2",
-						Namespace: "test",
-					},
-					Spec: v1alpha1.ClusterSpec{
-						Config: map[string]string{
-							"datastoreEngine": "cockroachdb",
-							"envPrefix":       "SPICEDB_ENTERPRISE",
-							"cmd":             "spicedb-enterprise",
-							"tlsSecretName":   "spicedb-grpc-tls",
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test-%s", dsDef.label),
+							Namespace: testNamespace,
 						},
-						SecretRef: "spicedb2",
-					},
-				}
+						Spec: v1alpha1.ClusterSpec{
+							Config:    config,
+							SecretRef: "spicedb",
+						},
+					}
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
 
-				certPem, keyPem, err := cert.GenerateSelfSignedCertKey("test2", nil, []string{
-					"localhost",
-					"test2." + spiceCluster.Namespace,
-					fmt.Sprintf("test2.%s.svc.spiceCluster.local", spiceCluster.Namespace),
-				})
-				Expect(err).To(Succeed())
-
-				tlsSecret := corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "spicedb-grpc-tls",
-						Namespace: spiceCluster.Namespace,
-					},
-					Data: map[string][]byte{
-						"tls.key": keyPem,
-						"tls.crt": certPem,
-					},
-				}
-				_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-
-				secret := corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "spicedb2",
-						Namespace: "test",
-					},
-					StringData: map[string]string{
-						"datastore_uri":     "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
-						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-						"preshared_key":     "testtesttesttest",
-					},
-				}
-				_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-
-				u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
-				Expect(err).To(Succeed())
-				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
-				Expect(err).To(Succeed())
-
-				AssertMigrationsCompleted("authzed-spicedb-enterprise:dev",
-					func() (string, string) {
-						return spiceCluster.Namespace, spiceCluster.Name
-					})
-			})
-
-			AfterAll(func() {
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-
-				Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
-
-				AssertDependentResourceCleanup(spiceCluster.Namespace, spiceCluster.Name, "spicedb2")
-
-				Expect(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete(ctx, "spicedb2", metav1.DeleteOptions{})).To(Succeed())
-			})
-
-			Describe("with a migrated datastore", func() {
-				It("creates a spicedb cluster", func() {
-					AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
-						func() (string, string) {
-							return spiceCluster.Namespace, spiceCluster.Name
-						}, Not(ContainSubstring("ERROR: kuberesolver")))
+					AssertMigrationsCompleted("authzed-spicedb-enterprise:dev", func() (string, string, string) { return cluster.Namespace, cluster.Name, dsDef.datastoreEngine })
 				})
 
-				When("the spicedb cluster is running", func() {
-					It("cleans up the migration job", func() {
-						AssertMigrationJobCleanup(func() (string, string) {
-							return spiceCluster.Namespace, spiceCluster.Name
+				AfterAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+
+					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Delete(ctx, cluster.Name, metav1.DeleteOptions{})).To(Succeed())
+
+					AssertDependentResourceCleanup(cluster.Namespace, cluster.Name, "spicedb")
+
+					Expect(kclient.CoreV1().Secrets(cluster.Namespace).Delete(ctx, "spicedb", metav1.DeleteOptions{})).To(Succeed())
+				})
+
+				Describe("with a migrated datastore", func() {
+					It("creates a spicedb cluster", func() {
+						AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
+							func() (string, string) { return cluster.Namespace, cluster.Name },
+							Not(ContainSubstring("ERROR: kuberesolver")))
+					})
+					When("the spicedb cluster is running", func() {
+						It("cleans up the migration job", func() {
+							AssertMigrationJobCleanup(func() (string, string) {
+								return cluster.Namespace, cluster.Name
+							})
 						})
 					})
+				})
+			})
 
-					When("the image name/tag are updated", Ordered, func() {
-						var imageName string
+			When("a valid SpiceDBCluster and skipped migrations", Ordered, func() {
+				var spiceCluster *v1alpha1.SpiceDBCluster
 
-						BeforeAll(func() {
-							newConfig := controller.OperatorConfig{
-								ImageTag:  "updated",
-								ImageName: "authzed-spicedb-enterprise",
-							}
-							imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
-							WriteConfig(newConfig)
+				It("Starts SpiceDB without migrating", func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					DeferCleanup(cancel)
+
+					secret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb-nomigrate",
+							Namespace: testNamespace,
+						},
+						StringData: map[string]string{
+							"logLevel":          "debug",
+							"datastore_uri":     dsDef.datastoreUri,
+							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+							"preshared_key":     "testtesttesttest",
+						},
+					}
+					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(kclient.CoreV1().Secrets(testNamespace).Delete, ctx, secret.Name, metav1.DeleteOptions{})
+
+					spiceCluster = &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test-nomigrate-%s", dsDef.label),
+							Namespace: testNamespace,
+						},
+						Spec: v1alpha1.ClusterSpec{
+							Config: map[string]string{
+								"skipMigrations":  "true",
+								"datastoreEngine": dsDef.datastoreEngine,
+								"envPrefix":       "SPICEDB_ENTERPRISE",
+								"cmd":             "spicedb-enterprise",
+							},
+							SecretRef: "spicedb-nomigrate",
+						},
+					}
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Delete, ctx, spiceCluster.Name, metav1.DeleteOptions{})
+
+					var deps *appsv1.DeploymentList
+					Eventually(func(g Gomega) {
+						var err error
+						deps, err = kclient.AppsV1().Deployments(spiceCluster.Namespace).List(ctx, metav1.ListOptions{
+							LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, spiceCluster.Name),
 						})
+						g.Expect(err).To(Succeed())
+						g.Expect(len(deps.Items)).To(Equal(1))
+						GinkgoWriter.Println(deps.Items[0].Name)
+						fmt.Println(deps)
+					}).Should(Succeed())
+				})
+			})
 
-						It("migrates to the latest version", func() {
-							AssertMigrationsCompleted(imageName,
-								func() (string, string) {
-									return spiceCluster.Namespace, spiceCluster.Name
-								})
+			When("a valid SpiceDBCluster is created (with TLS)", Ordered, func() {
+				var spiceCluster *v1alpha1.SpiceDBCluster
+
+				BeforeAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					DeferCleanup(cancel)
+
+					config := map[string]string{
+						"datastoreEngine": dsDef.datastoreEngine,
+						"envPrefix":       "SPICEDB_ENTERPRISE",
+						"cmd":             "spicedb-enterprise",
+						"tlsSecretName":   "spicedb-grpc-tls",
+					}
+					for k, v := range dsDef.passthroughConfig {
+						config[k] = v
+					}
+					spiceCluster = &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test2-%s", dsDef.label),
+							Namespace: testNamespace,
+						},
+						Spec: v1alpha1.ClusterSpec{
+							Config:    config,
+							SecretRef: "spicedb2",
+						},
+					}
+
+					certPem, keyPem, err := cert.GenerateSelfSignedCertKey("test2", nil, []string{
+						"localhost",
+						"test2." + spiceCluster.Namespace,
+						fmt.Sprintf("test2.%s.svc.spiceCluster.local", spiceCluster.Namespace),
+					})
+					Expect(err).To(Succeed())
+
+					tlsSecret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb-grpc-tls",
+							Namespace: spiceCluster.Namespace,
+						},
+						Data: map[string][]byte{
+							"tls.key": keyPem,
+							"tls.crt": certPem,
+						},
+					}
+					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+
+					secret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb2",
+							Namespace: spiceCluster.Namespace,
+						},
+						StringData: map[string]string{
+							"datastore_uri":     dsDef.datastoreUri,
+							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+							"preshared_key":     "testtesttesttest",
+						},
+					}
+					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+
+					AssertMigrationsCompleted("authzed-spicedb-enterprise:dev",
+						func() (string, string, string) {
+							return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 						})
+				})
 
-						It("updates the deployment", func() {
-							AssertHealthySpiceDBCluster(imageName, func() (string, string) {
-								return spiceCluster.Namespace, spiceCluster.Name
+				AfterAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+
+					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
+
+					AssertDependentResourceCleanup(spiceCluster.Namespace, spiceCluster.Name, "spicedb2")
+
+					Expect(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete(ctx, "spicedb2", metav1.DeleteOptions{})).To(Succeed())
+				})
+
+				Describe("with a migrated datastore", func() {
+					It("creates a spicedb cluster", func() {
+						AssertHealthySpiceDBCluster("authzed-spicedb-enterprise:dev",
+							func() (string, string) {
+								return testNamespace, spiceCluster.Name
 							}, Not(ContainSubstring("ERROR: kuberesolver")))
-						})
+					})
 
-						It("deletes the migration job", func() {
+					When("the spicedb cluster is running", func() {
+						It("cleans up the migration job", func() {
 							AssertMigrationJobCleanup(func() (string, string) {
 								return spiceCluster.Namespace, spiceCluster.Name
+							})
+						})
+
+						When("the image name/tag are updated", Ordered, func() {
+							var imageName string
+
+							BeforeAll(func() {
+								newConfig := controller.OperatorConfig{
+									ImageTag:  "updated",
+									ImageName: "authzed-spicedb-enterprise",
+								}
+								imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
+								WriteConfig(newConfig)
+							})
+
+							AfterAll(func() {
+								newConfig := controller.OperatorConfig{
+									ImageName: "authzed-spicedb-enterprise",
+									ImageTag:  "dev",
+								}
+								imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
+								WriteConfig(newConfig)
+							})
+
+							It("migrates to the latest version", func() {
+								AssertMigrationsCompleted(imageName,
+									func() (string, string, string) {
+										return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
+									})
+							})
+
+							It("updates the deployment", func() {
+								AssertHealthySpiceDBCluster(imageName, func() (string, string) {
+									return spiceCluster.Namespace, spiceCluster.Name
+								}, Not(ContainSubstring("ERROR: kuberesolver")))
+							})
+
+							It("deletes the migration job", func() {
+								AssertMigrationJobCleanup(func() (string, string) {
+									return spiceCluster.Namespace, spiceCluster.Name
+								})
 							})
 						})
 					})
 				})
 			})
 		})
-	})
+	}
 })
