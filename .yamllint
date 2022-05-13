@@ -1,0 +1,14 @@
+# vim: ft=yaml
+---
+ignore: |
+  config/
+  pkg/bootstrap/crds
+  e2e/
+yaml-files:
+  - "*.yaml"
+  - "*.yml"
+  - ".yamllint"
+extends: "default"
+rules:
+  quoted-strings: "enable"
+  line-length: "disable"

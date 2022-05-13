@@ -1,0 +1,88 @@
+---
+name: "Build & Test"
+on:  # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - "main"
+    paths:
+      - ".github/workflows/build-test.yaml"
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "pkg/**"
+      - "e2e/**"
+      - "internal/**"
+  pull_request:
+    branches:
+      - "*"
+    paths:
+      - ".github/workflows/build-test.yaml"
+      - "Dockerfile"
+      - "go.mod"
+      - "go.sum"
+      - "cmd/**"
+      - "pkg/**"
+      - "e2e/**"
+      - "internal/**"
+jobs:
+  build:
+    name: "Build Binary"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v3"
+      - uses: "actions/setup-go@v3"
+        with:
+          go-version: "~1.18"
+      - uses: "authzed/actions/go-build@main"
+
+  image-build:
+    name: "Build Container Image"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v3"
+      - uses: "actions/setup-go@v3"
+        with:
+          go-version: "~1.18"
+      - uses: "authzed/actions/docker-build@main"
+        with:
+          push: false
+          tags: "authzed/spicedb-operator:ci"
+          buildx: false
+          qemu: false
+
+  test:
+    name: "Test"
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: "actions/checkout@v3"
+        with:
+          submodules: true
+      - uses: "actions/setup-go@v2"
+        with:
+          go-version: "^1.18"
+      - uses: "actions/checkout@v3"
+        with:
+          repository: "authzed/spicedb"
+          path: "spicedb"
+          submodules: true
+      - uses: "docker/setup-qemu-action@v2"
+      - uses: "docker/setup-buildx-action@v2"
+      - name: "Tag Test SpiceDB Image"
+        uses: "docker/build-push-action@v3"
+        with:
+          context: "spicedb"
+          file: "spicedb/Dockerfile"
+          tags: "spicedb:dev,spicedb:updated"
+          outputs: "type=docker,dest=/tmp/image.tar"
+      - name: "Run Ginkgo Tests"
+        run: "go run github.com/onsi/ginkgo/v2/ginkgo --skip-package ./spicedb --tags=e2e -r --procs=2 --randomize-all --randomize-suites --fail-on-pending --race --trace --json-report=report.json"
+        env:
+          PROVISION: "true"
+          ARCHIVES: "/tmp/image.tar"
+      - uses: "docker/build-push-action@v2"
+        with:
+          context: "./"
+          file: "./Dockerfile"
+          push: false
+          tags: "spicedb-operator:dev"

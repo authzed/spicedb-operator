@@ -79,7 +79,7 @@ func TestEndToEnd(t *testing.T) {
 	klog.SetOutput(GinkgoWriter)
 
 	// Test Defaults
-	SetDefaultEventuallyTimeout(2 * time.Minute)
+	SetDefaultEventuallyTimeout(3 * time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)

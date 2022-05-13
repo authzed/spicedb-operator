@@ -13,6 +13,7 @@ import (
 
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
+	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -36,25 +37,14 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
-type datastoreDef struct {
-	description       string
-	label             string
-	definition        []byte
-	definedObjs       int
-	datastoreUri      string
-	datastoreEngine   string
-	datastoreSetup    func(namespace string) error
-	clusterSetup      func(kclient kubernetes.Interface, namespace string) error
-	passthroughConfig map[string]string
-}
-
-var (
-	noop        = func(namespace string) error { return nil }
-	clusterNoop = func(kclient kubernetes.Interface, namespace string) error { return nil }
-)
-
 var (
 	v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
+
+	spicedbEnvPrefix = stringz.DefaultEmpty(os.Getenv("SPICEDB_ENV_PREFIX"), "SPICEDB")
+	spicedbCmd       = stringz.DefaultEmpty(os.Getenv("SPICEDB_CMD"), "spicedb")
+
+	noop        = func(namespace string) error { return nil }
+	clusterNoop = func(kclient kubernetes.Interface, namespace string) error { return nil }
 
 	//go:embed cockroach.yaml
 	cockroachyaml []byte
@@ -68,6 +58,18 @@ var (
 	//go:embed spanner.yaml
 	spanneryaml []byte
 )
+
+type datastoreDef struct {
+	description       string
+	label             string
+	definition        []byte
+	definedObjs       int
+	datastoreUri      string
+	datastoreEngine   string
+	datastoreSetup    func(namespace string) error
+	clusterSetup      func(kclient kubernetes.Interface, namespace string) error
+	passthroughConfig map[string]string
+}
 
 var datastoreDefs = []datastoreDef{
 	{
@@ -464,8 +466,8 @@ var _ = Describe("SpiceDBClusters", func() {
 
 					config := map[string]string{
 						"datastoreEngine": dsDef.datastoreEngine,
-						"envPrefix":       "SPICEDB_ENTERPRISE",
-						"cmd":             "spicedb-enterprise",
+						"envPrefix":       spicedbEnvPrefix,
+						"cmd":             spicedbCmd,
 					}
 					for k, v := range dsDef.passthroughConfig {
 						config[k] = v
@@ -555,8 +557,8 @@ var _ = Describe("SpiceDBClusters", func() {
 							Config: map[string]string{
 								"skipMigrations":  "true",
 								"datastoreEngine": dsDef.datastoreEngine,
-								"envPrefix":       "SPICEDB_ENTERPRISE",
-								"cmd":             "spicedb-enterprise",
+								"envPrefix":       spicedbEnvPrefix,
+								"cmd":             spicedbCmd,
 							},
 							SecretRef: "spicedb-nomigrate",
 						},
@@ -590,8 +592,8 @@ var _ = Describe("SpiceDBClusters", func() {
 
 					config := map[string]string{
 						"datastoreEngine": dsDef.datastoreEngine,
-						"envPrefix":       "SPICEDB_ENTERPRISE",
-						"cmd":             "spicedb-enterprise",
+						"envPrefix":       spicedbEnvPrefix,
+						"cmd":             spicedbCmd,
 						"tlsSecretName":   "spicedb-grpc-tls",
 					}
 					for k, v := range dsDef.passthroughConfig {
