@@ -98,7 +98,6 @@ Run with `go test` (ginkgo has better signal handling, prefer ginkgo to `go test
 go test -tags=e2e ./...
 ```
 
-
 ### Adding dependencies
 
 This project does not use anything other than the standard [Go modules] toolchain for managing dependencies.

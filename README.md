@@ -6,45 +6,57 @@
 [![Discord Server](https://img.shields.io/discord/844600078504951838?color=7289da&logo=discord "Discord Server")](https://discord.gg/jTysUaxXzM)
 [![Twitter](https://img.shields.io/twitter/follow/authzed?color=%23179CF0&logo=twitter&style=flat-square "@authzed on Twitter")](https://twitter.com/authzed)
 
-## Architecture
+A Kubernetes controller for managing instances of [SpiceDB]
 
-- The operator watches all namespaces in a cluster.
-- The `SpiceDBCluster` object holds config for a single SpiceDB Cluster
-- Other "dependent" objects (deployments, services, etc) will be created in response to a `SpiceDBCluster`.
-- The operator watches all `SpiceDBCluster` objects in the cluster, unless they are marked explicitly `authzed.com/unmanaged` (for debugging)
-- The operator only watches dependent objects that are labelled as a component of a `SpiceDBCluster`.
-- A change in a dependent resource only triggers re-reconciliation of the `SpiceDBCluster`, which is then checked for consistency.
-  - This may change in the future, but keeps the state machine simple for now.
-- Currently there's no leader election; just stop the old operator and start a new one, and only run one.
+Features:
 
-## Debug
+- Create, manage, and scale fully-configured SpiceDB clusters with a single [Custom Resource]
+- Run migrations automatically when upgrading SpiceDB versions
 
-- metrics on `:8080/metrics`
-- profiles on `:8080/debug/pprof`
-- control log level with `-v=1` to `-v=8`
+See [CONTRIBUTING.md] for instructions on how to contribute and perform common tasks like building the project and running tests.
 
-## Tests
+## Quickstart
 
-Install ginkgo:
+The [quickstart.yaml] has definitions that will:
 
-```sh
-go install github.com/onsi/ginkgo/v2/ginkgo@v2
+- Run cockroachdb
+- Create a `spicedb` namespace
+- Install the operator and the CRDs
+- Create a 3 node spicedb cluster configured to talk to the cockroach cluster
+
+We recommend using a local cluster like [kind] or [docker destktop].
+
+## Example
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb
+  namespace: spice
+spec:
+  # config for spicedb
+  config:
+    replicas: "2"
+    datastoreEngine: cockroachdb
+  # a secret in the same namespace 
+  secretName: spicedb
+status:
+  image: authzed-spicedb-enterprise:dev
+  observedGeneration: 1
+  secretHash: hashOfSecret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spicedb
+  namespace: spice
+data:
+  datastore_uri: "postgresql:///the-url-of-your-datastore"
+  preshared_key: "averysecretpresharedkey" 
 ```
 
-Run against an existing cluster with images already loaded (current kubeconfig context)
-
-```sh
-ginkgo --tags=e2e -r
-```
-
-Spin up a new `kind` cluster and run tests:
-
-```sh
-PROVISION=true IMAGES=spicedb:dev,spicedb:updated ginkgo --tags=e2e -r
-```
-
-Run with `go test` (ginkgo has better signal handling, prefer ginkgo to `go test`)
-
-```sh
-go test -tags=e2e ./...
-```
+[SpiceDB]: https://github.com/authzed/spicedb
+[CONTRIBUTING.md]: CONTRIBUTING.md
+[Custom Resource]: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
+[quickstart.yaml]: quickstart.yaml
