@@ -96,12 +96,12 @@ type OperatorConfig struct {
 }
 
 type Controller struct {
-	queue          workqueue.RateLimitingInterface
-	dependentQueue workqueue.RateLimitingInterface
-	client         dynamic.Interface
-	informers      map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder       record.EventRecorder
-	kclient        kubernetes.Interface
+	queue                      workqueue.RateLimitingInterface
+	dependentQueue             workqueue.RateLimitingInterface
+	sourceClient, targetClient dynamic.Interface
+	informers                  map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
+	recorder                   record.EventRecorder
+	kclient                    kubernetes.Interface
 
 	// config
 	configLock     sync.RWMutex
@@ -114,10 +114,11 @@ type Controller struct {
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
+func NewController(ctx context.Context, sourceClient, targetClient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
-		client:         dclient,
+		targetClient:   targetClient,
+		sourceClient:   sourceClient,
 		queue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 		dependentQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_components_queue"),
 		informers:      make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
@@ -139,7 +140,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	}
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
-			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
+			hash, err := bootstrap.Cluster(ctx, c.sourceClient, staticClusterPath, c.lastStaticHash.Load())
 			if err != nil {
 				utilruntime.HandleError(err)
 				return
@@ -156,7 +157,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	}
 
 	ownedInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
-		dclient,
+		sourceClient,
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
@@ -164,7 +165,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		},
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
-		dclient,
+		targetClient,
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
@@ -404,7 +405,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		done:      done,
 		requeue:   requeue,
 		cluster:   &cluster,
-		client:    c.client,
+		client:    c.sourceClient,
 		kclient:   c.kclient,
 		informers: c.informers,
 		recorder:  c.recorder,
