@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,7 @@ func TestValidateConfigHandler(t *testing.T) {
 	tests := []struct {
 		name string
 
-		rawConfig      map[string]string
+		rawConfig      json.RawMessage
 		currentStatus  *v1alpha1.SpiceDBCluster
 		existingSecret *corev1.Secret
 
@@ -36,10 +37,10 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name:          "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
-			rawConfig: map[string]string{
+			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
-				"tlsSecretName":   "secret",
-			},
+				"tlsSecretName":   "secret"
+			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
@@ -53,10 +54,10 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name:          "valid config with warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
-			rawConfig: map[string]string{
+			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
-				"extraPodLabels":  "wrong:format",
-			},
+				"extraPodLabels":  "wrong:format"
+			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
@@ -71,9 +72,9 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name:          "invalid config",
 			currentStatus: &v1alpha1.SpiceDBCluster{},
-			rawConfig: map[string]string{
-				"badkey": "cockroachdb",
-			},
+			rawConfig: json.RawMessage(`{
+				"badkey": "cockroachdb"
+			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
@@ -88,9 +89,9 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name:          "invalid config, missing secret",
 			currentStatus: &v1alpha1.SpiceDBCluster{},
-			rawConfig: map[string]string{
-				"datastoreEngine": "cockroachdb",
-			},
+			rawConfig: json.RawMessage(`{
+				"datastoreEngine": "cockroachdb"
+			}`),
 			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: secret must be provided"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,
@@ -99,9 +100,9 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name:          "invalid config, multiple reasons",
 			currentStatus: &v1alpha1.SpiceDBCluster{},
-			rawConfig: map[string]string{
-				"nope": "cockroachdb",
-			},
+			rawConfig: json.RawMessage(`{
+				"nope": "cockroachdb"
+			}`),
 			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: [datastoreEngine is a required field, secret must be provided]"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,
@@ -114,10 +115,10 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status:  metav1.ConditionTrue,
 				Message: "invalid config: [datastoreEngine is a required field, secret must be provided]",
 			}}}},
-			rawConfig: map[string]string{
+			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
-				"tlsSecretName":   "secret",
-			},
+				"tlsSecretName":   "secret"
+			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
@@ -135,11 +136,11 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status:  metav1.ConditionTrue,
 				Message: "[couldn't parse extra pod label \"wrong:format\": labels should be of the form k=v,k2=v2, no TLS configured, consider setting \"tlsSecretName\"]",
 			}}}},
-			rawConfig: map[string]string{
+			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
 				"tlsSecretName":   "secret",
-				"extraPodLabels":  "correct=format,good=value",
-			},
+				"extraPodLabels":  "correct=format,good=value"
+			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
@@ -157,9 +158,9 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status:  metav1.ConditionTrue,
 				Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, secret must be provided]",
 			}}}},
-			rawConfig: map[string]string{
-				"nope": "cockroachdb",
-			},
+			rawConfig: json.RawMessage(`{
+				"nope": "cockroachdb"
+			}`),
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: false,
 			expectDone:        true,
@@ -171,9 +172,9 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status:  metav1.ConditionTrue,
 				Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, secret must be provided]",
 			}}}},
-			rawConfig: map[string]string{
-				"datastoreEngine": "cockroachdb",
-			},
+			rawConfig: json.RawMessage(`{
+				"datastoreEngine": "cockroachdb"
+			}`),
 			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: secret must be provided"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,

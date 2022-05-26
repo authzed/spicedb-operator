@@ -36,10 +36,9 @@ spec:
             description: ClusterSpec holds the desired state of the cluster.
             properties:
               config:
-                additionalProperties:
-                  type: string
                 description: Config values to be passed to the cluster
                 type: object
+                x-kubernetes-preserve-unknown-fields: true
               secretName:
                 description: SecretName points to a secret (in the same namespace)
                   that holds secret config for the cluster like passwords, credentials,

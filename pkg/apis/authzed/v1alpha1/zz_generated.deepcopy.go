@@ -6,6 +6,7 @@
 package v1alpha1
 
 import (
+	"encoding/json"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -15,10 +16,8 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 	*out = *in
 	if in.Config != nil {
 		in, out := &in.Config, &out.Config
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
+		*out = make(json.RawMessage, len(*in))
+		copy(*out, *in)
 	}
 }
 

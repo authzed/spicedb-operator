@@ -1,6 +1,10 @@
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"encoding/json"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=spicedb-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths="../../../apis/..." output:crd:artifacts:config=../../../bootstrap/crds
@@ -32,7 +36,10 @@ type SpiceDBCluster struct {
 type ClusterSpec struct {
 	// Config values to be passed to the cluster
 	// +optional
-	Config map[string]string `json:"config,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	Config json.RawMessage `json:"config,omitempty"`
 
 	// SecretName points to a secret (in the same namespace) that holds secret
 	// config for the cluster like passwords, credentials, etc.
