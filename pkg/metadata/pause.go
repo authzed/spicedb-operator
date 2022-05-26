@@ -6,7 +6,10 @@ import (
 
 const PausedControllerSelectorKey = "authzed.com/controller-paused"
 
-var NotPausedSelector = MustParseSelector("!" + PausedControllerSelectorKey)
+var (
+	NotPausedSelector     = MustParseSelector("!" + PausedControllerSelectorKey)
+	NotPausedRequirements = RequirementsFromSelector(NotPausedSelector)
+)
 
 func MustParseSelector(selector string) labels.Selector {
 	s, err := labels.Parse(selector)
@@ -14,4 +17,9 @@ func MustParseSelector(selector string) labels.Selector {
 		panic(err)
 	}
 	return s
+}
+
+func RequirementsFromSelector(selector labels.Selector) labels.Requirements {
+	r, _ := selector.Requirements()
+	return r
 }

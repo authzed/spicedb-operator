@@ -114,7 +114,7 @@ type Controller struct {
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, sourceClient, targetClient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
+func NewController(ctx context.Context, sourceClient, targetClient dynamic.Interface, kclient kubernetes.Interface, selector labels.Selector, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
 		kclient:        kclient,
 		targetClient:   targetClient,
@@ -161,7 +161,7 @@ func NewController(ctx context.Context, sourceClient, targetClient dynamic.Inter
 		0,
 		metav1.NamespaceAll,
 		func(options *metav1.ListOptions) {
-			options.LabelSelector = metadata.NotPausedSelector.String()
+			options.LabelSelector = selector.Add(metadata.NotPausedRequirements...).String()
 		},
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(

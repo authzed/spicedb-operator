@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -140,7 +141,7 @@ func StartOperator() {
 		ImageName: "spicedb",
 		ImageTag:  "dev",
 	}
-	ctrl, err := controller.NewController(context.Background(), dclient, dclient, kclient, WriteConfig(opconfig), "")
+	ctrl, err := controller.NewController(context.Background(), dclient, dclient, kclient, labels.NewSelector(), WriteConfig(opconfig), "")
 	Expect(err).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())

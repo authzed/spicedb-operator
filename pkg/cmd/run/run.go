@@ -3,6 +3,7 @@ package run
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -27,6 +28,7 @@ type Options struct {
 	BootstrapCRDs         bool
 	BootstrapSpicedbsPath string
 	OperatorConfigPath    string
+	LabelSelector         string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -55,11 +57,18 @@ func NewCmdRun(o *Options) *cobra.Command {
 	}
 
 	namedFlagSets := &cliflag.NamedFlagSets{}
+
+	runFlags := namedFlagSets.FlagSet("run")
+	runFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
+	runFlags.StringVar(&o.LabelSelector, "spicedb-selector", "", "a label selector for SpiceDBCluster instances")
+
 	bootstrapFlags := namedFlagSets.FlagSet("bootstrap")
 	bootstrapFlags.BoolVar(&o.BootstrapCRDs, "crd", true, "if set, the operator will attempt to install/update the CRDs before starting up.")
 	bootstrapFlags.StringVar(&o.BootstrapSpicedbsPath, "bootstrap-spicedbs", "", "set a path to a config file for spicedbs to load on start up.")
+
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
+
 	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("target kubernetes"))
 	sourceFlagSet := namedFlagSets.FlagSet("source kubernetes")
 	o.SourceConfigFlags.AddFlags(sourceFlagSet)
@@ -68,9 +77,9 @@ func NewCmdRun(o *Options) *cobra.Command {
 		flag.Shorthand = ""
 	})
 	o.DebugFlags.AddFlags(debugFlags)
+
 	globalFlags := namedFlagSets.FlagSet("global")
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
-	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
 
 	for _, f := range namedFlagSets.FlagSets {
 		cmd.Flags().AddFlagSet(f)
@@ -114,8 +123,12 @@ func (o *Options) Run(target, source cmdutil.Factory, cmd *cobra.Command, args [
 		}
 	}
 
+	selector, err := labels.Parse(o.LabelSelector)
+	if err != nil {
+		return err
+	}
 	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := controller.NewController(ctx, sourceClient, targetClient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
+	ctrl, err := controller.NewController(ctx, sourceClient, targetClient, kclient, selector, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
 	if err != nil {
 		return err
 	}
