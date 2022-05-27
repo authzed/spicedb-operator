@@ -42,7 +42,7 @@ spec:
   # a secret in the same namespace 
   secretName: spicedb
 status:
-  image: authzed-spicedb-enterprise:dev
+  image: spicedb:dev
   observedGeneration: 1
   secretHash: hashOfSecret
 ---
