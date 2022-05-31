@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +20,7 @@ const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
 	libctrl.ControlAll
-	rawConfig    map[string]string
+	rawConfig    json.RawMessage
 	spiceDBImage string
 	uid          types.UID
 	generation   int64
@@ -29,7 +30,7 @@ type ValidateConfigHandler struct {
 	next        handler.ContextHandler
 }
 
-func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawConfig map[string]string, spicedbImage string, generation int64, status *v1alpha1.ClusterStatus, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
+func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawConfig json.RawMessage, spicedbImage string, generation int64, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ValidateConfigHandler{
 		ControlAll:   ctrls,
 		uid:          uid,

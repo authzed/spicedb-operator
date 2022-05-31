@@ -193,7 +193,6 @@ func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.
 		r.cluster.Spec.Config,
 		r.spiceDBImage,
 		r.cluster.Generation,
-		&r.cluster.Status,
 		r.PatchStatus,
 		r.recorder,
 		handler.Handlers(next).MustOne(),

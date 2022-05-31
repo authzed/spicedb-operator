@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -360,7 +361,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.ClusterSpec{
-					Config:    map[string]string{},
+					Config:    []byte("{}"),
 					SecretRef: "",
 				},
 			}
@@ -464,7 +465,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 
-					config := map[string]string{
+					config := map[string]any{
 						"datastoreEngine": dsDef.datastoreEngine,
 						"envPrefix":       spicedbEnvPrefix,
 						"cmd":             spicedbCmd,
@@ -472,6 +473,8 @@ var _ = Describe("SpiceDBClusters", func() {
 					for k, v := range dsDef.passthroughConfig {
 						config[k] = v
 					}
+					jsonConfig, err := json.Marshal(config)
+					Expect(err).To(Succeed())
 					cluster = &v1alpha1.SpiceDBCluster{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       v1alpha1.SpiceDBClusterKind,
@@ -482,7 +485,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							Namespace: testNamespace,
 						},
 						Spec: v1alpha1.ClusterSpec{
-							Config:    config,
+							Config:    jsonConfig,
 							SecretRef: "spicedb",
 						},
 					}
@@ -543,7 +546,13 @@ var _ = Describe("SpiceDBClusters", func() {
 					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 					DeferCleanup(kclient.CoreV1().Secrets(testNamespace).Delete, ctx, secret.Name, metav1.DeleteOptions{})
-
+					config, err := json.Marshal(map[string]any{
+						"skipMigrations":  true,
+						"datastoreEngine": dsDef.datastoreEngine,
+						"envPrefix":       spicedbEnvPrefix,
+						"cmd":             spicedbCmd,
+					})
+					Expect(err).To(Succeed())
 					spiceCluster = &v1alpha1.SpiceDBCluster{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       v1alpha1.SpiceDBClusterKind,
@@ -554,12 +563,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							Namespace: testNamespace,
 						},
 						Spec: v1alpha1.ClusterSpec{
-							Config: map[string]string{
-								"skipMigrations":  "true",
-								"datastoreEngine": dsDef.datastoreEngine,
-								"envPrefix":       spicedbEnvPrefix,
-								"cmd":             spicedbCmd,
-							},
+							Config:    config,
 							SecretRef: "spicedb-nomigrate",
 						},
 					}
@@ -590,7 +594,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					ctx, cancel := context.WithCancel(context.Background())
 					DeferCleanup(cancel)
 
-					config := map[string]string{
+					config := map[string]any{
 						"datastoreEngine": dsDef.datastoreEngine,
 						"envPrefix":       spicedbEnvPrefix,
 						"cmd":             spicedbCmd,
@@ -599,6 +603,8 @@ var _ = Describe("SpiceDBClusters", func() {
 					for k, v := range dsDef.passthroughConfig {
 						config[k] = v
 					}
+					jsonConfig, err := json.Marshal(config)
+					Expect(err).To(BeNil())
 					spiceCluster = &v1alpha1.SpiceDBCluster{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       v1alpha1.SpiceDBClusterKind,
@@ -609,7 +615,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							Namespace: testNamespace,
 						},
 						Spec: v1alpha1.ClusterSpec{
-							Config:    config,
+							Config:    jsonConfig,
 							SecretRef: "spicedb2",
 						},
 					}
