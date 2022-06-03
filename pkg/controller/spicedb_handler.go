@@ -25,6 +25,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -47,12 +48,12 @@ type SpiceDBClusterHandler struct {
 // the desired state is persisted on the cluster.
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	ctx = handlercontext.CtxClusterNN.WithValue(ctx, r.cluster.NamespacedName())
-	middleware := []libctrl.Middleware{
-		libctrl.MakeMiddleware(SyncIDMiddleware),
-		libctrl.MakeMiddleware(KlogMiddleware(klog.KObj(r.cluster))),
+	mw := []libctrl.Middleware{
+		libctrl.MakeMiddleware(middleware.SyncIDMiddleware),
+		libctrl.MakeMiddleware(middleware.KlogMiddleware(klog.KObj(r.cluster))),
 	}
-	chain := libctrl.ChainWithMiddleware(middleware...)
-	parallel := libctrl.ParallelWithMiddleware(middleware...)
+	chain := libctrl.ChainWithMiddleware(mw...)
+	parallel := libctrl.ParallelWithMiddleware(mw...)
 
 	deploymentHandlerChain := chain(
 		r.ensureDeployment,

@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	CtxSyncID                 = libctrl.NewContextKey[string]()
 	CtxClusterNN              = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
