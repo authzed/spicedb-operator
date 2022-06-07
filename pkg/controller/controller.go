@@ -204,6 +204,31 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	externalInformerFactory.WaitForCacheSync(ctx.Done())
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
+	// register with metrics collector
+	ClusterMetrics.addClusterListerBuilder(func() ([]v1alpha1.SpiceDBCluster, error) {
+		objs, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+
+		clusters := make([]v1alpha1.SpiceDBCluster, 0, len(objs))
+		for _, obj := range objs {
+			u, ok := obj.(*unstructured.Unstructured)
+			if !ok {
+				return nil, fmt.Errorf("syncOwnedResource called with invalid object %T", obj)
+			}
+
+			var cluster v1alpha1.SpiceDBCluster
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
+				return nil, fmt.Errorf("syncOwnedResource called with invalid object: %w", err)
+			}
+
+			clusters = append(clusters, cluster)
+		}
+
+		return clusters, nil
+	})
+
 	return c, nil
 }
 
