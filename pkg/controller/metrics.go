@@ -22,6 +22,14 @@ var ClusterMetrics = &spicedbClusterStatusCollector{
 			"condition",
 		}, nil, metrics.ALPHA, "",
 	),
+	clusterTimeInCondition: metrics.NewDesc(
+		prometheus.BuildFQName("spicedb_operator", "clusters", "condition_time_seconds"),
+		"Gauge showing the amount of time the cluster has spent in the current condition",
+		[]string{
+			"condition",
+			"cluster",
+		}, nil, metrics.ALPHA, "",
+	),
 	collectorTime: metrics.NewDesc(
 		prometheus.BuildFQName("spicedb_operator", "cluster_status_collector", "execution_seconds"),
 		"Amount of time spent on the last run of the cluster status collector",
@@ -39,10 +47,11 @@ type spicedbClusterStatusCollector struct {
 
 	listerBuilders []clusterListerBuilder
 
-	clusterCount          *metrics.Desc
-	clusterConditionCount *metrics.Desc
-	collectorTime         *metrics.Desc
-	collectorErrors       *metrics.Desc
+	clusterCount           *metrics.Desc
+	clusterConditionCount  *metrics.Desc
+	clusterTimeInCondition *metrics.Desc
+	collectorTime          *metrics.Desc
+	collectorErrors        *metrics.Desc
 }
 
 type clusterListerBuilder func() ([]v1alpha1.SpiceDBCluster, error)
@@ -54,6 +63,7 @@ func (c *spicedbClusterStatusCollector) addClusterListerBuilder(lb clusterLister
 func (c *spicedbClusterStatusCollector) DescribeWithStability(ch chan<- *metrics.Desc) {
 	ch <- c.clusterCount
 	ch <- c.clusterConditionCount
+	ch <- c.clusterTimeInCondition
 	ch <- c.collectorTime
 	ch <- c.collectorErrors
 }
@@ -68,6 +78,8 @@ func (c *spicedbClusterStatusCollector) CollectWithStability(ch chan<- metrics.M
 		ch <- metrics.NewLazyConstMetric(c.collectorErrors, metrics.GaugeValue, float64(totalErrors))
 	}()
 
+	collectTime := time.Now()
+
 	for _, lb := range c.listerBuilders {
 		clusters, err := lb()
 		if err != nil {
@@ -79,8 +91,19 @@ func (c *spicedbClusterStatusCollector) CollectWithStability(ch chan<- metrics.M
 
 		clustersWithCondition := map[string]uint16{}
 		for _, cluster := range clusters {
+			clusterName := cluster.NamespacedName().String()
 			for _, condition := range cluster.Status.Conditions {
 				clustersWithCondition[condition.Type]++
+
+				timeInCondition := collectTime.Sub(condition.LastTransitionTime.Time)
+
+				ch <- metrics.NewLazyConstMetric(
+					c.clusterTimeInCondition,
+					metrics.GaugeValue,
+					timeInCondition.Seconds(),
+					condition.Type,
+					clusterName,
+				)
 			}
 		}
 
