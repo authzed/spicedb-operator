@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -9,7 +10,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -171,6 +176,30 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 		r.cluster.Spec.SecretRef,
 		r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
 		r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
+		func(ctx context.Context) []*v1alpha1.SpiceDBCluster {
+			objs, err := r.informers[v1alpha1ClusterGVR].ForResource(v1alpha1ClusterGVR).Lister().List(labels.Everything())
+			if err != nil {
+				utilruntime.HandleError(fmt.Errorf("error listing spicedbs: %w", err))
+				return nil
+			}
+			clusters := make([]*v1alpha1.SpiceDBCluster, 0, len(objs))
+			for _, obj := range objs {
+				u, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					utilruntime.HandleError(fmt.Errorf("lister returned invalid object %T", obj))
+					return nil
+				}
+
+				var cluster v1alpha1.SpiceDBCluster
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
+					utilruntime.HandleError(fmt.Errorf("lister returned invalid object: %w", err))
+					return nil
+				}
+
+				clusters = append(clusters, &cluster)
+			}
+			return clusters
+		},
 		handler.Handlers(next).MustOne(),
 	)
 }

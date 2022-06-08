@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -185,7 +184,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	for _, gvr := range ExternalResources {
 		gvr := gvr
 		inf := externalInformerFactory.ForResource(gvr).Informer()
-		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromLabel}); err != nil {
+		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
 			return nil, err
 		}
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -467,14 +466,14 @@ func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupV
 
 	klog.V(4).InfoS("syncing external object", "gvr", gvr, "obj", klog.KObj(objMeta))
 
-	clusterLabels := objMeta.GetLabels()
-	clusterName, ok := clusterLabels[metadata.OwnerLabelKey]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName()))
+	clusterNames, err := metadata.GetClusterKeyFromMeta(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster: %w", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName(), err))
 		done()
 		return
 	}
 
-	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
-	c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, nn.String()))
+	for _, n := range clusterNames {
+		c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, n))
+	}
 }
