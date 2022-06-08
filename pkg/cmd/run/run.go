@@ -7,6 +7,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
@@ -108,6 +109,8 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		return ctx.Err()
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
+
+	legacyregistry.CustomMustRegister(controller.ClusterMetrics)
 
 	return mgr.StartControllers(ctx, ctrl)
 }
