@@ -158,9 +158,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		dclient,
 		0,
 		metav1.NamespaceAll,
-		func(options *metav1.ListOptions) {
-			options.LabelSelector = metadata.NotPausedSelector.String()
-		},
+		nil,
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
 		dclient,
