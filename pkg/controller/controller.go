@@ -215,12 +215,12 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		for _, obj := range objs {
 			u, ok := obj.(*unstructured.Unstructured)
 			if !ok {
-				return nil, fmt.Errorf("syncOwnedResource called with invalid object %T", obj)
+				return nil, fmt.Errorf("lister returned invalid object %T", obj)
 			}
 
 			var cluster v1alpha1.SpiceDBCluster
 			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-				return nil, fmt.Errorf("syncOwnedResource called with invalid object: %w", err)
+				return nil, fmt.Errorf("lister returned invalid object: %w", err)
 			}
 
 			clusters = append(clusters, cluster)
