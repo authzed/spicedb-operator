@@ -389,7 +389,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
-		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets"))),
+		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
 	}
 	if c.DatastoreEngine == "spanner" && len(c.Passthrough["datastoreSpannerEmulatorHost"]) > 0 {
 		envVars = append(envVars, applycorev1.EnvVar().
