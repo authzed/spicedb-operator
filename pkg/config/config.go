@@ -404,16 +404,17 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithContainers(
-				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
-					envVars...,
-				).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
-					applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
-					applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
-					applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
-					applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
-				).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-			).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).
+				WithContainers(
+					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
+						envVars...,
+					).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
+						applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
+						applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
+						applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
+						applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
+					).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
 }
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
