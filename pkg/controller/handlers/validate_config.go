@@ -80,12 +80,21 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		warningCondition = &cond
 	}
 
-	// Remove invalid config status and set image
+	migrationHash, err := libctrl.SecureHashObject(validatedConfig.MigrationConfig)
+	if err != nil {
+		c.RequeueErr(err)
+		return
+	}
+	ctx = handlercontext.CtxMigrationHash.WithValue(ctx, migrationHash)
+
+	// Remove invalid config status and set image and hash
 	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionValidatingFailed) ||
 		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage ||
+		currentStatus.Status.TargetMigrationHash != migrationHash ||
 		currentStatus.IsStatusConditionChanged(v1alpha1.ConditionTypeConfigWarnings, warningCondition) {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionValidatingFailed)
 		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
+		currentStatus.Status.TargetMigrationHash = migrationHash
 		if warningCondition != nil {
 			currentStatus.SetStatusCondition(*warningCondition)
 		} else {

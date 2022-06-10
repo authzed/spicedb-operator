@@ -39,9 +39,11 @@ func NewEnsureDeploymentHandler(ctrls libctrl.HandlerControls,
 func (m *DeploymentHandler) Handle(ctx context.Context) {
 	// TODO: unconditional status change can be a separate handler
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
-	// remove migrating condition if present
-	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) {
+	// remove migrating condition if present and set the current migration hash
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
+		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
+		currentStatus.Status.CurrentMigrationHash = currentStatus.Status.TargetMigrationHash
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
 			m.RequeueAPIErr(err)
 			return

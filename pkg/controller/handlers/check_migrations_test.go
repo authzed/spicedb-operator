@@ -23,6 +23,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		name string
 
 		config              config.Config
+		migrationHash       string
 		existingJobs        []*batchv1.Job
 		existingDeployments []*appsv1.Deployment
 
@@ -33,14 +34,16 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		{
 			name:                "run migrations if no job, no deployment",
 			config:              config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			migrationHash:       "hash",
 			existingJobs:        []*batchv1.Job{},
 			existingDeployments: []*appsv1.Deployment{},
 			expectEvents:        []string{"Normal RunningMigrations Running migration job for test"},
 			expectNext:          HandlerMigrationRunKey,
 		},
 		{
-			name:   "run migration if non-matching job and no deployment",
-			config: config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			name:          "run migration if non-matching job and no deployment",
+			migrationHash: "hash",
+			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
 			existingJobs: []*batchv1.Job{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBMigrationRequirementsKey: "nope",
 			}}}},
@@ -49,12 +52,13 @@ func TestCheckMigrationsHandler(t *testing.T) {
 			expectNext:          HandlerMigrationRunKey,
 		},
 		{
-			name:   "wait for migrations if matching job but no deployment",
-			config: config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			name:          "wait for migrations if matching job but no deployment",
+			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			migrationHash: "hash",
 			existingJobs: []*batchv1.Job{
 				{
 					ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-						metadata.SpiceDBMigrationRequirementsKey: "n585h67ch668hfbhb8h64bh656hbch679hdh5ch8dh65ch558hbbh687h54bh564h65ch645h5b6h5b6hb4h65ch57fhf8hbbh685q",
+						metadata.SpiceDBMigrationRequirementsKey: "hash",
 					}},
 				}, {
 					ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
@@ -72,21 +76,23 @@ func TestCheckMigrationsHandler(t *testing.T) {
 			expectNext:          HandlerDeploymentKey,
 		},
 		{
-			name:   "check deployment if deployment is up to date",
-			config: config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			name:          "check deployment if deployment is up to date",
+			migrationHash: "hash",
+			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBMigrationRequirementsKey: "n585h67ch668hfbhb8h64bh656hbch679hdh5ch8dh65ch558hbbh687h54bh564h65ch645h5b6h5b6hb4h65ch57fhf8hbbh685q",
+				metadata.SpiceDBMigrationRequirementsKey: "hash",
 			}}}},
 			expectNext: HandlerDeploymentKey,
 		},
 		{
-			name:   "check deployment if deployment is up to date job is up to date",
-			config: config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			name:          "check deployment if deployment is up to date job is up to date",
+			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			migrationHash: "hash",
 			existingJobs: []*batchv1.Job{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBMigrationRequirementsKey: "n585h67ch668hfbhb8h64bh656hbch679hdh5ch8dh65ch558hbbh687h54bh564h65ch645h5b6h5b6hb4h65ch57fhf8hbbh685q",
+				metadata.SpiceDBMigrationRequirementsKey: "hash",
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBMigrationRequirementsKey: "n585h67ch668hfbhb8h64bh656hbch679hdh5ch8dh65ch558hbbh687h54bh564h65ch645h5b6h5b6hb4h65ch57fhf8hbbh685q",
+				metadata.SpiceDBMigrationRequirementsKey: "hash",
 			}}}},
 			expectNext: HandlerDeploymentKey,
 		},
@@ -99,6 +105,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
 			ctx = handlercontext.CtxJobs.WithValue(ctx, tt.existingJobs)
 			ctx = handlercontext.CtxDeployments.WithValue(ctx, tt.existingDeployments)
+			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, "hash")
 
 			recorder := record.NewFakeRecorder(1)
 

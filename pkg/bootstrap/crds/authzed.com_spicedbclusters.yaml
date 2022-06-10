@@ -117,6 +117,11 @@ spec:
                   - type
                   type: object
                 type: array
+              currentMigrationHash:
+                description: CurrentMigrationHash is a hash of the currently running
+                  migration target and config. If this is equal to TargetMigrationHash
+                  (and there are no conditions) then the datastore is fully migrated.
+                type: string
               image:
                 description: Image is the image that is or will be used for this cluster
                 type: string
@@ -128,6 +133,10 @@ spec:
                 type: integer
               secretHash:
                 description: SecretHash is a digest of the last applied secret
+                type: string
+              targetMigrationHash:
+                description: TargetMigrationHash is a hash of the desired migration
+                  target and config
                 type: string
             type: object
         type: object

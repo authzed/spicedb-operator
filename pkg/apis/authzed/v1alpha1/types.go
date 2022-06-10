@@ -56,6 +56,14 @@ type ClusterStatus struct {
 	// +kubebuilder:validation:Minimum=0
 	ObservedGeneration int64 `json:"observedGeneration,omitempty" protobuf:"varint,3,opt,name=observedGeneration"`
 
+	// TargetMigrationHash is a hash of the desired migration target and config
+	TargetMigrationHash string `json:"targetMigrationHash,omitempty"`
+
+	// CurrentMigrationHash is a hash of the currently running migration target and config.
+	// If this is equal to TargetMigrationHash (and there are no conditions) then the datastore
+	// is fully migrated.
+	CurrentMigrationHash string `json:"currentMigrationHash,omitempty"`
+
 	// SecretHash is a digest of the last applied secret
 	SecretHash string `json:"secretHash,omitempty"`
 
