@@ -456,10 +456,9 @@ var _ = Describe("SpiceDBClusters", func() {
 							Namespace: testNamespace,
 						},
 						StringData: map[string]string{
-							"logLevel":          "debug",
-							"datastore_uri":     dsDef.datastoreUri,
-							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-							"preshared_key":     "testtesttesttest",
+							"logLevel":      "debug",
+							"datastore_uri": dsDef.datastoreUri,
+							"preshared_key": "testtesttesttest",
 						},
 					}
 					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
@@ -537,10 +536,9 @@ var _ = Describe("SpiceDBClusters", func() {
 							Namespace: testNamespace,
 						},
 						StringData: map[string]string{
-							"logLevel":          "debug",
-							"datastore_uri":     dsDef.datastoreUri,
-							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-							"preshared_key":     "testtesttesttest",
+							"logLevel":      "debug",
+							"datastore_uri": dsDef.datastoreUri,
+							"preshared_key": "testtesttesttest",
 						},
 					}
 					_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
