@@ -18,6 +18,7 @@ func TestToEnvVarName(t *testing.T) {
 		want   string
 	}{
 		{"prefix", "key", "PREFIX_KEY"},
+		{"prefix_", "key", "PREFIX_KEY"},
 		{"SPICEDB", "grpcTLSKeyPath", "SPICEDB_GRPC_TLS_KEY_PATH"},
 		{"SPICEDB", "grpcTlsKeyPath", "SPICEDB_GRPC_TLS_KEY_PATH"},
 		{"SPICEDB", "dispatchUpstreamCAPath", "SPICEDB_DISPATCH_UPSTREAM_CA_PATH"},
@@ -87,7 +88,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
-					EnvPrefix:          "SPICEDB_",
+					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
@@ -97,7 +98,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       2,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
@@ -130,7 +131,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
-					EnvPrefix:          "SPICEDB_",
+					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
@@ -140,7 +141,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       3,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
@@ -173,7 +174,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
-					EnvPrefix:          "SPICEDB_",
+					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
@@ -183,7 +184,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       3,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
@@ -216,7 +217,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
-					EnvPrefix:          "SPICEDB_",
+					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
@@ -226,7 +227,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       2,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					ExtraPodLabels: map[string]string{
 						"test":  "label",
@@ -266,7 +267,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
-					EnvPrefix:          "SPICEDB_",
+					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
@@ -276,7 +277,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       2,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					ExtraPodLabels: map[string]string{
 						"test":  "label",
@@ -314,7 +315,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
 					TargetSpiceDBImage:     "image",
-					EnvPrefix:              "SPICEDB_",
+					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
 				},
@@ -325,7 +326,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       2,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
@@ -359,7 +360,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
 					TargetSpiceDBImage:     "image",
-					EnvPrefix:              "SPICEDB_",
+					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
 				},
@@ -370,7 +371,7 @@ func TestNewConfig(t *testing.T) {
 					UID:            "1",
 					Replicas:       2,
 					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB_",
+					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",

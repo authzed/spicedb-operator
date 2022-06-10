@@ -43,7 +43,7 @@ var (
 	tlsSecretNameKey              = newStringKey("tlsSecretName")
 	dispatchCAKey                 = newStringKey("dispatchUpstreamCASecretName")
 	telemetryCAKey                = newStringKey("telemetryCASecretName")
-	envPrefixKey                  = newKey("envPrefix", "SPICEDB_")
+	envPrefixKey                  = newKey("envPrefix", "SPICEDB")
 	spiceDBCmdKey                 = newKey("cmd", "spicedb")
 	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
 	logLevelKey                   = newKey("logLevel", "info")
@@ -497,6 +497,7 @@ func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 // ToEnvVarName converts a key from the api object into an env var name.
 // the key isCamelCased will be converted to PREFIX_IS_CAMEL_CASED
 func ToEnvVarName(prefix string, key string) string {
+	prefix = strings.TrimSuffix(prefix, "_")
 	envVarParts := []string{strings.ToUpper(prefix)}
 	for _, p := range camelcase.Split(key) {
 		envVarParts = append(envVarParts, strings.ToUpper(p))
