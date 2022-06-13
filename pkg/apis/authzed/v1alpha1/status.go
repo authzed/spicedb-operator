@@ -9,6 +9,11 @@ import (
 // This is mainly to enable interfaces that have requirements on conditions, see
 // the pause handler for an example.
 
+// GetStatusConditions returns all status conditions.
+func (c *SpiceDBCluster) GetStatusConditions() []metav1.Condition {
+	return c.Status.Conditions
+}
+
 // FindStatusCondition finds the conditionType in conditions.
 func (c *SpiceDBCluster) FindStatusCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(c.Status.Conditions, conditionType)

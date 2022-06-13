@@ -202,13 +202,13 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
 	// register with metrics collector
-	ClusterMetrics.addClusterListerBuilder(func() ([]v1alpha1.SpiceDBCluster, error) {
+	ClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
 		objs, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
 		if err != nil {
 			return nil, err
 		}
 
-		clusters := make([]v1alpha1.SpiceDBCluster, 0, len(objs))
+		clusters := make([]*v1alpha1.SpiceDBCluster, 0, len(objs))
 		for _, obj := range objs {
 			u, ok := obj.(*unstructured.Unstructured)
 			if !ok {
@@ -220,7 +220,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 				return nil, fmt.Errorf("lister returned invalid object: %w", err)
 			}
 
-			clusters = append(clusters, cluster)
+			clusters = append(clusters, &cluster)
 		}
 
 		return clusters, nil
