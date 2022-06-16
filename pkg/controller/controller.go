@@ -95,12 +95,11 @@ type OperatorConfig struct {
 }
 
 type Controller struct {
-	queue          workqueue.RateLimitingInterface
-	dependentQueue workqueue.RateLimitingInterface
-	client         dynamic.Interface
-	informers      map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder       record.EventRecorder
-	kclient        kubernetes.Interface
+	queue     workqueue.RateLimitingInterface
+	client    dynamic.Interface
+	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
+	recorder  record.EventRecorder
+	kclient   kubernetes.Interface
 
 	// config
 	configLock     sync.RWMutex
@@ -115,11 +114,10 @@ var _ manager.Controller = &Controller{}
 
 func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
-		kclient:        kclient,
-		client:         dclient,
-		queue:          workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
-		dependentQueue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_components_queue"),
-		informers:      make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
+		kclient:   kclient,
+		client:    dclient,
+		queue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
+		informers: make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
 	}
 
 	fileInformerFactory, err := libctrl.NewFileInformerFactory()
@@ -186,9 +184,9 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			return nil, err
 		}
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
-			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
-			DeleteFunc: func(obj interface{}) { c.enqueue(gvr, c.dependentQueue, obj) },
+			AddFunc:    func(obj interface{}) { c.syncExternalResource(obj) },
+			UpdateFunc: func(_, obj interface{}) { c.syncExternalResource(obj) },
+			DeleteFunc: func(obj interface{}) { c.syncExternalResource(obj) },
 		})
 		c.informers[gvr] = externalInformerFactory
 	}
@@ -232,7 +230,6 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
-	defer c.dependentQueue.ShutDown()
 
 	broadcaster := record.NewBroadcaster()
 	defer broadcaster.Shutdown()
@@ -248,7 +245,6 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 
 	for i := 0; i < numThreads; i++ {
 		go wait.Until(func() { c.startWorker(ctx, c.queue, c.syncOwnedResource) }, time.Second, ctx.Done())
-		go wait.Until(func() { c.startWorker(ctx, c.dependentQueue, c.syncExternalResource) }, time.Second, ctx.Done())
 	}
 
 	<-ctx.Done()
@@ -443,35 +439,26 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	r.Handle(ctx)
 }
 
-// syncExternalResource is called when a dependent resource is updated;
+// syncExternalResource is called when a dependent resource is updated:
 // It queues the owning SpiceDBCluster for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
-// machine for SpiceDBClusters with an entrypoint in syncCluster
-func (c *Controller) syncExternalResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
-	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
-	if err != nil {
-		utilruntime.HandleError(err)
-		done()
-		return
-	}
-
+// machine for PermissionSystem with an entrypoint in the main Handler
+func (c *Controller) syncExternalResource(obj interface{}) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
 		utilruntime.HandleError(err)
-		done()
 		return
 	}
 
-	klog.V(4).InfoS("syncing external object", "gvr", gvr, "obj", klog.KObj(objMeta))
+	klog.V(4).InfoS("syncing external object", "obj", klog.KObj(objMeta))
 
-	clusterNames, err := metadata.GetClusterKeyFromMeta(obj)
+	keys, err := metadata.GetClusterKeyFromMeta(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster: %w", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName(), err))
-		done()
+		utilruntime.HandleError(err)
 		return
 	}
 
-	for _, n := range clusterNames {
-		c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, n))
+	for _, k := range keys {
+		c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, k))
 	}
 }
