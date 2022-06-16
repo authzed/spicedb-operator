@@ -43,13 +43,7 @@ func NewMigrationCheckHandler(ctrls libctrl.HandlerControls, recorder record.Eve
 func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 	deployments := handlercontext.CtxDeployments.MustValue(ctx)
 	jobs := handlercontext.CtxJobs.MustValue(ctx)
-
-	migrationHash, err := libctrl.SecureHashObject(handlercontext.CtxConfig.MustValue(ctx).MigrationConfig)
-	if err != nil {
-		m.RequeueErr(err)
-		return
-	}
-	ctx = handlercontext.CtxMigrationHash.WithValue(ctx, migrationHash)
+	migrationHash := handlercontext.CtxMigrationHash.MustValue(ctx)
 
 	hasJob := false
 	hasDeployment := false

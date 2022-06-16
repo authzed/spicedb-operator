@@ -40,6 +40,7 @@ type key[V comparable] struct {
 }
 
 var (
+	imageKey                      = newStringKey("image")
 	tlsSecretNameKey              = newStringKey("tlsSecretName")
 	dispatchCAKey                 = newStringKey("dispatchUpstreamCASecretName")
 	telemetryCAKey                = newStringKey("telemetryCASecretName")
@@ -124,7 +125,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, image string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, allowedImages []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -147,10 +148,26 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, rawConfig j
 	migrationConfig := MigrationConfig{
 		LogLevel:               logLevelKey.pop(config),
 		SpannerCredsSecretRef:  spannerCredentialsKey.pop(config),
-		TargetSpiceDBImage:     image,
 		EnvPrefix:              spiceConfig.EnvPrefix,
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
+	}
+
+	migrationConfig.TargetSpiceDBImage = imageKey.pop(config)
+	if len(migrationConfig.TargetSpiceDBImage) == 0 {
+		// the first allowed image is the default
+		migrationConfig.TargetSpiceDBImage = allowedImages[0]
+	}
+
+	allowedImage := false
+	for _, i := range allowedImages {
+		if i == migrationConfig.TargetSpiceDBImage {
+			allowedImage = true
+			break
+		}
+	}
+	if !allowedImage {
+		warnings = append(warnings, fmt.Errorf("%s is not in the list of known working images", migrationConfig.TargetSpiceDBImage))
 	}
 
 	datastoreEngine := datastoreEngineKey.pop(config)
