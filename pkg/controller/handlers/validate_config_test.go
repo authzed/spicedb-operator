@@ -35,8 +35,12 @@ func TestValidateConfigHandler(t *testing.T) {
 		expectDone        bool
 	}{
 		{
-			name:          "valid config, no changes, no warnings",
-			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
+			name: "valid config, no changes, no warnings",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
+				Image:                "image",
+				TargetMigrationHash:  "n67bh669h585hfh5d9hd8h65dh55ch688h96h6ch68ch589h7fh686hb7h6bh95h67ch666h7fh5ch68bh9dh558hb8h5bdh7fq",
+				CurrentMigrationHash: "n67bh669h585hfh5d9hd8h65dh55ch688h96h6ch68ch589h7fh686hb7h6bh95h67ch666h7fh5ch68bh9dh558hb8h5bdh7fq",
+			}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
 				"tlsSecretName":   "secret"
@@ -48,6 +52,26 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: false,
+			expectStatusImage: "image",
+			expectNext:        nextKey,
+		},
+		{
+			name: "valid config, new target migrationhash",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
+				Image:                "image",
+				CurrentMigrationHash: "old",
+			}},
+			rawConfig: json.RawMessage(`{
+				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret"
+			}`),
+			existingSecret: &corev1.Secret{
+				Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("testtest"),
+				},
+			},
+			expectPatchStatus: true,
 			expectStatusImage: "image",
 			expectNext:        nextKey,
 		},

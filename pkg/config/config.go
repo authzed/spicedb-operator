@@ -40,10 +40,11 @@ type key[V comparable] struct {
 }
 
 var (
+	imageKey                      = newStringKey("image")
 	tlsSecretNameKey              = newStringKey("tlsSecretName")
 	dispatchCAKey                 = newStringKey("dispatchUpstreamCASecretName")
 	telemetryCAKey                = newStringKey("telemetryCASecretName")
-	envPrefixKey                  = newKey("envPrefix", "SPICEDB_")
+	envPrefixKey                  = newKey("envPrefix", "SPICEDB")
 	spiceDBCmdKey                 = newKey("cmd", "spicedb")
 	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
 	logLevelKey                   = newKey("logLevel", "info")
@@ -124,7 +125,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, image string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, allowedImages []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -147,10 +148,26 @@ func NewConfig(nn types.NamespacedName, uid types.UID, image string, rawConfig j
 	migrationConfig := MigrationConfig{
 		LogLevel:               logLevelKey.pop(config),
 		SpannerCredsSecretRef:  spannerCredentialsKey.pop(config),
-		TargetSpiceDBImage:     image,
 		EnvPrefix:              spiceConfig.EnvPrefix,
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
+	}
+
+	migrationConfig.TargetSpiceDBImage = imageKey.pop(config)
+	if len(migrationConfig.TargetSpiceDBImage) == 0 {
+		// the first allowed image is the default
+		migrationConfig.TargetSpiceDBImage = allowedImages[0]
+	}
+
+	allowedImage := false
+	for _, i := range allowedImages {
+		if i == migrationConfig.TargetSpiceDBImage {
+			allowedImage = true
+			break
+		}
+	}
+	if !allowedImage {
+		warnings = append(warnings, fmt.Errorf("%s is not in the list of known working images", migrationConfig.TargetSpiceDBImage))
 	}
 
 	datastoreEngine := datastoreEngineKey.pop(config)
@@ -389,7 +406,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
-		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets"))),
+		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
 	}
 	if c.DatastoreEngine == "spanner" && len(c.Passthrough["datastoreSpannerEmulatorHost"]) > 0 {
 		envVars = append(envVars, applycorev1.EnvVar().
@@ -404,16 +421,17 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithContainers(
-				applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
-					envVars...,
-				).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
-					applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
-					applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
-					applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
-					applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
-				).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-			).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).
+				WithContainers(
+					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
+						envVars...,
+					).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
+						applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
+						applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
+						applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
+						applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
+					).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
 }
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
@@ -497,6 +515,7 @@ func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 // ToEnvVarName converts a key from the api object into an env var name.
 // the key isCamelCased will be converted to PREFIX_IS_CAMEL_CASED
 func ToEnvVarName(prefix string, key string) string {
+	prefix = strings.TrimSuffix(prefix, "_")
 	envVarParts := []string{strings.ToUpper(prefix)}
 	for _, p := range camelcase.Split(key) {
 		envVarParts = append(envVarParts, strings.ToUpper(p))

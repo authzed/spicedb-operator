@@ -18,6 +18,7 @@ const (
 	OperatorManagedLabelKey         = "authzed.com/managed-by"
 	OperatorManagedLabelValue       = "operator"
 	OwnerLabelKey                   = "authzed.com/cluster"
+	OwnerAnnotationKeyPrefix        = "authzed.com.cluster-owner/"
 	ComponentLabelKey               = "authzed.com/cluster-component"
 	ComponentSpiceDBLabelValue      = "spicedb"
 	ComponentMigrationJobLabelValue = "migration-job"
@@ -79,17 +80,32 @@ func SplitGVRMetaNamespaceKey(key string) (gvr *schema.GroupVersionResource, nam
 	return
 }
 
-func GetClusterKeyFromLabel(in interface{}) ([]string, error) {
+func GetClusterKeyFromMeta(in interface{}) ([]string, error) {
 	obj := in.(runtime.Object)
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
 	}
+
+	clusterNames := make([]string, 0)
+	for k := range objMeta.GetAnnotations() {
+		if strings.HasPrefix(k, OwnerAnnotationKeyPrefix) {
+			clusterName := strings.TrimPrefix(k, OwnerAnnotationKeyPrefix)
+			nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
+			clusterNames = append(clusterNames, nn.String())
+		}
+	}
+
+	// support old-style owner labels
 	objLabels := objMeta.GetLabels()
 	clusterName, ok := objLabels[OwnerLabelKey]
-	if !ok {
+	if ok {
+		nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
+		clusterNames = append(clusterNames, nn.String())
+	}
+
+	if len(clusterNames) == 0 {
 		return nil, fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName())
 	}
-	nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
-	return []string{nn.String()}, nil
+	return clusterNames, nil
 }
