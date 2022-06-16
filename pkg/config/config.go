@@ -468,7 +468,7 @@ func (c *Config) probeCmd() []string {
 	probeCmd := []string{"grpc_health_probe", "-v", "-addr=localhost:50051"}
 
 	if len(c.TLSSecretName) > 0 {
-		probeCmd = append(probeCmd, "-tls", "-tls-ca-cert=/tls/tls.crt")
+		probeCmd = append(probeCmd, "-tls", "-tls-ca-cert=/tls/tls.crt", "-tls-no-verify")
 	}
 	return probeCmd
 }
