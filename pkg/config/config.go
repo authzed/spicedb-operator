@@ -371,6 +371,7 @@ func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 				applycorev1.ServicePort().WithName("grpc").WithPort(50051),
 				applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
 				applycorev1.ServicePort().WithName("gateway").WithPort(8443),
+				applycorev1.ServicePort().WithName("metrics").WithPort(9090),
 			),
 		)
 }
