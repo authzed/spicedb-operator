@@ -89,9 +89,11 @@ var (
 )
 
 type OperatorConfig struct {
-	ImageName   string `json:"imageName"`
-	ImageTag    string `json:"imageTag"`
-	ImageDigest string `json:"imageDigest"`
+	ImageName     string   `json:"imageName"`
+	ImageTag      string   `json:"imageTag"`
+	ImageDigest   string   `json:"imageDigest"`
+	AllowedTags   []string `json:"allowedTags"`
+	AllowedImages []string `json:"allowedImages"`
 }
 
 type Controller struct {
@@ -430,10 +432,12 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	c.configLock.RLock()
 	// TODO: pull in an image spec library
 	if len(c.config.ImageDigest) > 0 {
-		r.spiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
+		r.defaultSpiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
 	} else {
-		r.spiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageTag}, ":")
+		r.defaultSpiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageTag}, ":")
 	}
+	r.allowedSpiceDBImages = c.config.AllowedImages
+	r.allowedSpiceDBTags = c.config.AllowedTags
 	c.configLock.RUnlock()
 
 	r.Handle(ctx)
