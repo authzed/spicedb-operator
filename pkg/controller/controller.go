@@ -429,6 +429,11 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	}
 	c.configLock.RLock()
 	// TODO: pull in an image spec library
+	if c.config.ImageName == "" {
+		utilruntime.HandleError(errors.New("spicedb image name not specified"))
+		done()
+		return
+	}
 	if len(c.config.ImageDigest) > 0 {
 		r.spiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
 	} else {
