@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -133,6 +134,8 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
 			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
 		})
+	} else {
+		klog.V(3).InfoS("no operator configuration provided", "path", configFilePath)
 	}
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
