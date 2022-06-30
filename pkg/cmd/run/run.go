@@ -10,6 +10,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
+	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
 	"github.com/authzed/spicedb-operator/pkg/bootstrap"
@@ -95,6 +96,7 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		if err != nil {
 			return err
 		}
+		klog.V(3).InfoS("bootstrapping CRDs")
 		if err := bootstrap.CRD(restConfig); err != nil {
 			return err
 		}
