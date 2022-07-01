@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -135,6 +136,8 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
 			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
 		})
+	} else {
+		klog.V(3).InfoS("no operator configuration provided", "path", configFilePath)
 	}
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
@@ -431,6 +434,9 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	}
 	c.configLock.RLock()
 	// TODO: pull in an image spec library
+	if c.config.ImageName == "" {
+		utilruntime.HandleError(errors.New("spicedb image name not specified"))
+	}
 	if len(c.config.ImageDigest) > 0 {
 		r.defaultSpiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
 	} else {
