@@ -39,14 +39,16 @@ var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.Spice
 // TODO: wait for a specific RV to be seen, with a timeout
 
 type SpiceDBClusterHandler struct {
-	done         func()
-	requeue      func(duration time.Duration)
-	cluster      *v1alpha1.SpiceDBCluster
-	client       dynamic.Interface
-	kclient      kubernetes.Interface
-	informers    map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder     record.EventRecorder
-	spiceDBImage string
+	done                 func()
+	requeue              func(duration time.Duration)
+	cluster              *v1alpha1.SpiceDBCluster
+	client               dynamic.Interface
+	kclient              kubernetes.Interface
+	informers            map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
+	recorder             record.EventRecorder
+	defaultSpiceDBImage  string
+	allowedSpiceDBImages []string
+	allowedSpiceDBTags   []string
 }
 
 // Handle inspects the current SpiceDBCluster object and ensures
@@ -221,7 +223,9 @@ func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.
 		),
 		r.cluster.UID,
 		r.cluster.Spec.Config,
-		r.spiceDBImage,
+		r.defaultSpiceDBImage,
+		r.allowedSpiceDBImages,
+		r.allowedSpiceDBTags,
 		r.cluster.Generation,
 		r.PatchStatus,
 		r.recorder,

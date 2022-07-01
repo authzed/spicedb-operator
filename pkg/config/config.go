@@ -125,7 +125,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, allowedImages []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage string, allowedImages, allowedTags []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -153,22 +153,9 @@ func NewConfig(nn types.NamespacedName, uid types.UID, allowedImages []string, r
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
 	}
 
-	migrationConfig.TargetSpiceDBImage = imageKey.pop(config)
-	if len(migrationConfig.TargetSpiceDBImage) == 0 {
-		// the first allowed image is the default
-		migrationConfig.TargetSpiceDBImage = allowedImages[0]
-	}
-
-	allowedImage := false
-	for _, i := range allowedImages {
-		if i == migrationConfig.TargetSpiceDBImage {
-			allowedImage = true
-			break
-		}
-	}
-	if !allowedImage {
-		warnings = append(warnings, fmt.Errorf("%s is not in the list of known working images", migrationConfig.TargetSpiceDBImage))
-	}
+	image, imgWarnings := validateImage(imageKey.pop(config), defaultSpiceDBImage, allowedImages, allowedTags)
+	migrationConfig.TargetSpiceDBImage = image
+	warnings = append(warnings, imgWarnings...)
 
 	datastoreEngine := datastoreEngineKey.pop(config)
 	if len(datastoreEngine) == 0 {
@@ -288,6 +275,67 @@ func NewConfig(nn types.NamespacedName, uid types.UID, allowedImages []string, r
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
 	}, warning, nil
+}
+
+func validateImage(image, defaultImage string, allowedImages, allowedTags []string) (string, []error) {
+	if len(image) == 0 {
+		return defaultImage, nil
+	}
+
+	warnings := make([]error, 0)
+
+	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
+	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
+
+	allowedImage := false
+	for _, i := range allowedImages {
+		if i == baseImage {
+			allowedImage = true
+			break
+		}
+	}
+	if !allowedImage {
+		warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed images", image, baseImage))
+	}
+
+	// check tag
+	if hasTag {
+		allowedTag := false
+		for _, t := range allowedTags {
+			tagInList, _, _ := strings.Cut(t, "@")
+			if tagInList == tag {
+				allowedTag = true
+				break
+			}
+		}
+		if !allowedTag {
+			warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed tags", image, tag))
+		}
+	}
+
+	// check digest
+	if hasDigest {
+		allowedDigest := false
+		for _, t := range allowedTags {
+			// plain digest
+			if strings.HasPrefix(t, "sha") && t == digest {
+				allowedDigest = true
+				break
+			}
+
+			// compound tag@digest
+			_, digestInList, _ := strings.Cut(t, "@")
+			if digestInList == digest {
+				allowedDigest = true
+				break
+			}
+		}
+		if !allowedDigest {
+			warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed digests", image, digest))
+		}
+	}
+
+	return image, warnings
 }
 
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
