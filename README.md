@@ -6,57 +6,68 @@
 [![Discord Server](https://img.shields.io/discord/844600078504951838?color=7289da&logo=discord "Discord Server")](https://discord.gg/jTysUaxXzM)
 [![Twitter](https://img.shields.io/twitter/follow/authzed?color=%23179CF0&logo=twitter&style=flat-square "@authzed on Twitter")](https://twitter.com/authzed)
 
-A Kubernetes controller for managing instances of [SpiceDB]
+A [Kubernetes operator] for managing [SpiceDB] clusters.
 
-Features:
+Features include:
 
-- Create, manage, and scale fully-configured SpiceDB clusters with a single [Custom Resource]
-- Run migrations automatically when upgrading SpiceDB versions
+- Creation, management, and scaling of SpiceDB clusters with a single [Custom Resource]
+- Automated datastore migrations when upgrading SpiceDB versions
 
-See [CONTRIBUTING.md] for instructions on how to contribute and perform common tasks like building the project and running tests.
+Have questions? Join our [Discord].
 
-## Quickstart
+Looking to contribute? See [CONTRIBUTING.md].
 
-The [quickstart.yaml] has definitions that will:
+[Kubernetes operator]: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
+[SpiceDB]: https://github.com/authzed/spicedb
+[Custom Resource]: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
+[Discord]: https://authzed.com/discord
+[CONTRIBUTING.md]: CONTRIBUTING.md
 
-- Run cockroachdb
-- Create a `spicedb` namespace
-- Install the operator and the CRDs
-- Create a 3 node spicedb cluster configured to talk to the cockroach cluster
+## Getting Started
 
-We recommend using a local cluster like [kind] or [docker destktop].
+In order to get started, you'll need a Kubernetes cluster.
+For local development, install your tool of choice.
+You can use whatever, so long as you're comfortable with it and it works on your platform.
+We recommend one of the following:
 
-## Example
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [kind](https://kind.sigs.k8s.io)
+- [minikube](https://minikube.sigs.k8s.io)
 
-```yaml
+Next, you'll install the operator:
+
+```console
+kubectl apply -k github.com/authzed/spicedb-operator/config
+```
+
+Finally you can create your first cluster:
+
+```console
+kubectl apply -f - <<EOF
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spicedb
+---
 apiVersion: authzed.com/v1alpha1
 kind: SpiceDBCluster
 metadata:
-  name: spicedb
-  namespace: spice
+  name: dev-spicedb
+  namespace: spicedb
 spec:
-  # config for spicedb
   config:
-    replicas: "2"
-    datastoreEngine: cockroachdb
-  # a secret in the same namespace 
-  secretName: spicedb
-status:
-  image: spicedb:dev
-  observedGeneration: 1
-  secretHash: hashOfSecret
+    replicas: 2
+    datastoreEngine: postgres
+  secretName: dev-spicedb-config
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: spicedb
-  namespace: spice
-data:
+  name: dev-spicedb-config
+  namespace: spicedb
+stringData:
   datastore_uri: "postgresql:///the-url-of-your-datastore"
   preshared_key: "averysecretpresharedkey" 
+EOF
 ```
-
-[SpiceDB]: https://github.com/authzed/spicedb
-[CONTRIBUTING.md]: CONTRIBUTING.md
-[Custom Resource]: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
-[quickstart.yaml]: quickstart.yaml
