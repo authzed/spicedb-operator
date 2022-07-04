@@ -23,6 +23,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		name string
 
 		migrationHash       string
+		secretHash          string
 		existingDeployments []*appsv1.Deployment
 		currentStatus       *v1alpha1.SpiceDBCluster
 
@@ -36,12 +37,14 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		{
 			name:          "creates if no deployments",
 			migrationHash: "testtesttesttest",
+			secretHash:    "secret",
 			expectApply:   true,
 			expectNext:    nextKey,
 		},
 		{
 			name:                "creates if no matching deployment",
 			migrationHash:       "testtesttesttest",
+			secretHash:          "secret",
 			existingDeployments: []*appsv1.Deployment{{}},
 			expectApply:         true,
 			expectNext:          nextKey,
@@ -49,6 +52,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		{
 			name:          "no-ops if one matching deployment",
 			migrationHash: "testtesttesttest",
+			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBConfigKey: "n687h59dh569h79h54bh67fh67bh7q",
 			}}}},
@@ -57,11 +61,22 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		{
 			name:          "deletes extra deployments if a matching deployment exists",
 			migrationHash: "testtesttesttest",
+			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBConfigKey: "n687h59dh569h79h54bh67fh67bh7q",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
+		},
+		{
+			name:          "applies if secret changes",
+			migrationHash: "testtesttesttest",
+			secretHash:    "secret1",
+			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+				metadata.SpiceDBConfigKey: "n687h59dh569h79h54bh67fh67bh7q",
+			}}}},
+			expectApply: true,
+			expectNext:  nextKey,
 		},
 		{
 			name: "removes migrating condition if present",
@@ -70,6 +85,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				Status: metav1.ConditionTrue,
 			}}}},
 			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
 			expectApply:       true,
 			expectNext:        nextKey,
 			expectPatchStatus: true,
@@ -93,6 +109,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, tt.migrationHash)
+			ctx = handlercontext.CtxSecretHash.WithValue(ctx, tt.secretHash)
 			ctx = handlercontext.CtxDeployments.WithValue(ctx, tt.existingDeployments)
 
 			var called handler.Key
