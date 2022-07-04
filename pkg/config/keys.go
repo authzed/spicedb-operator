@@ -69,17 +69,6 @@ func (k *intOrStringKey) pop(config RawConfig) (out int64, err error) {
 	return
 }
 
-func (k *intOrStringKey) popDefault(config RawConfig, defaultValue int64) (int64, error) {
-	v, err := k.pop(config)
-	if err != nil {
-		return 0, err
-	}
-	if v == k.defaultValue {
-		return defaultValue, nil
-	}
-	return v, nil
-}
-
 type boolOrStringKey struct {
 	key          string
 	defaultValue bool

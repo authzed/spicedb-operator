@@ -52,6 +52,7 @@ var (
 	datastoreTLSSecretKey         = newStringKey("datastoreTLSSecretName")
 	datastoreEngineKey            = newStringKey("datastoreEngine")
 	replicasKey                   = newIntOrStringKey("replicas", 2)
+	replicasKeyForMemory          = newIntOrStringKey("replicas", 1)
 	extraPodLabelsKey             = labelSetKey("extraPodLabels")
 	grpcTLSKeyPathKey             = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
 	grpcTLSCertPathKey            = newKey("grpcTLSCertPath", DefaultTLSCrtFile)
@@ -186,12 +187,12 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 		spiceConfig.PresharedKey = string(psk)
 	}
 
-	defaultReplicas := int64(2)
+	selectedReplicaKey := replicasKey
 	if datastoreEngine == "memory" {
-		defaultReplicas = 1
+		selectedReplicaKey = replicasKeyForMemory
 	}
 
-	replicas, err := replicasKey.popDefault(config, defaultReplicas)
+	replicas, err := selectedReplicaKey.pop(config)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid value for replicas %q: %w", replicas, err))
 	}
