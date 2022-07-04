@@ -52,8 +52,9 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	}
 
 	migrationHash := handlercontext.CtxMigrationHash.MustValue(ctx)
+	secretHash := handlercontext.CtxSecretHash.MustValue(ctx)
 	config := handlercontext.CtxConfig.MustValue(ctx)
-	newDeployment := config.Deployment(migrationHash)
+	newDeployment := config.Deployment(migrationHash, secretHash)
 	deploymentHash, err := libctrl.HashObject(newDeployment)
 	if err != nil {
 		m.RequeueErr(err)
