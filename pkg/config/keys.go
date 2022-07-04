@@ -90,7 +90,10 @@ func (k *boolOrStringKey) pop(config RawConfig) (out bool, err error) {
 
 	switch value := v.(type) {
 	case string:
-		out = value == "true"
+		out, err = strconv.ParseBool(value)
+		if err != nil {
+			return
+		}
 	case bool:
 		out = value
 	default:
@@ -129,8 +132,9 @@ func (k labelSetKey) pop(config RawConfig) (podLabels map[string]string, warning
 			if !ok {
 				warnings = append(warnings, fmt.Errorf("couldn't parse extra pod label %v", v))
 				continue
+			} else {
+				podLabels[k] = labelValue
 			}
-			podLabels[k] = labelValue
 		}
 	default:
 		err = fmt.Errorf("expected string or map for key %s", k)
