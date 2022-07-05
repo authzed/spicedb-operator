@@ -27,6 +27,7 @@ const (
 	ComponentServiceLabel           = "spicedb-service"
 	ComponentRoleBindingLabel       = "spicedb-rolebinding"
 	SpiceDBMigrationRequirementsKey = "authzed.com/spicedb-migration"
+	SpiceDBSecretRequirementsKey    = "authzed.com/spicedb-secret" // nolint: gosec
 	SpiceDBConfigKey                = "authzed.com/spicedb-configuration"
 	FieldManager                    = "spicedb-operator"
 )

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
@@ -39,6 +40,7 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	}
 
 	if c.cluster.GetGeneration() != status.Status.ObservedGeneration || secretHash != status.Status.SecretHash {
+		klog.V(4).InfoS("spicedb configuration changed")
 		status.Status.ObservedGeneration = c.cluster.GetGeneration()
 		status.Status.SecretHash = secretHash
 		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))

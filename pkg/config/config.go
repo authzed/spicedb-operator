@@ -523,7 +523,7 @@ func (c *Config) probeCmd() []string {
 	return probeCmd
 }
 
-func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyConfiguration {
+func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	if c.SkipMigrations {
 		migrationHash = "skipped"
 	}
@@ -540,6 +540,9 @@ func (c *Config) Deployment(migrationHash string) *applyappsv1.DeploymentApplyCo
 				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
 			WithTemplate(applycorev1.PodTemplateSpec().
+				WithAnnotations(map[string]string{
+					metadata.SpiceDBSecretRequirementsKey: secretHash,
+				}).
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithLabels(c.ExtraPodLabels).
