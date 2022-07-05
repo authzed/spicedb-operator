@@ -454,14 +454,20 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 	envPrefix := c.SpiceConfig.EnvPrefix
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
-		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_ENGINE").WithValue(c.DatastoreEngine),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
 		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
 	}
-	if c.DatastoreEngine == "spanner" && len(c.Passthrough["datastoreSpannerEmulatorHost"]) > 0 {
-		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(envPrefix, "datastoreSpannerEmulatorHost")).WithValue(c.Passthrough["datastoreSpannerEmulatorHost"]))
+
+	keys := make([]string, 0, len(c.Passthrough))
+	for k := range c.Passthrough {
+		keys = append(keys, k)
 	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		envVars = append(envVars, applycorev1.EnvVar().
+			WithName(ToEnvVarName(envPrefix, k)).WithValue(c.Passthrough[k]))
+	}
+
 	return applybatchv1.Job(name, c.Namespace).
 		WithOwnerReferences(c.OwnerRef()).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
