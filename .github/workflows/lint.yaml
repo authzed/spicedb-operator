@@ -34,9 +34,15 @@ jobs:
     steps:
       - uses: "actions/checkout@v3"
       - uses: "authzed/actions/yaml-lint@main"
-      - uses: "instrumenta/kubeval-action@5915e4adba5adccac07cb156b82e54c3fed74921"
+      - uses: "stefanprodan/kube-tools@v1"
         with:
-          files: "config"
+          command: "kustomize build ./config"
+       # Disabled due to issues with Kustomize, see:
+       # - https://github.com/instrumenta/kubeval-action/pull/3
+       # - https://github.com/instrumenta/kubeval/issues/232
+       # - uses: "instrumenta/kubeval-action@5915e4adba5adccac07cb156b82e54c3fed74921"
+       #   with:
+       #     files: "config"
       - uses: "authzed/actions/markdown-lint@main"
 
 #  TODO: enable when public
