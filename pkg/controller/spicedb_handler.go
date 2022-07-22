@@ -57,7 +57,7 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	ctx = handlercontext.CtxClusterNN.WithValue(ctx, r.cluster.NamespacedName())
 	mw := []libctrl.Middleware{
 		libctrl.MakeMiddleware(middleware.SyncIDMiddleware),
-		libctrl.MakeMiddleware(middleware.KlogMiddleware(klog.KObj(r.cluster))),
+		libctrl.MakeMiddleware(middleware.KlogMiddleware("spicedbcluster", klog.KObj(r.cluster))),
 	}
 	chain := libctrl.ChainWithMiddleware(mw...)
 	parallel := libctrl.ParallelWithMiddleware(mw...)
