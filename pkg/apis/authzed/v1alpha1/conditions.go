@@ -64,7 +64,7 @@ func NewMigratingCondition(engine, headRevision string) metav1.Condition {
 
 func NewMigrationFailedCondition(engine, headRevision string, err error) metav1.Condition {
 	return metav1.Condition{
-		Type:               ConditionTypeMigrating, // TODO: constants, etc
+		Type:               ConditionTypeMigrating,
 		Status:             metav1.ConditionFalse,
 		Reason:             "MigrationFailed",
 		LastTransitionTime: metav1.NewTime(time.Now()),

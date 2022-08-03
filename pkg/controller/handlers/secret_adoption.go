@@ -68,8 +68,6 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 	// fetch it and add the label to it.
 	if len(secrets) == 0 {
 		// annotate it for all clusters that reference it
-		// TODO: server-side-apply should mean this isn't required because the keys are
-		//  different, but in practice they still fight for ownership
 		secret, err := s.secretApplyFunc(ctx,
 			applycorev1.Secret(s.secretName, nn.Namespace).
 				WithLabels(map[string]string{

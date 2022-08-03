@@ -1,18 +1,15 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"go.uber.org/atomic"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -29,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -43,6 +39,7 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/bootstrap"
+	"github.com/authzed/spicedb-operator/pkg/controller/config"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -89,14 +86,6 @@ var (
 	ConfigFileResource schema.GroupVersionResource
 )
 
-type OperatorConfig struct {
-	ImageName     string   `json:"imageName"`
-	ImageTag      string   `json:"imageTag"`
-	ImageDigest   string   `json:"imageDigest"`
-	AllowedTags   []string `json:"allowedTags"`
-	AllowedImages []string `json:"allowedImages"`
-}
-
 type Controller struct {
 	queue     workqueue.RateLimitingInterface
 	client    dynamic.Interface
@@ -106,7 +95,7 @@ type Controller struct {
 
 	// config
 	configLock     sync.RWMutex
-	config         OperatorConfig
+	config         config.OperatorConfig
 	lastConfigHash atomic.Uint64
 
 	// static spicedb instances
@@ -132,13 +121,17 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		ConfigFileResource = libctrl.FileGroupVersion.WithResource(configFilePath)
 		inf := fileInformerFactory.ForResource(ConfigFileResource).Informer()
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
-			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
-			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
+			AddFunc:    func(obj interface{}) { c.syncConfig(configFilePath) },
+			UpdateFunc: func(_, obj interface{}) { c.syncConfig(configFilePath) },
+			DeleteFunc: func(obj interface{}) { c.syncConfig(configFilePath) },
 		})
+
+		// initial load to ensure we have any label selectors from the config
+		c.loadConfig(configFilePath)
 	} else {
 		klog.V(3).InfoS("no operator configuration provided", "path", configFilePath)
 	}
+
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
 			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
@@ -161,7 +154,15 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		dclient,
 		0,
 		metav1.NamespaceAll,
-		nil,
+		func(options *metav1.ListOptions) {
+			if len(c.config.LabelSelector.String()) > 0 {
+				selector, err := metav1.LabelSelectorAsSelector(&c.config.LabelSelector)
+				if err != nil {
+					panic(err)
+				}
+				options.LabelSelector = selector.String()
+			}
+		},
 	)
 	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
 		dclient,
@@ -285,9 +286,9 @@ func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIn
 	return factory.ForResource(gvr).Informer()
 }
 
-func (c *Controller) loadConfig(path string) {
+func (c *Controller) loadConfig(path string) bool {
 	if len(path) == 0 {
-		return
+		return false
 	}
 	klog.V(3).InfoS("loading config", "path", path)
 	file, err := os.Open(path)
@@ -297,34 +298,32 @@ func (c *Controller) loadConfig(path string) {
 	defer func() {
 		utilruntime.HandleError(file.Close())
 	}()
-	contents, err := ioutil.ReadAll(file)
+
+	opconfig, hash, err := config.NewOperatorConfig(file)
 	if err != nil {
-		panic(err)
-	}
-	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
-	var config OperatorConfig
-	if err := decoder.Decode(&config); err != nil {
-		panic(err)
+		panic(fmt.Errorf("error reading operator config: %w", err))
 	}
 
-	if len(config.ImageName)+len(config.ImageTag) == 0 && len(config.ImageName)+len(config.ImageDigest) == 0 {
-		panic(fmt.Errorf("unable to load config from %s", path))
-	}
-
-	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {
+	if hash != c.lastConfigHash.Load() {
 		func() {
 			c.configLock.Lock()
 			defer c.configLock.Unlock()
-			c.config = config
+			c.config = *opconfig
 		}()
 		c.lastConfigHash.Store(hash)
-	} else {
+		klog.V(4).InfoS("updated config", "path", path, "config", c.config)
+		return true
+	}
+
+	// config hasn't changed
+	return false
+}
+
+func (c *Controller) syncConfig(path string) {
+	if !c.loadConfig(path) {
 		// config hasn't changed
 		return
 	}
-
-	klog.V(4).InfoS("updated config", "path", path, "config", c.config)
-
 	// requeue all clusters
 	clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
 	if err != nil {

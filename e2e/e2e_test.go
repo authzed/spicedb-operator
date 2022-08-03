@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	kconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/env"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/remote"
@@ -46,6 +46,7 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/controller"
+	"github.com/authzed/spicedb-operator/pkg/controller/config"
 )
 
 func listsep(c rune) bool {
@@ -136,7 +137,7 @@ func StartOperator() {
 
 	Expect(bootstrap.CRD(restConfig)).To(Succeed())
 
-	opconfig := controller.OperatorConfig{
+	opconfig := config.OperatorConfig{
 		ImageName: "spicedb",
 		ImageTag:  "dev",
 	}
@@ -150,7 +151,7 @@ func StartOperator() {
 
 var ConfigFileName = ""
 
-func WriteConfig(operatorConfig controller.OperatorConfig) string {
+func WriteConfig(operatorConfig config.OperatorConfig) string {
 	out, err := yaml.Marshal(operatorConfig)
 	Expect(err).To(Succeed())
 	var file *os.File
@@ -224,7 +225,7 @@ func ConfigureApiserver() {
 
 func ConfigureKube() {
 	var err error
-	restConfig, err = config.GetConfig()
+	restConfig, err = kconfig.GetConfig()
 
 	// if no kubeconfig or explictly told to provision, provision a cluster
 	if err != nil || provision {
