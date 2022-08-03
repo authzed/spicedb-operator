@@ -11,11 +11,11 @@ import (
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/spicecluster"
 )
 
 func TestRunMigrationHandler(t *testing.T) {
@@ -29,7 +29,7 @@ func TestRunMigrationHandler(t *testing.T) {
 		name string
 
 		clusterStatus *v1alpha1.SpiceDBCluster
-		config        config.Config
+		config        spicecluster.Config
 		existingJobs  []*batchv1.Job
 		migrationHash string
 		jobApplyErr   error

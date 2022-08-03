@@ -11,18 +11,18 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/spicecluster"
 )
 
 func TestCheckMigrationsHandler(t *testing.T) {
 	tests := []struct {
 		name string
 
-		config              config.Config
+		config              spicecluster.Config
 		migrationHash       string
 		existingJobs        []*batchv1.Job
 		existingDeployments []*appsv1.Deployment
@@ -33,7 +33,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 	}{
 		{
 			name:                "run migrations if no job, no deployment",
-			config:              config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			config:              spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}},
 			migrationHash:       "hash",
 			existingJobs:        []*batchv1.Job{},
 			existingDeployments: []*appsv1.Deployment{},
@@ -43,7 +43,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		{
 			name:          "run migration if non-matching job and no deployment",
 			migrationHash: "hash",
-			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			config:        spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}},
 			existingJobs: []*batchv1.Job{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBMigrationRequirementsKey: "nope",
 			}}}},
@@ -53,7 +53,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		},
 		{
 			name:          "wait for migrations if matching job but no deployment",
-			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			config:        spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}},
 			migrationHash: "hash",
 			existingJobs: []*batchv1.Job{
 				{
@@ -71,14 +71,14 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		},
 		{
 			name:                "check deployment if skipMigrations = true",
-			config:              config.Config{SpiceConfig: config.SpiceConfig{SkipMigrations: true}},
+			config:              spicecluster.Config{SpiceConfig: spicecluster.SpiceConfig{SkipMigrations: true}},
 			existingDeployments: []*appsv1.Deployment{{}},
 			expectNext:          HandlerDeploymentKey,
 		},
 		{
 			name:          "check deployment if deployment is up to date",
 			migrationHash: "hash",
-			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			config:        spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}},
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBMigrationRequirementsKey: "hash",
 			}}}},
@@ -86,7 +86,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		},
 		{
 			name:          "check deployment if deployment is up to date job is up to date",
-			config:        config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}},
+			config:        spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}},
 			migrationHash: "hash",
 			existingJobs: []*batchv1.Job{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
 				metadata.SpiceDBMigrationRequirementsKey: "hash",

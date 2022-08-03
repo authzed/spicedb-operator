@@ -11,10 +11,10 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/spicecluster"
 )
 
 func TestWaitForMigrationsHandler(t *testing.T) {
@@ -56,7 +56,7 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrls := &fake.FakeControlAll{}
 
-			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
+			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
 			ctx = handlercontext.CtxCurrentMigrationJob.WithValue(ctx, tt.migrationJob)
 

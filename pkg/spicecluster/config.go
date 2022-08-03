@@ -1,4 +1,4 @@
-package config
+package spicecluster
 
 import (
 	"encoding/json"
@@ -20,6 +20,7 @@ import (
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/object"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -34,55 +35,34 @@ const (
 	DefaultTLSCrtFile = "/tls/tls.crt"
 )
 
-type key[V comparable] struct {
-	key          string
-	defaultValue V
-}
-
 var (
-	imageKey                      = newStringKey("image")
-	tlsSecretNameKey              = newStringKey("tlsSecretName")
-	dispatchCAKey                 = newStringKey("dispatchUpstreamCASecretName")
-	telemetryCAKey                = newStringKey("telemetryCASecretName")
-	envPrefixKey                  = newKey("envPrefix", "SPICEDB")
-	spiceDBCmdKey                 = newKey("cmd", "spicedb")
-	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
-	logLevelKey                   = newKey("logLevel", "info")
-	spannerCredentialsKey         = newStringKey("spannerCredentials")
-	datastoreTLSSecretKey         = newStringKey("datastoreTLSSecretName")
-	datastoreEngineKey            = newStringKey("datastoreEngine")
-	replicasKey                   = newIntOrStringKey("replicas", 2)
-	replicasKeyForMemory          = newIntOrStringKey("replicas", 1)
-	extraPodLabelsKey             = labelSetKey("extraPodLabels")
-	grpcTLSKeyPathKey             = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
-	grpcTLSCertPathKey            = newKey("grpcTLSCertPath", DefaultTLSCrtFile)
-	dispatchClusterTLSKeyPathKey  = newKey("dispatchClusterTLSKeyPath", DefaultTLSKeyFile)
-	dispatchClusterTLSCertPathKey = newKey("dispatchClusterTLSCertPath", DefaultTLSCrtFile)
-	httpTLSKeyPathKey             = newKey("httpTLSKeyPath", DefaultTLSKeyFile)
-	httpTLSCertPathKey            = newKey("httpTLSCertPath", DefaultTLSCrtFile)
-	dashboardTLSKeyPathKey        = newKey("dashboardTLSKeyPath", DefaultTLSKeyFile)
-	dashboardTLSCertPathKey       = newKey("dashboardTLSCertPath", DefaultTLSCrtFile)
+	imageKey                      = object.NewStringKey("image")
+	tlsSecretNameKey              = object.NewStringKey("tlsSecretName")
+	dispatchCAKey                 = object.NewStringKey("dispatchUpstreamCASecretName")
+	telemetryCAKey                = object.NewStringKey("telemetryCASecretName")
+	envPrefixKey                  = object.NewKey("envPrefix", "SPICEDB")
+	spiceDBCmdKey                 = object.NewKey("cmd", "spicedb")
+	skipMigrationsKey             = object.NewBoolOrStringKey("skipMigrations", false)
+	logLevelKey                   = object.NewKey("logLevel", "info")
+	spannerCredentialsKey         = object.NewStringKey("spannerCredentials")
+	datastoreTLSSecretKey         = object.NewStringKey("datastoreTLSSecretName")
+	datastoreEngineKey            = object.NewStringKey("datastoreEngine")
+	replicasKey                   = object.NewIntOrStringKey("replicas", 2)
+	replicasKeyForMemory          = object.NewIntOrStringKey("replicas", 1)
+	extraPodLabelsKey             = object.LabelSetKey("extraPodLabels")
+	grpcTLSKeyPathKey             = object.NewKey("grpcTLSKeyPath", DefaultTLSKeyFile)
+	grpcTLSCertPathKey            = object.NewKey("grpcTLSCertPath", DefaultTLSCrtFile)
+	dispatchClusterTLSKeyPathKey  = object.NewKey("dispatchClusterTLSKeyPath", DefaultTLSKeyFile)
+	dispatchClusterTLSCertPathKey = object.NewKey("dispatchClusterTLSCertPath", DefaultTLSCrtFile)
+	httpTLSKeyPathKey             = object.NewKey("httpTLSKeyPath", DefaultTLSKeyFile)
+	httpTLSCertPathKey            = object.NewKey("httpTLSCertPath", DefaultTLSCrtFile)
+	dashboardTLSKeyPathKey        = object.NewKey("dashboardTLSKeyPath", DefaultTLSKeyFile)
+	dashboardTLSCertPathKey       = object.NewKey("dashboardTLSCertPath", DefaultTLSCrtFile)
 )
 
 // Warning is an issue with configuration that we will report as undesirable
 // but which don't prevent the cluster from starting (i.e. no TLS config)
 type Warning error
-
-// RawConfig has not been processed/validated yet
-type RawConfig map[string]any
-
-func (r RawConfig) Pop(key string) string {
-	v, ok := r[key]
-	if !ok {
-		return ""
-	}
-	delete(r, key)
-	vs, ok := v.(string)
-	if !ok {
-		return ""
-	}
-	return vs
-}
 
 // Config holds all values required to create and manage a cluster.
 // Note: The config object holds values from referenced secrets for
@@ -127,7 +107,7 @@ type SpiceConfig struct {
 
 // NewConfig checks that the values in the config + the secret are sane
 func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage string, allowedImages, allowedTags []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
-	config := RawConfig(make(map[string]any))
+	config := object.RawObject(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
 	}
@@ -139,26 +119,26 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 		Name:                         nn.Name,
 		Namespace:                    nn.Namespace,
 		UID:                          string(uid),
-		TLSSecretName:                tlsSecretNameKey.pop(config),
-		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
-		TelemetryTLSCASecretName:     telemetryCAKey.pop(config),
-		EnvPrefix:                    envPrefixKey.pop(config),
-		SpiceDBCmd:                   spiceDBCmdKey.pop(config),
+		TLSSecretName:                tlsSecretNameKey.Pop(config),
+		DispatchUpstreamCASecretName: dispatchCAKey.Pop(config),
+		TelemetryTLSCASecretName:     telemetryCAKey.Pop(config),
+		EnvPrefix:                    envPrefixKey.Pop(config),
+		SpiceDBCmd:                   spiceDBCmdKey.Pop(config),
 		ExtraPodLabels:               make(map[string]string, 0),
 	}
 	migrationConfig := MigrationConfig{
-		LogLevel:               logLevelKey.pop(config),
-		SpannerCredsSecretRef:  spannerCredentialsKey.pop(config),
+		LogLevel:               logLevelKey.Pop(config),
+		SpannerCredsSecretRef:  spannerCredentialsKey.Pop(config),
 		EnvPrefix:              spiceConfig.EnvPrefix,
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
-		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
+		DatastoreTLSSecretName: datastoreTLSSecretKey.Pop(config),
 	}
 
-	image, imgWarnings := validateImage(imageKey.pop(config), defaultSpiceDBImage, allowedImages, allowedTags)
+	image, imgWarnings := validateImage(imageKey.Pop(config), defaultSpiceDBImage, allowedImages, allowedTags)
 	migrationConfig.TargetSpiceDBImage = image
 	warnings = append(warnings, imgWarnings...)
 
-	datastoreEngine := datastoreEngineKey.pop(config)
+	datastoreEngine := datastoreEngineKey.Pop(config)
 	if len(datastoreEngine) == 0 {
 		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
 	}
@@ -192,7 +172,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 		selectedReplicaKey = replicasKeyForMemory
 	}
 
-	replicas, err := selectedReplicaKey.pop(config)
+	replicas, err := selectedReplicaKey.Pop(config)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("invalid value for replicas %q: %w", replicas, err))
 	}
@@ -201,13 +181,13 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 	if replicas > 1 && datastoreEngine == "memory" {
 		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
 	}
-	spiceConfig.SkipMigrations, err = skipMigrationsKey.pop(config)
+	spiceConfig.SkipMigrations, err = skipMigrationsKey.Pop(config)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
 	var labelWarnings []error
-	spiceConfig.ExtraPodLabels, labelWarnings, err = extraPodLabelsKey.pop(config)
+	spiceConfig.ExtraPodLabels, labelWarnings, err = extraPodLabelsKey.Pop(config)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -218,7 +198,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 
 	// generate secret refs for tls if specified
 	if len(spiceConfig.TLSSecretName) > 0 {
-		passthroughKeys := []*key[string]{
+		passthroughKeys := []*object.Key[string]{
 			grpcTLSKeyPathKey,
 			grpcTLSCertPathKey,
 			dispatchClusterTLSKeyPathKey,
@@ -229,7 +209,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 			dashboardTLSCertPathKey,
 		}
 		for _, k := range passthroughKeys {
-			passthroughConfig[k.key] = k.pop(config)
+			passthroughConfig[k.Key()] = k.Pop(config)
 		}
 	} else {
 		warnings = append(warnings, fmt.Errorf("no TLS configured, consider setting %q", "tlsSecretName"))
@@ -245,7 +225,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 
 	// the rest of the config is passed through to spicedb as strings
 	for k := range config {
-		passthroughConfig[k] = config.Pop(k)
+		passthroughConfig[k] = object.NewStringKey(k).Pop(config)
 	}
 
 	stripValues := []string{

@@ -10,10 +10,10 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/spicecluster"
 )
 
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
@@ -50,7 +50,7 @@ func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawC
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
 	nn := handlercontext.CtxClusterNN.MustValue(ctx)
-	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
+	validatedConfig, warning, err := spicecluster.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {

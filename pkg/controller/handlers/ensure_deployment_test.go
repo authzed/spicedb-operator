@@ -10,11 +10,11 @@ import (
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/spicecluster"
 )
 
 func TestEnsureDeploymentHandler(t *testing.T) {
@@ -106,7 +106,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				tt.expectStatus = &v1alpha1.SpiceDBCluster{}
 			}
 
-			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
+			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &spicecluster.Config{MigrationConfig: spicecluster.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 			ctx = handlercontext.CtxSecretHash.WithValue(ctx, tt.secretHash)

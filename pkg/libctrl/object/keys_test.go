@@ -1,4 +1,4 @@
-package config
+package object
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var emptyConfig = RawConfig{}
+var emptyConfig = RawObject{}
 
 func TestStringKey(t *testing.T) {
 	for _, val := range []struct {
@@ -19,12 +19,12 @@ func TestStringKey(t *testing.T) {
 		{"silently ignores unexpected type and returns default", 1, ""},
 	} {
 		t.Run(val.description, func(t *testing.T) {
-			sk := newStringKey("test")
+			sk := NewStringKey("test")
 			config := emptyConfig
 			if val.value != nil {
-				config = RawConfig{"test": val.value}
+				config = RawObject{"test": val.value}
 			}
-			require.Equal(t, val.expected, sk.pop(config))
+			require.Equal(t, val.expected, sk.Pop(config))
 			if val.value != nil {
 				require.Empty(t, config)
 			}
@@ -50,12 +50,12 @@ func TestBoolOrStringKey(t *testing.T) {
 		{"fails with unexpected type", int64(1), true, false, true},
 	} {
 		t.Run(val.description, func(t *testing.T) {
-			sk := newBoolOrStringKey("test", val.def)
+			sk := NewBoolOrStringKey("test", val.def)
 			config := emptyConfig
 			if val.value != nil {
-				config = RawConfig{"test": val.value}
+				config = RawObject{"test": val.value}
 			}
-			result, err := sk.pop(config)
+			result, err := sk.Pop(config)
 			if val.value != nil {
 				require.Empty(t, config)
 			}
@@ -84,12 +84,12 @@ func TestIntOrStringKey(t *testing.T) {
 		{"fails when unexpected type", struct{}{}, 1, int64(1), true},
 	} {
 		t.Run(val.description, func(t *testing.T) {
-			sk := newIntOrStringKey("test", val.def)
+			sk := NewIntOrStringKey("test", val.def)
 			config := emptyConfig
 			if val.value != nil {
-				config = RawConfig{"test": val.value}
+				config = RawObject{"test": val.value}
 			}
-			result, err := sk.pop(config)
+			result, err := sk.Pop(config)
 			if val.value != nil {
 				require.Empty(t, config)
 			}
@@ -125,12 +125,12 @@ func TestLabelSetKey(t *testing.T) {
 		{"recovers and warns on invalid map value", invalidInput, empty, map[string]string{"k2": "v2"}, true, false},
 	} {
 		t.Run(val.description, func(t *testing.T) {
-			k := labelSetKey("test")
+			k := LabelSetKey("test")
 			config := emptyConfig
 			if val.value != nil {
-				config = RawConfig{"test": val.value}
+				config = RawObject{"test": val.value}
 			}
-			result, warns, err := k.pop(config)
+			result, warns, err := k.Pop(config)
 			if val.value != nil {
 				require.Empty(t, config)
 			}
