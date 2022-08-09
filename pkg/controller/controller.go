@@ -43,8 +43,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
@@ -146,7 +146,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	}
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
-			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
+			hash, err := bootstrap.ResourceFromFile[*v1alpha1.SpiceDBCluster](ctx, v1alpha1ClusterGVR, c.client, staticClusterPath, c.lastStaticHash.Load())
 			if err != nil {
 				utilruntime.HandleError(err)
 				return
