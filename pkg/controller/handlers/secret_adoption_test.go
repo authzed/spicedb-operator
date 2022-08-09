@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -206,7 +205,6 @@ func TestSecretAdopterHandler(t *testing.T) {
 			applyCalled := false
 			nextCalled := false
 			s := &SecretAdopterHandler{
-				ControlAll:    ctrls,
 				secretName:    tt.secretName,
 				recorder:      recorder,
 				secretIndexer: indexer,
@@ -220,14 +218,15 @@ func TestSecretAdopterHandler(t *testing.T) {
 				},
 				next: handler.ContextHandlerFunc(func(ctx context.Context) {
 					nextCalled = true
-					require.Equal(t, tt.expectCtxSecret, handlercontext.CtxSecret.Value(ctx))
-					require.Equal(t, tt.expectCtxSecretHash, handlercontext.CtxSecretHash.Value(ctx))
+					require.Equal(t, tt.expectCtxSecret, CtxSecret.Value(ctx))
+					require.Equal(t, tt.expectCtxSecretHash, CtxSecretHash.Value(ctx))
 				}),
 			}
-			ctx := handlercontext.CtxClusterNN.WithValue(context.Background(), types.NamespacedName{
+			ctx := CtxClusterNN.WithValue(context.Background(), types.NamespacedName{
 				Namespace: "test",
 				Name:      "test",
 			})
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			s.Handle(ctx)
 
 			require.Equal(t, tt.expectApply, applyCalled)

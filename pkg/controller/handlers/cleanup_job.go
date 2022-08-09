@@ -6,28 +6,25 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 type JobCleanupHandler struct {
-	libctrl.ControlAll
 	getJobPods func(ctx context.Context) []*corev1.Pod
 	getJobs    func(ctx context.Context) []*batchv1.Job
 	deleteJob  func(ctx context.Context, name string) error
 	deletePod  func(ctx context.Context, name string) error
 }
 
-func NewJobCleanupHandler(ctrls libctrl.HandlerControls,
+func NewJobCleanupHandler(
 	getJobPods func(ctx context.Context) []*corev1.Pod,
 	getJobs func(ctx context.Context) []*batchv1.Job,
 	deleteJob func(ctx context.Context, name string) error,
 	deletePod func(ctx context.Context, name string) error,
 ) handler.Handler {
 	return handler.NewHandler(&JobCleanupHandler{
-		ControlAll: ctrls,
 		getJobPods: getJobPods,
 		getJobs:    getJobs,
 		deleteJob:  deleteJob,
@@ -38,9 +35,9 @@ func NewJobCleanupHandler(ctrls libctrl.HandlerControls,
 func (s *JobCleanupHandler) Handle(ctx context.Context) {
 	jobs := s.getJobs(ctx)
 	pods := s.getJobPods(ctx)
-	deployment := *handlercontext.CtxCurrentSpiceDeployment.MustValue(ctx)
+	deployment := *CtxCurrentSpiceDeployment.MustValue(ctx)
 	if deployment.Annotations == nil || len(jobs)+len(pods) == 0 {
-		s.Done()
+		CtxHandlerControls.Done(ctx)
 		return
 	}
 
@@ -55,7 +52,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 			deployment.Annotations[metadata.SpiceDBMigrationRequirementsKey]) &&
 			jobConditionHasStatus(j, batchv1.JobComplete, corev1.ConditionTrue) {
 			if err := s.deleteJob(ctx, j.GetName()); err != nil {
-				s.RequeueAPIErr(err)
+				CtxHandlerControls.RequeueAPIErr(ctx, err)
 				return
 			}
 		}
@@ -72,15 +69,15 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 		}
 		if _, ok := jobNames[jobName]; ok {
 			// job still exists
-			s.Requeue()
+			CtxHandlerControls.Requeue(ctx)
 			return
 		}
 
 		if err := s.deletePod(ctx, p.GetName()); err != nil {
-			s.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
 
-	s.Done()
+	CtxHandlerControls.Done(ctx)
 }

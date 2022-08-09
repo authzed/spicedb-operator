@@ -12,7 +12,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -92,14 +91,14 @@ func TestRunMigrationHandler(t *testing.T) {
 			deleteCalled := false
 			nextCalled := false
 
-			ctx := handlercontext.CtxClusterStatus.WithValue(context.Background(), tt.clusterStatus)
-			ctx = handlercontext.CtxConfig.WithValue(ctx, &tt.config)
-			ctx = handlercontext.CtxJobs.WithHandle(ctx)
-			ctx = handlercontext.CtxJobs.WithValue(ctx, tt.existingJobs)
-			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, tt.migrationHash)
+			ctx := CtxClusterStatus.WithValue(context.Background(), tt.clusterStatus)
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxConfig.WithValue(ctx, &tt.config)
+			ctx = CtxJobs.WithHandle(ctx)
+			ctx = CtxJobs.WithValue(ctx, tt.existingJobs)
+			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 
 			h := &MigrationRunHandler{
-				ControlAll: ctrls,
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					return nil
 				},
@@ -113,12 +112,12 @@ func TestRunMigrationHandler(t *testing.T) {
 				},
 				next: handler.ContextHandlerFunc(func(ctx context.Context) {
 					nextCalled = true
-					require.Equal(t, matchingJob, handlercontext.CtxCurrentMigrationJob.MustValue(ctx))
+					require.Equal(t, matchingJob, CtxCurrentMigrationJob.MustValue(ctx))
 				}),
 			}
 			h.Handle(ctx)
 
-			require.True(t, handlercontext.CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
+			require.True(t, CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectNext, nextCalled)

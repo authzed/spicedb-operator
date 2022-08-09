@@ -1,4 +1,4 @@
-package handlercontext
+package handlers
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	CtxHandlerControls        = libctrl.HandlerControlContext{}
 	CtxClusterNN              = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")

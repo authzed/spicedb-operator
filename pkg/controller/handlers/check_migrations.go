@@ -6,7 +6,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -22,7 +21,6 @@ const (
 
 // TODO: could be generalized as some sort of "Hash Handoff" flow
 type MigrationCheckHandler struct {
-	libctrl.ControlRequeueErr
 	recorder record.EventRecorder
 
 	nextMigrationRunHandler handler.ContextHandler
@@ -30,9 +28,8 @@ type MigrationCheckHandler struct {
 	nextDeploymentHandler   handler.ContextHandler
 }
 
-func NewMigrationCheckHandler(ctrls libctrl.HandlerControls, recorder record.EventRecorder, next handler.Handlers) handler.Handler {
+func NewMigrationCheckHandler(recorder record.EventRecorder, next handler.Handlers) handler.Handler {
 	return handler.NewHandler(&MigrationCheckHandler{
-		ControlRequeueErr:       ctrls,
 		recorder:                recorder,
 		nextMigrationRunHandler: HandlerMigrationRunKey.MustFind(next),
 		nextWaitForJobHandler:   HandlerWaitForMigrationsKey.MustFind(next),
@@ -41,9 +38,9 @@ func NewMigrationCheckHandler(ctrls libctrl.HandlerControls, recorder record.Eve
 }
 
 func (m *MigrationCheckHandler) Handle(ctx context.Context) {
-	deployments := handlercontext.CtxDeployments.MustValue(ctx)
-	jobs := handlercontext.CtxJobs.MustValue(ctx)
-	migrationHash := handlercontext.CtxMigrationHash.MustValue(ctx)
+	deployments := CtxDeployments.MustValue(ctx)
+	jobs := CtxJobs.MustValue(ctx)
+	migrationHash := CtxMigrationHash.MustValue(ctx)
 
 	hasJob := false
 	hasDeployment := false
@@ -56,20 +53,20 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 	for _, j := range jobs {
 		if j.Annotations != nil && libctrl.SecureHashEqual(j.Annotations[metadata.SpiceDBMigrationRequirementsKey], migrationHash) {
 			hasJob = true
-			ctx = handlercontext.CtxCurrentMigrationJob.WithValue(ctx, j)
+			ctx = CtxCurrentMigrationJob.WithValue(ctx, j)
 			break
 		}
 	}
 
 	// don't handle migrations at all if `skipMigrations` is set
-	if handlercontext.CtxConfig.MustValue(ctx).SkipMigrations {
+	if CtxConfig.MustValue(ctx).SkipMigrations {
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
-		m.recorder.Eventf(handlercontext.CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", handlercontext.CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}

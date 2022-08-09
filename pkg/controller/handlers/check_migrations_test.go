@@ -12,7 +12,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -101,18 +100,18 @@ func TestCheckMigrationsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrls := &fake.FakeControlAll{}
 
-			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &tt.config)
-			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
-			ctx = handlercontext.CtxJobs.WithValue(ctx, tt.existingJobs)
-			ctx = handlercontext.CtxDeployments.WithValue(ctx, tt.existingDeployments)
-			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, "hash")
+			ctx := CtxConfig.WithValue(context.Background(), &tt.config)
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
+			ctx = CtxJobs.WithValue(ctx, tt.existingJobs)
+			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
+			ctx = CtxMigrationHash.WithValue(ctx, "hash")
 
 			recorder := record.NewFakeRecorder(1)
 
 			var called handler.Key
 			h := &MigrationCheckHandler{
-				ControlRequeueErr: ctrls,
-				recorder:          recorder,
+				recorder: recorder,
 				nextDeploymentHandler: handler.ContextHandlerFunc(func(ctx context.Context) {
 					called = HandlerDeploymentKey
 				}),

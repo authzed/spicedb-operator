@@ -11,7 +11,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -106,15 +105,15 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				tt.expectStatus = &v1alpha1.SpiceDBCluster{}
 			}
 
-			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
-			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, tt.currentStatus)
-			ctx = handlercontext.CtxMigrationHash.WithValue(ctx, tt.migrationHash)
-			ctx = handlercontext.CtxSecretHash.WithValue(ctx, tt.secretHash)
-			ctx = handlercontext.CtxDeployments.WithValue(ctx, tt.existingDeployments)
+			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
+			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
+			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
 
 			var called handler.Key
 			h := &DeploymentHandler{
-				ControlAll: ctrls,
 				applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 					applyCalled = true
 					return nil, nil
@@ -133,7 +132,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.Equal(t, tt.expectStatus, handlercontext.CtxClusterStatus.MustValue(ctx))
+			require.Equal(t, tt.expectStatus, CtxClusterStatus.MustValue(ctx))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)

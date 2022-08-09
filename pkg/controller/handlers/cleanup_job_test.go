@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -146,7 +145,8 @@ func TestCleanupJobsHandler(t *testing.T) {
 			ctrls := &fake.FakeControlAll{}
 
 			ctx := context.Background()
-			ctx = handlercontext.CtxCurrentSpiceDeployment.WithValue(ctx, tt.existingDeployment)
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxCurrentSpiceDeployment.WithValue(ctx, tt.existingDeployment)
 
 			if tt.expectDeletedJobs == nil {
 				tt.expectDeletedJobs = make([]string, 0)
@@ -157,7 +157,6 @@ func TestCleanupJobsHandler(t *testing.T) {
 			deletedPods := make([]string, 0)
 			deletedJobs := make([]string, 0)
 			h := &JobCleanupHandler{
-				ControlAll: ctrls,
 				getJobs: func(ctx context.Context) []*batchv1.Job {
 					return tt.existingJobs
 				},

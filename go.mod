@@ -30,7 +30,7 @@ require (
 	k8s.io/code-generator v0.23.5
 	k8s.io/component-base v0.23.5
 	k8s.io/controller-manager v0.23.5
-	k8s.io/klog/v2 v2.60.1
+	k8s.io/klog/v2 v2.70.1
 	k8s.io/kubectl v0.22.0-beta.0
 	mvdan.cc/gofumpt v0.3.0
 	sigs.k8s.io/controller-runtime v0.11.1

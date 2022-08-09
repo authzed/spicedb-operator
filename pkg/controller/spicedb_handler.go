@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -26,7 +25,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
@@ -39,8 +37,6 @@ var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.Spice
 // TODO: wait for a specific RV to be seen, with a timeout
 
 type SpiceDBClusterHandler struct {
-	done                 func()
-	requeue              func(duration time.Duration)
 	cluster              *v1alpha1.SpiceDBCluster
 	client               dynamic.Interface
 	kclient              kubernetes.Interface
@@ -54,7 +50,7 @@ type SpiceDBClusterHandler struct {
 // Handle inspects the current SpiceDBCluster object and ensures
 // the desired state is persisted on the cluster.
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
-	ctx = handlercontext.CtxClusterNN.WithValue(ctx, r.cluster.NamespacedName())
+	ctx = handlers.CtxClusterNN.WithValue(ctx, r.cluster.NamespacedName())
 	mw := []libctrl.Middleware{
 		libctrl.MakeMiddleware(middleware.SyncIDMiddleware),
 		libctrl.MakeMiddleware(middleware.KlogMiddleware("spicedbcluster", klog.KObj(r.cluster))),
@@ -83,8 +79,8 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 			r.ensureService,
 		),
 		r.ensureRoleBinding,
-		handlercontext.CtxDeployments.HandleBuilder("deploymentsPre"),
-		handlercontext.CtxJobs.HandleBuilder("jobsPre"),
+		handlers.CtxDeployments.HandleBuilder("deploymentsPre"),
+		handlers.CtxJobs.HandleBuilder("jobsPre"),
 		parallel(
 			r.getDeployments,
 			r.getJobs,
@@ -102,10 +98,6 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 
 func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handler.Handler {
 	return handlers.NewEnsureDeploymentHandler(
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
 		func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 			klog.V(4).InfoS("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
 			return r.kclient.AppsV1().Deployments(r.cluster.Namespace).Apply(ctx, dep, metadata.ApplyForceOwned)
@@ -121,10 +113,6 @@ func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handle
 
 func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
 	return handlers.NewJobCleanupHandler(
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
 		func(ctx context.Context) []*corev1.Pod {
 			pod := libctrl.NewComponent[*corev1.Pod](r.informers, corev1.SchemeGroupVersion.WithResource("pods"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue))
 			return pod.List(r.cluster.NamespacedName())
@@ -144,18 +132,12 @@ func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
 }
 
 func (r *SpiceDBClusterHandler) waitForMigrationsHandler(next ...handler.Handler) handler.Handler {
-	return handlers.NewWaitForMigrationsHandler(libctrl.HandlerControlsWith(
-		libctrl.WithDone(r.done),
-		libctrl.WithRequeueAfter(r.requeue),
-	), r.recorder, next)
+	return handlers.NewWaitForMigrationsHandler(r.recorder, next)
 }
 
-func (r SpiceDBClusterHandler) pauseCluster(next ...handler.Handler) handler.Handler {
+func (r *SpiceDBClusterHandler) pauseCluster(next ...handler.Handler) handler.Handler {
 	return handler.NewHandler(libctrl.NewPauseHandler(
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
+		handlers.CtxHandlerControls.ContextKey,
 		metadata.PausedControllerSelectorKey,
 		r.cluster,
 		r.PatchStatus,
@@ -164,16 +146,12 @@ func (r SpiceDBClusterHandler) pauseCluster(next ...handler.Handler) handler.Han
 }
 
 func (r *SpiceDBClusterHandler) selfPauseCluster(...handler.Handler) handler.Handler {
-	return handlers.NewSelfPauseHandler(libctrl.HandlerControlsWith(
-		libctrl.WithDone(r.done),
-		libctrl.WithRequeueImmediate(r.requeue),
-	), r.cluster, r.Patch, r.PatchStatus)
+	return handlers.NewSelfPauseHandler(r.cluster, r.Patch, r.PatchStatus)
 }
 
 func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.Handler {
 	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
 	return handlers.NewSecretAdoptionHandler(
-		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
 		r.recorder,
 		r.cluster.Spec.SecretRef,
 		r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
@@ -208,7 +186,6 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 
 func (r *SpiceDBClusterHandler) checkConfigChanged(next ...handler.Handler) handler.Handler {
 	return handlers.NewConfigChangedHandler(
-		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
 		r.cluster,
 		r.PatchStatus,
 		handler.Handlers(next).MustOne(),
@@ -217,10 +194,6 @@ func (r *SpiceDBClusterHandler) checkConfigChanged(next ...handler.Handler) hand
 
 func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.Handler {
 	return handlers.NewValidateConfigHandler(
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
 		r.cluster.UID,
 		r.cluster.Spec.Config,
 		r.defaultSpiceDBImage,
@@ -235,11 +208,7 @@ func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.
 
 func (r *SpiceDBClusterHandler) getDeployments(...handler.Handler) handler.Handler {
 	return handler.NewHandler(libctrl.NewComponentContextHandler[*appsv1.Deployment](
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		handlercontext.CtxDeployments,
+		handlers.CtxDeployments,
 		libctrl.NewComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentSpiceDBLabelValue)),
 		r.cluster.NamespacedName(),
 		handler.NoopHandler,
@@ -248,11 +217,7 @@ func (r *SpiceDBClusterHandler) getDeployments(...handler.Handler) handler.Handl
 
 func (r *SpiceDBClusterHandler) getJobs(...handler.Handler) handler.Handler {
 	return handler.NewHandler(libctrl.NewComponentContextHandler[*batchv1.Job](
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueImmediate(r.requeue),
-		),
-		handlercontext.CtxJobs,
+		handlers.CtxJobs,
 		libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue)),
 		r.cluster.NamespacedName(),
 		handler.NoopHandler,
@@ -261,10 +226,6 @@ func (r *SpiceDBClusterHandler) getJobs(...handler.Handler) handler.Handler {
 
 func (r *SpiceDBClusterHandler) runMigration(next ...handler.Handler) handler.Handler {
 	return handlers.NewMigrationRunHandler(
-		libctrl.HandlerControlsWith(
-			libctrl.WithDone(r.done),
-			libctrl.WithRequeueAfter(r.requeue),
-		),
 		r.PatchStatus,
 		func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
 			_, err := r.kclient.BatchV1().Jobs(r.cluster.Namespace).Apply(ctx, job, metadata.ApplyForceOwned)
@@ -278,10 +239,7 @@ func (r *SpiceDBClusterHandler) runMigration(next ...handler.Handler) handler.Ha
 }
 
 func (r *SpiceDBClusterHandler) checkMigrations(next ...handler.Handler) handler.Handler {
-	return handlers.NewMigrationCheckHandler(libctrl.HandlerControlsWith(
-		libctrl.WithDone(r.done),
-		libctrl.WithRequeueImmediate(r.requeue),
-	), r.recorder, next)
+	return handlers.NewMigrationCheckHandler(r.recorder, next)
 }
 
 func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
@@ -294,7 +252,7 @@ func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
 	return libctrl.NewEnsureComponentByHash[K, A](
 		libctrl.NewHashableComponent[K](*component, libctrl.NewObjectHash(), "authzed.com/controller-component-hash"),
 		r.cluster.NamespacedName(),
-		libctrl.HandlerControlsWith(libctrl.WithDone(r.done), libctrl.WithRequeueImmediate(r.requeue)),
+		handlers.CtxHandlerControls.ContextKey,
 		applyObj,
 		deleteObject,
 		newObj)
@@ -312,7 +270,7 @@ func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler
 			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
-			return handlercontext.CtxConfig.MustValue(ctx).ServiceAccount()
+			return handlers.CtxConfig.MustValue(ctx).ServiceAccount()
 		},
 	), "ensureServiceAccount")
 }
@@ -329,7 +287,7 @@ func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
-			return handlercontext.CtxConfig.MustValue(ctx).Role()
+			return handlers.CtxConfig.MustValue(ctx).Role()
 		},
 	), "ensureRole")
 }
@@ -347,7 +305,7 @@ func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handl
 				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 			},
 			func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
-				return handlercontext.CtxConfig.MustValue(ctx).RoleBinding()
+				return handlers.CtxConfig.MustValue(ctx).RoleBinding()
 			},
 		).Handle(ctx)
 		handler.Handlers(next).MustOne().Handle(ctx)
@@ -366,7 +324,7 @@ func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handle
 			return r.kclient.CoreV1().Services(r.cluster.Namespace).Delete(ctx, name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
-			return handlercontext.CtxConfig.MustValue(ctx).Service()
+			return handlers.CtxConfig.MustValue(ctx).Service()
 		},
 	), "ensureService")
 }

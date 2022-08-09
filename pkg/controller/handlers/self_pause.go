@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -12,14 +11,14 @@ import (
 
 const HandlerSelfPauseKey handler.Key = "nextSelfPause"
 
-func NewSelfPauseHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.SpiceDBCluster,
+func NewSelfPauseHandler(cluster *v1alpha1.SpiceDBCluster,
 	patch func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
 ) handler.Handler {
 	return handler.NewHandler(libctrl.NewSelfPauseHandler(
-		ctrls,
+		CtxHandlerControls.ContextKey,
 		metadata.PausedControllerSelectorKey,
-		handlercontext.CtxSelfPauseObject,
+		CtxSelfPauseObject,
 		cluster.UID,
 		patch,
 		patchStatus,

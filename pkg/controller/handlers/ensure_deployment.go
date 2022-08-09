@@ -7,7 +7,6 @@ import (
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -21,14 +20,13 @@ type DeploymentHandler struct {
 	next             handler.ContextHandler
 }
 
-func NewEnsureDeploymentHandler(ctrls libctrl.HandlerControls,
+func NewEnsureDeploymentHandler(
 	applyDeployment func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error),
 	deleteDeployment func(ctx context.Context, name string) error,
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
 	next handler.ContextHandler,
 ) handler.Handler {
 	return handler.NewHandler(&DeploymentHandler{
-		ControlAll:       ctrls,
 		deleteDeployment: deleteDeployment,
 		applyDeployment:  applyDeployment,
 		patchStatus:      patchStatus,
@@ -38,7 +36,7 @@ func NewEnsureDeploymentHandler(ctrls libctrl.HandlerControls,
 
 func (m *DeploymentHandler) Handle(ctx context.Context) {
 	// TODO: unconditional status change can be a separate handler
-	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
+	currentStatus := CtxClusterStatus.MustValue(ctx)
 	// remove migrating condition if present and set the current migration hash
 	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
 		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash {
@@ -48,12 +46,12 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			m.RequeueAPIErr(err)
 			return
 		}
-		ctx = handlercontext.CtxClusterStatus.WithValue(ctx, currentStatus)
+		ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
 	}
 
-	migrationHash := handlercontext.CtxMigrationHash.MustValue(ctx)
-	secretHash := handlercontext.CtxSecretHash.MustValue(ctx)
-	config := handlercontext.CtxConfig.MustValue(ctx)
+	migrationHash := CtxMigrationHash.MustValue(ctx)
+	secretHash := CtxSecretHash.MustValue(ctx)
+	config := CtxConfig.MustValue(ctx)
 	newDeployment := config.Deployment(migrationHash, secretHash)
 	deploymentHash, err := libctrl.HashObject(newDeployment)
 	if err != nil {
@@ -63,7 +61,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 
 	matchingObjs := make([]*appsv1.Deployment, 0)
 	extraObjs := make([]*appsv1.Deployment, 0)
-	for _, o := range handlercontext.CtxDeployments.MustValue(ctx) {
+	for _, o := range CtxDeployments.MustValue(ctx) {
 		annotations := o.GetAnnotations()
 		if annotations == nil {
 			extraObjs = append(extraObjs, o)
@@ -77,7 +75,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 
 	// deployment with correct hash exists
 	if len(matchingObjs) == 1 {
-		ctx = handlercontext.CtxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
+		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
 
 		// delete extra objects
 		for _, o := range extraObjs {
@@ -99,7 +97,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			m.RequeueAPIErr(err)
 			return
 		}
-		ctx = handlercontext.CtxCurrentSpiceDeployment.WithValue(ctx, deployment)
+		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, deployment)
 	}
 
 	m.next.Handle(ctx)

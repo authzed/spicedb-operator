@@ -12,7 +12,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
@@ -56,16 +55,16 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrls := &fake.FakeControlAll{}
 
-			ctx := handlercontext.CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
-			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
-			ctx = handlercontext.CtxCurrentMigrationJob.WithValue(ctx, tt.migrationJob)
+			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
+			ctx = CtxCurrentMigrationJob.WithValue(ctx, tt.migrationJob)
 
 			recorder := record.NewFakeRecorder(1)
 
 			var called handler.Key
 			h := &WaitForMigrationsHandler{
-				ControlRequeueAfter: ctrls,
-				recorder:            recorder,
+				recorder: recorder,
 				nextSelfPause: handler.ContextHandlerFunc(func(ctx context.Context) {
 					called = HandlerSelfPauseKey
 				}),

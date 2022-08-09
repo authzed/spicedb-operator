@@ -11,7 +11,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
@@ -19,7 +18,6 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	libctrl.ControlAll
 	rawConfig           json.RawMessage
 	defaultSpiceDBImage string
 	allowedImages       []string
@@ -32,9 +30,8 @@ type ValidateConfigHandler struct {
 	next        handler.ContextHandler
 }
 
-func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawConfig json.RawMessage, spicedbImage string, allowedImages, allowedTags []string, generation int64, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
+func NewValidateConfigHandler(uid types.UID, rawConfig json.RawMessage, spicedbImage string, allowedImages, allowedTags []string, generation int64, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ValidateConfigHandler{
-		ControlAll:          ctrls,
 		uid:                 uid,
 		rawConfig:           rawConfig,
 		defaultSpiceDBImage: spicedbImage,
@@ -48,25 +45,25 @@ func NewValidateConfigHandler(ctrls libctrl.HandlerControls, uid types.UID, rawC
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
-	currentStatus := handlercontext.CtxClusterStatus.MustValue(ctx)
-	nn := handlercontext.CtxClusterNN.MustValue(ctx)
-	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, handlercontext.CtxSecret.Value(ctx))
+	currentStatus := CtxClusterStatus.MustValue(ctx)
+	nn := CtxClusterNN.MustValue(ctx)
+	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, CtxSecret.Value(ctx))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
-			c.Done()
+			CtxHandlerControls.Done(ctx)
 			return
 		}
 		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		currentStatus.SetStatusCondition(failedCondition)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
 		// if the config is invalid, there's no work to do until it has changed
-		c.Done()
+		CtxHandlerControls.Done(ctx)
 		return
 	}
 
@@ -78,10 +75,10 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 
 	migrationHash, err := libctrl.SecureHashObject(validatedConfig.MigrationConfig)
 	if err != nil {
-		c.RequeueErr(err)
+		CtxHandlerControls.RequeueErr(ctx, err)
 		return
 	}
-	ctx = handlercontext.CtxMigrationHash.WithValue(ctx, migrationHash)
+	ctx = CtxMigrationHash.WithValue(ctx, migrationHash)
 
 	// Remove invalid config status and set image and hash
 	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionValidatingFailed) ||
@@ -100,12 +97,12 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		}
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			c.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
 
-	ctx = handlercontext.CtxConfig.WithValue(ctx, validatedConfig)
-	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, currentStatus)
+	ctx = CtxConfig.WithValue(ctx, validatedConfig)
+	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
 	c.next.Handle(ctx)
 }

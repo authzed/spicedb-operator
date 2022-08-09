@@ -43,6 +43,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
@@ -371,49 +372,49 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		c.queue.AddAfter(key, after)
 	}
 
-	sync(ctx, *gvr, namespace, name, done, requeue)
+	ctx = handlers.CtxHandlerControls.WithValue(ctx, libctrl.NewHandlerControls(done, requeue))
+
+	sync(ctx, *gvr, namespace, name)
 	cancel()
 	<-ctx.Done()
 
 	return true
 }
 
-// syncFunc - an error returned here will do a rate-limited requeue of the object's key
-type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration))
+// syncFunc processes a single object from an informer
+type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string)
 
 // syncOwnedResource is called when SpiceDBCluster is updated
-func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
+func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) {
 	if gvr != OwnedResources[0] {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String()))
-		done()
+		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
 	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown object (%s::%s/%s): %w", gvr.String(), namespace, name, err))
-		done()
+		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
 
 	u, ok := obj.(*unstructured.Unstructured)
 	if !ok {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object %T", obj))
-		done()
+		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
 
 	var cluster v1alpha1.SpiceDBCluster
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object: %w", err))
-		done()
+		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
 
 	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
 
 	r := SpiceDBClusterHandler{
-		done:      done,
-		requeue:   requeue,
 		cluster:   &cluster,
 		client:    c.client,
 		kclient:   c.kclient,

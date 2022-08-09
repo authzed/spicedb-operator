@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
@@ -212,13 +211,13 @@ func TestValidateConfigHandler(t *testing.T) {
 			patchCalled := false
 
 			ctx := context.Background()
-			ctx = handlercontext.CtxSecret.WithValue(ctx, tt.existingSecret)
-			ctx = handlercontext.CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
-			ctx = handlercontext.CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
+			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
+			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 
 			var called handler.Key
 			h := &ValidateConfigHandler{
-				ControlAll:          ctrls,
 				uid:                 "uid",
 				rawConfig:           tt.rawConfig,
 				defaultSpiceDBImage: "image",
@@ -234,7 +233,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			cluster := handlercontext.CtxClusterStatus.MustValue(ctx)
+			cluster := CtxClusterStatus.MustValue(ctx)
 			t.Log(cluster.Status.Conditions)
 			for _, c := range tt.expectConditions {
 				require.True(t, cluster.IsStatusConditionTrue(c))

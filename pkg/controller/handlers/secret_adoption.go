@@ -14,7 +14,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -26,7 +25,6 @@ type SecretApplyFunc func(ctx context.Context, secret *applycorev1.SecretApplyCo
 
 // TODO: generic adoption handler
 type SecretAdopterHandler struct {
-	libctrl.ControlAll
 	secretName string
 	recorder   record.EventRecorder
 
@@ -37,9 +35,8 @@ type SecretAdopterHandler struct {
 	next            handler.ContextHandler
 }
 
-func NewSecretAdoptionHandler(ctrls libctrl.HandlerControls, recorder record.EventRecorder, secretName string, secretIndexer cache.Indexer, secretApplyFunc SecretApplyFunc, allClusters func(ctx context.Context) []*v1alpha1.SpiceDBCluster, next handler.Handler) handler.Handler {
+func NewSecretAdoptionHandler(recorder record.EventRecorder, secretName string, secretIndexer cache.Indexer, secretApplyFunc SecretApplyFunc, allClusters func(ctx context.Context) []*v1alpha1.SpiceDBCluster, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&SecretAdopterHandler{
-		ControlAll:    ctrls,
 		recorder:      recorder,
 		secretName:    secretName,
 		secretIndexer: secretIndexer,
@@ -57,10 +54,10 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 		s.next.Handle(ctx)
 		return
 	}
-	nn := handlercontext.CtxClusterNN.MustValue(ctx)
+	nn := CtxClusterNN.MustValue(ctx)
 	secrets, err := s.secretIndexer.ByIndex(metadata.OwningClusterIndex, nn.String())
 	if err != nil {
-		s.RequeueErr(err)
+		CtxHandlerControls.RequeueErr(ctx, err)
 		return
 	}
 
@@ -77,11 +74,11 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 				}).
 				WithAnnotations(s.clusterAnnotationsForSecret(ctx, s.secretName, nn.Namespace)), metadata.ApplyForceOwned)
 		if err != nil {
-			s.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 		s.recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for SpiceDBCluster %s; it has been labelled to mark it as part of the configuration for that controller.", nn.String())
-		s.Requeue()
+		CtxHandlerControls.Requeue(ctx)
 		return
 	}
 
@@ -96,7 +93,7 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 
 		var secret *corev1.Secret
 		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &secret); err != nil {
-			s.RequeueErr(err)
+			CtxHandlerControls.RequeueErr(ctx, err)
 			return
 		}
 		if secret.Name == s.secretName {
@@ -108,7 +105,7 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 
 	secretHash, err := libctrl.SecureHashObject(matchingSecret.Data)
 	if err != nil {
-		s.RequeueErr(err)
+		CtxHandlerControls.RequeueErr(ctx, err)
 		return
 	}
 
@@ -125,13 +122,13 @@ func (s *SecretAdopterHandler) Handle(ctx context.Context) {
 
 		secret := applycorev1.Secret(old.Name, old.Namespace).WithLabels(labels).WithAnnotations(annotations)
 		if _, err := s.secretApplyFunc(ctx, secret, metadata.ApplyForceOwned); err != nil {
-			s.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
 
-	ctx = handlercontext.CtxSecretHash.WithValue(ctx, secretHash)
-	ctx = handlercontext.CtxSecret.WithValue(ctx, matchingSecret)
+	ctx = CtxSecretHash.WithValue(ctx, secretHash)
+	ctx = CtxSecret.WithValue(ctx, matchingSecret)
 	s.next.Handle(ctx)
 }
 

@@ -7,21 +7,17 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlercontext"
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
 
 type ConfigChangedHandler struct {
-	libctrl.ControlAll
 	cluster     *v1alpha1.SpiceDBCluster
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
 }
 
-func NewConfigChangedHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.SpiceDBCluster, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
+func NewConfigChangedHandler(cluster *v1alpha1.SpiceDBCluster, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&ConfigChangedHandler{
-		ControlAll:  ctrls,
 		cluster:     cluster,
 		patchStatus: patchStatus,
 		next:        next,
@@ -29,7 +25,7 @@ func NewConfigChangedHandler(ctrls libctrl.HandlerControls, cluster *v1alpha1.Sp
 }
 
 func (c *ConfigChangedHandler) Handle(ctx context.Context) {
-	secretHash := handlercontext.CtxSecretHash.Value(ctx)
+	secretHash := CtxSecretHash.Value(ctx)
 	status := &v1alpha1.SpiceDBCluster{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       v1alpha1.SpiceDBClusterKind,
@@ -45,10 +41,10 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 		status.Status.SecretHash = secretHash
 		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
 		if err := c.patchStatus(ctx, status); err != nil {
-			c.RequeueAPIErr(err)
+			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
-	ctx = handlercontext.CtxClusterStatus.WithValue(ctx, status)
+	ctx = CtxClusterStatus.WithValue(ctx, status)
 	c.next.Handle(ctx)
 }
