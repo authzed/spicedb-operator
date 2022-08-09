@@ -211,7 +211,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 
 	// register with metrics collector
 	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
-		lister := typed.NewTypedLister[*v1alpha1.SpiceDBCluster](c.ListerFor(v1alpha1ClusterGVR))
+		lister := typed.NewLister[*v1alpha1.SpiceDBCluster](c.ListerFor(v1alpha1ClusterGVR))
 		return lister.List(labels.Everything())
 	})
 
