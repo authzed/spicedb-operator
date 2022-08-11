@@ -139,7 +139,7 @@ func (r *SpiceDBClusterHandler) pauseCluster(next ...handler.Handler) handler.Ha
 	return handler.NewHandler(libctrl.NewPauseHandler(
 		handlers.CtxHandlerControls.ContextKey,
 		metadata.PausedControllerSelectorKey,
-		r.cluster,
+		handlers.CtxClusterStatus,
 		r.PatchStatus,
 		handler.Handlers(next).MustOne(),
 	), "pauseCluster")
