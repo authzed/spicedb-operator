@@ -44,8 +44,8 @@ import (
 	"sigs.k8s.io/kind/pkg/fs"
 	"sigs.k8s.io/yaml"
 
-	"github.com/authzed/spicedb-operator/pkg/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/controller"
+	"github.com/authzed/spicedb-operator/pkg/crds"
 )
 
 func listsep(c rune) bool {
@@ -134,7 +134,7 @@ func StartOperator() {
 	kclient, err := kubernetes.NewForConfig(restConfig)
 	Expect(err).To(Succeed())
 
-	Expect(bootstrap.CRD(restConfig)).To(Succeed())
+	Expect(crds.BootstrapCRD(restConfig)).To(Succeed())
 
 	opconfig := controller.OperatorConfig{
 		ImageName: "spicedb",

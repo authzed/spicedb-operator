@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/component-base/metrics/legacyregistry"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -42,9 +43,11 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
+	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -69,6 +72,8 @@ func init() {
 }
 
 var (
+	spiceDBClusterMetrics = ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster]("spicedb_operator", "clusters", v1alpha1.SpiceDBClusterResourceName)
+
 	// OwnedResources are always synced unless they're marked unmanaged
 	OwnedResources = []schema.GroupVersionResource{
 		v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName),
@@ -141,7 +146,7 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	}
 	if len(staticClusterPath) > 0 {
 		handleStaticSpicedbs := func() {
-			hash, err := bootstrap.Cluster(ctx, c.client, staticClusterPath, c.lastStaticHash.Load())
+			hash, err := bootstrap.ResourceFromFile[*v1alpha1.SpiceDBCluster](ctx, v1alpha1ClusterGVR, c.client, staticClusterPath, c.lastStaticHash.Load())
 			if err != nil {
 				utilruntime.HandleError(err)
 				return
@@ -205,28 +210,9 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
 	// register with metrics collector
-	ClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
-		objs, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
-		if err != nil {
-			return nil, err
-		}
-
-		clusters := make([]*v1alpha1.SpiceDBCluster, 0, len(objs))
-		for _, obj := range objs {
-			u, ok := obj.(*unstructured.Unstructured)
-			if !ok {
-				return nil, fmt.Errorf("lister returned invalid object %T", obj)
-			}
-
-			var cluster v1alpha1.SpiceDBCluster
-			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-				return nil, fmt.Errorf("lister returned invalid object: %w", err)
-			}
-
-			clusters = append(clusters, &cluster)
-		}
-
-		return clusters, nil
+	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
+		lister := typed.NewLister[*v1alpha1.SpiceDBCluster](c.ListerFor(v1alpha1ClusterGVR))
+		return lister.List(labels.Everything())
 	})
 
 	return c, nil
@@ -235,6 +221,8 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 func (c *Controller) Start(ctx context.Context, numThreads int) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
+
+	legacyregistry.CustomMustRegister(spiceDBClusterMetrics)
 
 	broadcaster := record.NewBroadcaster()
 	defer broadcaster.Shutdown()

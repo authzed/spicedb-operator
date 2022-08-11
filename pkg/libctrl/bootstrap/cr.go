@@ -9,6 +9,9 @@ import (
 	"os"
 
 	"github.com/cespare/xxhash/v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -16,12 +19,16 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
-// Cluster bootstraps a cluster with the given config file
-func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string, lastHash uint64) (uint64, error) {
+type customResourceObject interface {
+	metav1.Object
+	runtime.Object
+}
+
+// ResourceFromFile bootstraps a CustomResource with the given config file
+func ResourceFromFile[O customResourceObject](ctx context.Context, gvr schema.GroupVersionResource, dclient dynamic.Interface, configPath string, lastHash uint64) (uint64, error) {
 	if len(configPath) <= 0 {
 		klog.V(4).Info("bootstrap file path not specified")
 		return 0, nil
@@ -52,24 +59,23 @@ func Cluster(ctx context.Context, dclient dynamic.Interface, configPath string, 
 
 	decoder := yaml.NewYAMLToJSONDecoder(bytes.NewReader(contents))
 	for {
-		var clusterSpec v1alpha1.SpiceDBCluster
-		if err := decoder.Decode(&clusterSpec); err != nil {
+		var objectDef O
+		if err := decoder.Decode(&objectDef); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return hash, err
 		}
 
-		data, err := client.Apply.Data(&clusterSpec)
+		data, err := client.Apply.Data(objectDef)
 		if err != nil {
 			return hash, err
 		}
 
-		v1alpha1ClusterGVR := v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 		_, err = dclient.
-			Resource(v1alpha1ClusterGVR).
-			Namespace(clusterSpec.Namespace).
-			Patch(ctx, clusterSpec.Name, types.ApplyPatchType, data, metadata.PatchForceOwned)
+			Resource(gvr).
+			Namespace(objectDef.GetNamespace()).
+			Patch(ctx, objectDef.GetName(), types.ApplyPatchType, data, metadata.PatchForceOwned)
 		if err != nil {
 			return hash, err
 		}

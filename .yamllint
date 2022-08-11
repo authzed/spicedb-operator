@@ -2,7 +2,7 @@
 ---
 ignore: |
   config/
-  pkg/bootstrap/crds
+  pkg/crds
   e2e/
 yaml-files:
   - "*.yaml"

@@ -7,7 +7,7 @@ import (
 )
 
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd object rbac:roleName=spicedb-operator-role paths="../../../apis/..." output:crd:artifacts:config=../../../../config/crds output:rbac:artifacts:config=../../../../config/rbac
-//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths="../../../apis/..." output:crd:artifacts:config=../../../bootstrap/crds
+//go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths="../../../apis/..." output:crd:artifacts:config=../../../crds
 
 const (
 	SpiceDBClusterResourceName = "spicedbclusters"
