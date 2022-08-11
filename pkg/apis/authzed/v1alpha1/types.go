@@ -32,6 +32,18 @@ type SpiceDBCluster struct {
 	Status ClusterStatus `json:"status,omitempty"`
 }
 
+func (c *SpiceDBCluster) WithAnnotations(entries map[string]string) *SpiceDBCluster {
+	annotations := c.ObjectMeta.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	for k, v := range entries {
+		annotations[k] = v
+	}
+	c.ObjectMeta.SetAnnotations(annotations)
+	return c
+}
+
 // ClusterSpec holds the desired state of the cluster.
 type ClusterSpec struct {
 	// Config values to be passed to the cluster
