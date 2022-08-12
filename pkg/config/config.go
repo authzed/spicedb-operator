@@ -341,17 +341,18 @@ func validateImage(image, defaultImage string, allowedImages, allowedTags []stri
 
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
 // spicedb container
-func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfiguration {
+func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfiguration {
 	// Set non-passthrough config that is either generated directly by the
 	// controller (dispatch address), has some direct effect on the cluster
 	// (tls), or lives in an external secret (preshared key).
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
-		applycorev1.EnvVar().WithName(c.EnvPrefix + "_DISPATCH_UPSTREAM_ADDR").
+		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
+		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_DISPATCH_UPSTREAM_ADDR").
 			WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", c.Name, c.Namespace)),
-		applycorev1.EnvVar().WithName(c.EnvPrefix + "_DATASTORE_CONN_URI").
+		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_DATASTORE_CONN_URI").
 			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
 				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
-		applycorev1.EnvVar().WithName(c.EnvPrefix + "_GRPC_PRESHARED_KEY").
+		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_GRPC_PRESHARED_KEY").
 			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
 				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("preshared_key"))),
 	}
@@ -365,7 +366,7 @@ func (c *SpiceConfig) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyCon
 
 	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(c.EnvPrefix, k)).WithValue(c.Passthrough[k]))
+			WithName(ToEnvVarName(c.SpiceConfig.EnvPrefix, k)).WithValue(c.Passthrough[k]))
 	}
 
 	return envVars
