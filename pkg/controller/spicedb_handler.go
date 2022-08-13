@@ -51,12 +51,9 @@ type SpiceDBClusterHandler struct {
 // the desired state is persisted on the cluster.
 func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 	ctx = handlers.CtxClusterNN.WithValue(ctx, r.cluster.NamespacedName())
-	mw := []libctrl.Middleware{
-		libctrl.MakeMiddleware(middleware.SyncIDMiddleware),
-		libctrl.MakeMiddleware(middleware.KlogMiddleware("spicedbcluster", klog.KObj(r.cluster))),
-	}
-	chain := libctrl.ChainWithMiddleware(mw...)
-	parallel := libctrl.ParallelWithMiddleware(mw...)
+	mw := middleware.NewHandlerLoggingMiddleware(4)
+	chain := libctrl.ChainWithMiddleware(mw)
+	parallel := libctrl.ParallelWithMiddleware(mw)
 
 	deploymentHandlerChain := chain(
 		r.ensureDeployment,

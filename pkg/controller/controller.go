@@ -48,6 +48,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -411,6 +412,17 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
+
+	logger := klog.LoggerWithValues(klog.Background(),
+		"syncID", middleware.NewSyncID(5),
+		"controller", c.Name(),
+		"obj", klog.KObj(&cluster),
+	)
+	ctx = klog.NewContext(ctx, logger)
+
+	ctx = handlers.CtxClusterStatus.WithValue(ctx, &cluster)
+
+	logger.V(4).Info("syncing owned object", "gvr", gvr)
 
 	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
 
