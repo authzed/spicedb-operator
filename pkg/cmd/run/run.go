@@ -111,5 +111,5 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
 
-	return mgr.StartControllers(ctx, ctrl)
+	return mgr.Start(ctx, ctrl)
 }
