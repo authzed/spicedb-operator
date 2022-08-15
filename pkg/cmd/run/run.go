@@ -5,6 +5,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
 	"k8s.io/component-base/term"
@@ -80,21 +82,27 @@ func (o *Options) Validate(cmd *cobra.Command, args []string) error {
 
 // Run performs the apply operation.
 func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) error {
-	dclient, err := f.DynamicClient()
+	restConfig, err := f.ToRESTConfig()
 	if err != nil {
 		return err
 	}
 
-	kclient, err := f.KubernetesClientSet()
+	// remove rate limiting against the apiserver; we respect priority and fairness
+	// and will back off if the server tells us to
+	restConfig.Burst = 2000
+	restConfig.QPS = -1
+
+	dclient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return err
+	}
+
+	kclient, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return err
 	}
 
 	if o.BootstrapCRDs {
-		restConfig, err := f.ToRESTConfig()
-		if err != nil {
-			return err
-		}
 		klog.V(3).InfoS("bootstrapping CRDs")
 		if err := crds.BootstrapCRD(restConfig); err != nil {
 			return err
