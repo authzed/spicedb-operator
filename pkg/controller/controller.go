@@ -45,7 +45,9 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/cachekeys"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
@@ -327,7 +329,7 @@ func (c *Controller) loadConfig(path string) {
 }
 
 func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
-	key, err := metadata.GVRMetaNamespaceKeyFunc(gvr, obj)
+	key, err := cachekeys.GVRMetaNamespaceKeyFunc(gvr, obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -352,7 +354,7 @@ func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimiti
 		return true
 	}
 
-	gvr, namespace, name, err := metadata.SplitGVRMetaNamespaceKey(key)
+	gvr, namespace, name, err := cachekeys.SplitGVRMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("error parsing key %q, skipping", key))
 		return true
@@ -463,13 +465,13 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 
 	klog.V(4).InfoS("syncing external object", "obj", klog.KObj(objMeta))
 
-	keys, err := metadata.GetClusterKeyFromMeta(obj)
+	keys, err := adopt.OwnerKeysFromMeta(metadata.OwnerAnnotationKeyPrefix)(obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
 
 	for _, k := range keys {
-		c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, k))
+		c.queue.AddRateLimited(cachekeys.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, k))
 	}
 }

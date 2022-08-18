@@ -11,6 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/pointer"
+
+	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
 )
 
 const (
@@ -33,9 +36,8 @@ const (
 )
 
 var (
-	force                    = true
 	ApplyForceOwned          = metav1.ApplyOptions{FieldManager: FieldManager, Force: true}
-	PatchForceOwned          = metav1.PatchOptions{FieldManager: FieldManager, Force: &force}
+	PatchForceOwned          = metav1.PatchOptions{FieldManager: FieldManager, Force: pointer.Bool(true)}
 	ManagedDependentSelector = MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 )
 
@@ -88,25 +90,19 @@ func GetClusterKeyFromMeta(in interface{}) ([]string, error) {
 		return nil, err
 	}
 
-	clusterNames := make([]string, 0)
-	for k := range objMeta.GetAnnotations() {
-		if strings.HasPrefix(k, OwnerAnnotationKeyPrefix) {
-			clusterName := strings.TrimPrefix(k, OwnerAnnotationKeyPrefix)
+	clusterNames, err := adopt.OwnerKeysFromMeta(OwnerAnnotationKeyPrefix)(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	objLabels := objMeta.GetLabels()
+	if len(objLabels) > 0 {
+		clusterName, ok := objLabels[OwnerLabelKey]
+		if ok {
 			nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
 			clusterNames = append(clusterNames, nn.String())
 		}
 	}
 
-	// support old-style owner labels
-	objLabels := objMeta.GetLabels()
-	clusterName, ok := objLabels[OwnerLabelKey]
-	if ok {
-		nn := types.NamespacedName{Name: clusterName, Namespace: objMeta.GetNamespace()}
-		clusterNames = append(clusterNames, nn.String())
-	}
-
-	if len(clusterNames) == 0 {
-		return nil, fmt.Errorf("synced %s %s/%s is managed by the operator but not associated with any cluster", obj.GetObjectKind(), objMeta.GetNamespace(), objMeta.GetName())
-	}
 	return clusterNames, nil
 }

@@ -47,7 +47,18 @@ func NewValidateConfigHandler(uid types.UID, rawConfig json.RawMessage, spicedbI
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	currentStatus := CtxClusterStatus.MustValue(ctx)
 	nn := CtxClusterNN.MustValue(ctx)
-	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, CtxSecret.Value(ctx))
+
+	secret := CtxSecret.Value(ctx)
+	if secret != nil {
+		secretHash, err := libctrl.SecureHashObject(secret.Data)
+		if err != nil {
+			CtxHandlerControls.RequeueErr(ctx, err)
+			return
+		}
+		ctx = CtxSecretHash.WithValue(ctx, secretHash)
+	}
+
+	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, secret)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {

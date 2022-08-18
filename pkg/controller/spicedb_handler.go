@@ -2,18 +2,14 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -29,6 +25,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -64,6 +61,11 @@ func (r *SpiceDBClusterHandler) Handle(ctx context.Context) {
 		deploymentHandlerChain,
 		r.selfPauseCluster(handler.NoopHandler),
 	).WithID(handlers.HandlerWaitForMigrationsKey)
+
+	ctx = handlers.CtxSecretNN.WithValue(ctx, types.NamespacedName{
+		Name:      r.cluster.Spec.SecretRef,
+		Namespace: r.cluster.Namespace,
+	})
 
 	chain(
 		r.pauseCluster,
@@ -150,33 +152,11 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
 	return handlers.NewSecretAdoptionHandler(
 		r.recorder,
-		r.cluster.Spec.SecretRef,
+		func(ctx context.Context) (*corev1.Secret, error) {
+			return typed.NewLister[*corev1.Secret](r.informers[secretsGVR].ForResource(secretsGVR).Lister()).ByNamespace(handlers.CtxSecretNN.MustValue(ctx).Namespace).Get(handlers.CtxSecretNN.MustValue(ctx).Name)
+		},
 		r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
 		r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
-		func(ctx context.Context) []*v1alpha1.SpiceDBCluster {
-			objs, err := r.informers[v1alpha1ClusterGVR].ForResource(v1alpha1ClusterGVR).Lister().List(labels.Everything())
-			if err != nil {
-				utilruntime.HandleError(fmt.Errorf("error listing spicedbs: %w", err))
-				return nil
-			}
-			clusters := make([]*v1alpha1.SpiceDBCluster, 0, len(objs))
-			for _, obj := range objs {
-				u, ok := obj.(*unstructured.Unstructured)
-				if !ok {
-					utilruntime.HandleError(fmt.Errorf("lister returned invalid object %T", obj))
-					return nil
-				}
-
-				var cluster v1alpha1.SpiceDBCluster
-				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-					utilruntime.HandleError(fmt.Errorf("lister returned invalid object: %w", err))
-					return nil
-				}
-
-				clusters = append(clusters, &cluster)
-			}
-			return clusters
-		},
 		handler.Handlers(next).MustOne(),
 	)
 }

@@ -11,17 +11,31 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 func TestSecretAdopterHandler(t *testing.T) {
+	type applyCall struct {
+		called bool
+		input  *applycorev1.SecretApplyConfiguration
+		result *corev1.Secret
+		err    error
+	}
+
+	secretNotFound := func(name string) error {
+		return apierrors.NewNotFound(
+			corev1.SchemeGroupVersion.WithResource("secrets").GroupResource(),
+			"test")
+	}
+
 	testSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "secret",
@@ -34,114 +48,123 @@ func TestSecretAdopterHandler(t *testing.T) {
 			},
 		},
 	}
-	cluster := &v1alpha1.SpiceDBCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: "test",
-		},
-		Spec: v1alpha1.ClusterSpec{SecretRef: "secret"},
-	}
 	tests := []struct {
 		name                string
 		secretName          string
+		cluster             types.NamespacedName
+		secretInCache       *corev1.Secret
+		cacheErr            error
 		secretsInIndex      []*corev1.Secret
-		allClusters         []*v1alpha1.SpiceDBCluster
-		secretApplyInput    *applycorev1.SecretApplyConfiguration
-		secretApplyResult   *corev1.Secret
-		secretApplyErr      error
-		expectApply         bool
+		applyCalls          []*applyCall
 		expectEvents        []string
 		expectNext          bool
 		expectRequeueErr    error
 		expectRequeueAPIErr error
 		expectRequeue       bool
-		expectCtxSecretHash string
 		expectCtxSecret     *corev1.Secret
 	}{
 		{
-			name:       "no secret",
+			name: "no secret",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
 			secretName: "",
+			applyCalls: []*applyCall{},
 			expectNext: true,
 		},
 		{
-			name:           "secret needs adopting",
-			secretName:     "secret",
+			name:       "secret needs adopting",
+			secretName: "secret",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			cacheErr:       secretNotFound("test"),
 			secretsInIndex: []*corev1.Secret{},
-			allClusters:    []*v1alpha1.SpiceDBCluster{cluster},
-			secretApplyInput: applycorev1.Secret("secret", "test").
-				WithLabels(map[string]string{
-					metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-				}).
-				WithAnnotations(map[string]string{
-					metadata.OwnerAnnotationKeyPrefix + "test": "owned",
-				}),
-			secretApplyResult:   testSecret,
-			expectApply:         true,
-			expectEvents:        []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
-			expectRequeue:       true,
-			expectCtxSecretHash: "n697h65ch575h5dfhf4h566h5d4h557h694h576h655h68bh6hcch577h9fh685h9hd5h66bhb9h596h646h644hch64dh668h88q",
-			expectCtxSecret:     testSecret,
-		},
-		{
-			name:           "secret already adopted",
-			secretName:     "secret",
-			secretsInIndex: []*corev1.Secret{testSecret},
-			allClusters:    []*v1alpha1.SpiceDBCluster{cluster},
-			secretApplyInput: applycorev1.Secret("secret", "test").
-				WithLabels(map[string]string{
-					metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-				}).
-				WithAnnotations(map[string]string{
-					metadata.OwnerAnnotationKeyPrefix + "test": "owned",
-				}),
-			secretApplyResult:   testSecret,
-			expectApply:         false,
-			expectEvents:        []string{},
-			expectNext:          true,
-			expectCtxSecretHash: "n697h65ch575h5dfhf4h566h5d4h557h694h576h655h68bh6hcch577h9fh685h9hd5h66bhb9h596h646h644hch64dh668h88q",
-			expectCtxSecret:     testSecret,
-		},
-		{
-			name:           "secret used by multiple clusters",
-			secretName:     "secret",
-			secretsInIndex: []*corev1.Secret{},
-			allClusters: []*v1alpha1.SpiceDBCluster{cluster, {
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test2",
-					Namespace: "test",
-				},
-				Spec: v1alpha1.ClusterSpec{SecretRef: "secret"},
-			}, {
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test3",
-					Namespace: "test",
-				},
-			}},
-			secretApplyInput: applycorev1.Secret("secret", "test").
-				WithLabels(map[string]string{
-					metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-				}).
-				WithAnnotations(map[string]string{
-					metadata.OwnerAnnotationKeyPrefix + "test":  "owned",
-					metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
-				}),
-			secretApplyResult: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "secret",
-					Namespace: "test",
-					Labels: map[string]string{
-						metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithLabels(map[string]string{
+							metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+							},
+						},
 					},
-					Annotations: map[string]string{
-						metadata.OwnerAnnotationKeyPrefix + "test":  "owned",
-						metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
+				},
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithAnnotations(map[string]string{
+							metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+							},
+							Annotations: map[string]string{
+								metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+							},
+						},
 					},
 				},
 			},
-			expectApply:         true,
-			expectEvents:        []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
-			expectRequeue:       true,
-			expectCtxSecretHash: "n697h65ch575h5dfhf4h566h5d4h557h694h576h655h68bh6hcch577h9fh685h9hd5h66bhb9h596h646h644hch64dh668h88q",
+			expectEvents:    []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
+			expectCtxSecret: testSecret,
+			expectNext:      true,
+		},
+		{
+			name: "secret already adopted",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			secretName:      "secret",
+			secretInCache:   testSecret,
+			secretsInIndex:  []*corev1.Secret{testSecret},
+			expectEvents:    []string{},
+			expectNext:      true,
+			expectCtxSecret: testSecret,
+		},
+		{
+			name: "secret adopted by a second cluster",
+			cluster: types.NamespacedName{
+				Name:      "test2",
+				Namespace: "test",
+			},
+			secretName:     "secret",
+			secretInCache:  testSecret,
+			secretsInIndex: []*corev1.Secret{testSecret},
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithAnnotations(map[string]string{
+							metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+							},
+							Annotations: map[string]string{
+								metadata.OwnerAnnotationKeyPrefix + "test":  "owned",
+								metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
+							},
+						},
+					},
+				},
+			},
+			expectEvents: []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test2; it has been labelled to mark it as part of the configuration for that controller."},
 			expectCtxSecret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "secret",
@@ -155,24 +178,33 @@ func TestSecretAdopterHandler(t *testing.T) {
 					},
 				},
 			},
+			expectNext: true,
 		},
 		{
-			name:        "transient error adopting secret",
-			secretName:  "secret",
-			allClusters: []*v1alpha1.SpiceDBCluster{cluster},
-			secretApplyInput: applycorev1.Secret("secret", "test").
-				WithLabels(map[string]string{
-					metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-				}).
-				WithAnnotations(map[string]string{
-					metadata.OwnerAnnotationKeyPrefix + "test": "owned",
-				}),
-			secretApplyErr:      apierrors.NewTooManyRequestsError("server having issues"),
-			expectApply:         true,
+			name: "transient error adopting secret",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			secretName: "secret",
+			cacheErr:   secretNotFound("test"),
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithLabels(map[string]string{
+							metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+						}),
+					err: apierrors.NewTooManyRequestsError("server having issues"),
+				},
+			},
 			expectRequeueAPIErr: apierrors.NewTooManyRequestsError("server having issues"),
 		},
 		{
-			name:       "multiple secrets",
+			name: "old secret still in index",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
 			secretName: "secret",
 			secretsInIndex: []*corev1.Secret{testSecret, {
 				ObjectMeta: metav1.ObjectMeta{
@@ -186,14 +218,68 @@ func TestSecretAdopterHandler(t *testing.T) {
 					},
 				},
 			}},
-			allClusters: []*v1alpha1.SpiceDBCluster{cluster},
-			secretApplyInput: applycorev1.Secret("secret2", "test").
-				WithLabels(map[string]string{}).
-				WithAnnotations(map[string]string{}),
-			expectApply:         true,
-			expectCtxSecretHash: "n697h65ch575h5dfhf4h566h5d4h557h694h576h655h68bh6hcch577h9fh685h9hd5h66bhb9h596h646h644hch64dh668h88q",
-			expectCtxSecret:     testSecret,
-			expectNext:          true,
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret2", "test").
+						WithLabels(map[string]string{}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret2",
+							Namespace: "test",
+							Annotations: map[string]string{
+								metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+							},
+						},
+					},
+				},
+				{
+					input: applycorev1.Secret("secret2", "test").
+						WithAnnotations(map[string]string{}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret2",
+							Namespace: "test",
+						},
+					},
+				},
+			},
+			expectCtxSecret: testSecret,
+			expectNext:      true,
+		},
+		{
+			name: "old secret still in index, still has other owners",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			secretName: "secret",
+			secretsInIndex: []*corev1.Secret{testSecret, {
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "secret2",
+					Namespace: "test",
+					Labels: map[string]string{
+						metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+					},
+					Annotations: map[string]string{
+						metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
+						metadata.OwnerAnnotationKeyPrefix + "test":  "owned",
+					},
+				},
+			}},
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret2", "test").
+						WithAnnotations(map[string]string{}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret2",
+							Namespace: "test",
+						},
+					},
+				},
+			},
+			expectCtxSecret: testSecret,
+			expectNext:      true,
 		},
 	}
 	for _, tt := range tests {
@@ -201,35 +287,35 @@ func TestSecretAdopterHandler(t *testing.T) {
 			ctrls := &fake.FakeControlAll{}
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta})
 			IndexAddUnstructured(t, indexer, tt.secretsInIndex)
+
 			recorder := record.NewFakeRecorder(1)
-			applyCalled := false
 			nextCalled := false
-			s := &SecretAdopterHandler{
-				secretName:    tt.secretName,
-				recorder:      recorder,
-				secretIndexer: indexer,
-				secretApplyFunc: func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
-					applyCalled = true
-					require.Equal(t, tt.secretApplyInput, secret)
-					return tt.secretApplyResult, tt.secretApplyErr
+			applyCallIndex := 0
+			s := NewSecretAdoptionHandler(
+				recorder,
+				func(ctx context.Context) (*corev1.Secret, error) {
+					return tt.secretInCache, tt.cacheErr
 				},
-				allClusters: func(ctx context.Context) []*v1alpha1.SpiceDBCluster {
-					return tt.allClusters
+				indexer,
+				func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
+					defer func() { applyCallIndex++ }()
+					call := tt.applyCalls[applyCallIndex]
+					call.called = true
+					require.Equal(t, call.input, secret, "error on call %d", applyCallIndex)
+					return call.result, call.err
 				},
-				next: handler.ContextHandlerFunc(func(ctx context.Context) {
+				handler.NewHandlerFromFunc(func(ctx context.Context) {
 					nextCalled = true
 					require.Equal(t, tt.expectCtxSecret, CtxSecret.Value(ctx))
-					require.Equal(t, tt.expectCtxSecretHash, CtxSecretHash.Value(ctx))
-				}),
-			}
-			ctx := CtxClusterNN.WithValue(context.Background(), types.NamespacedName{
-				Namespace: "test",
-				Name:      "test",
-			})
+				}, "testnext"),
+			)
+			ctx := CtxClusterNN.WithValue(context.Background(), tt.cluster)
+			ctx = CtxSecretNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: tt.secretName})
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			s.Handle(ctx)
-
-			require.Equal(t, tt.expectApply, applyCalled)
+			for _, call := range tt.applyCalls {
+				require.True(t, call.called)
+			}
 			ExpectEvents(t, recorder, tt.expectEvents)
 			require.Equal(t, tt.expectNext, nextCalled)
 			if tt.expectRequeueErr != nil {
@@ -261,3 +347,17 @@ func IndexAddUnstructured[K runtime.Object](t *testing.T, indexer cache.Indexer,
 		require.NoError(t, indexer.Add(&unstructured.Unstructured{Object: u}))
 	}
 }
+
+type SecretListWatch struct {
+	kubernetes.Interface
+}
+
+func (p SecretListWatch) List(options metav1.ListOptions) (runtime.Object, error) {
+	return p.Interface.CoreV1().Secrets("test").List(context.TODO(), options)
+}
+
+func (p SecretListWatch) Watch(options metav1.ListOptions) (watch.Interface, error) {
+	return p.Interface.CoreV1().Secrets("test").Watch(context.TODO(), options)
+}
+
+var _ cache.ListerWatcher = (*SecretListWatch)(nil)

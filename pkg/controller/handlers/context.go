@@ -14,6 +14,7 @@ import (
 var (
 	CtxHandlerControls        = libctrl.HandlerControlContext{}
 	CtxClusterNN              = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
+	CtxSecretNN               = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
 	CtxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)

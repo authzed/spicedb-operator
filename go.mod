@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	cloud.google.com/go/spanner v1.31.0
-	github.com/SaveTheRbtz/generic-sync-map-go v0.0.0-20220414055132-a37292614db8
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fatih/camelcase v1.0.0
