@@ -8,14 +8,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -34,10 +32,10 @@ var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.Spice
 // TODO: wait for a specific RV to be seen, with a timeout
 
 type SpiceDBClusterHandler struct {
+	registry             *typed.Registry
 	cluster              *v1alpha1.SpiceDBCluster
 	client               dynamic.Interface
 	kclient              kubernetes.Interface
-	informers            map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
 	recorder             record.EventRecorder
 	defaultSpiceDBImage  string
 	allowedSpiceDBImages []string
@@ -113,11 +111,17 @@ func (r *SpiceDBClusterHandler) ensureDeployment(next ...handler.Handler) handle
 func (r *SpiceDBClusterHandler) cleanupJob(...handler.Handler) handler.Handler {
 	return handlers.NewJobCleanupHandler(
 		func(ctx context.Context) []*corev1.Pod {
-			pod := libctrl.NewComponent[*corev1.Pod](r.informers, corev1.SchemeGroupVersion.WithResource("pods"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue))
-			return pod.List(r.cluster.NamespacedName())
+			return libctrl.NewIndexedComponent[*corev1.Pod](
+				typed.IndexerFor[*corev1.Pod](r.registry, typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("pods"))),
+				metadata.OwningClusterIndex,
+				metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue),
+			).List(r.cluster.NamespacedName())
 		},
 		func(ctx context.Context) []*batchv1.Job {
-			job := libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue))
+			job := libctrl.NewIndexedComponent[*batchv1.Job](
+				typed.IndexerFor[*batchv1.Job](r.registry, typed.NewRegistryKey(DependentFactoryKey, batchv1.SchemeGroupVersion.WithResource("jobs"))),
+				metadata.OwningClusterIndex,
+				metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue))
 			return job.List(r.cluster.NamespacedName())
 		},
 		func(ctx context.Context, name string) error {
@@ -153,9 +157,9 @@ func (r *SpiceDBClusterHandler) secretAdopter(next ...handler.Handler) handler.H
 	return handlers.NewSecretAdoptionHandler(
 		r.recorder,
 		func(ctx context.Context) (*corev1.Secret, error) {
-			return typed.NewLister[*corev1.Secret](r.informers[secretsGVR].ForResource(secretsGVR).Lister()).ByNamespace(handlers.CtxSecretNN.MustValue(ctx).Namespace).Get(handlers.CtxSecretNN.MustValue(ctx).Name)
+			return typed.ListerFor[*corev1.Secret](r.registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)).ByNamespace(handlers.CtxSecretNN.MustValue(ctx).Namespace).Get(handlers.CtxSecretNN.MustValue(ctx).Name)
 		},
-		r.informers[secretsGVR].ForResource(secretsGVR).Informer().GetIndexer(),
+		typed.IndexerFor[*corev1.Secret](r.registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
 		r.kclient.CoreV1().Secrets(r.cluster.Namespace).Apply,
 		handler.Handlers(next).MustOne(),
 	)
@@ -186,7 +190,10 @@ func (r *SpiceDBClusterHandler) validateConfig(next ...handler.Handler) handler.
 func (r *SpiceDBClusterHandler) getDeployments(...handler.Handler) handler.Handler {
 	return handler.NewHandler(libctrl.NewComponentContextHandler[*appsv1.Deployment](
 		handlers.CtxDeployments,
-		libctrl.NewComponent[*appsv1.Deployment](r.informers, appsv1.SchemeGroupVersion.WithResource("deployments"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentSpiceDBLabelValue)),
+		libctrl.NewIndexedComponent[*appsv1.Deployment](
+			typed.IndexerFor[*appsv1.Deployment](r.registry, typed.NewRegistryKey(DependentFactoryKey, appsv1.SchemeGroupVersion.WithResource("deployments"))),
+			metadata.OwningClusterIndex,
+			metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentSpiceDBLabelValue)),
 		r.cluster.NamespacedName(),
 		handler.NoopHandler,
 	), "getDeployments")
@@ -195,7 +202,10 @@ func (r *SpiceDBClusterHandler) getDeployments(...handler.Handler) handler.Handl
 func (r *SpiceDBClusterHandler) getJobs(...handler.Handler) handler.Handler {
 	return handler.NewHandler(libctrl.NewComponentContextHandler[*batchv1.Job](
 		handlers.CtxJobs,
-		libctrl.NewComponent[*batchv1.Job](r.informers, batchv1.SchemeGroupVersion.WithResource("jobs"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue)),
+		libctrl.NewIndexedComponent[*batchv1.Job](
+			typed.IndexerFor[*batchv1.Job](r.registry, typed.NewRegistryKey(DependentFactoryKey, batchv1.SchemeGroupVersion.WithResource("jobs"))),
+			metadata.OwningClusterIndex,
+			metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentMigrationJobLabelValue)),
 		r.cluster.NamespacedName(),
 		handler.NoopHandler,
 	), "getJobs")
@@ -219,7 +229,7 @@ func (r *SpiceDBClusterHandler) checkMigrations(next ...handler.Handler) handler
 	return handlers.NewMigrationCheckHandler(r.recorder, next)
 }
 
-func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
+func newEnsureClusterComponent[K libctrl.KubeObject, A libctrl.Annotator[A]](
 	r *SpiceDBClusterHandler,
 	component *libctrl.Component[K],
 	applyObj func(ctx context.Context, apply A) (K, error),
@@ -237,7 +247,12 @@ func newEnsureClusterComponent[K metav1.Object, A libctrl.Annotator[A]](
 
 func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler.Handler {
 	return handler.NewHandler(newEnsureClusterComponent(r,
-		libctrl.NewComponent[*corev1.ServiceAccount](r.informers, corev1.SchemeGroupVersion.WithResource("serviceaccounts"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceAccountLabel)),
+		libctrl.NewIndexedComponent[*corev1.ServiceAccount](
+			typed.IndexerFor[*corev1.ServiceAccount](
+				r.registry,
+				typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("serviceaccounts"))),
+			metadata.OwningClusterIndex,
+			metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceAccountLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
 			klog.V(4).InfoS("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.CoreV1().ServiceAccounts(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -254,7 +269,11 @@ func (r *SpiceDBClusterHandler) ensureServiceAccount(...handler.Handler) handler
 
 func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 	return handler.NewHandler(newEnsureClusterComponent(r,
-		libctrl.NewComponent[*rbacv1.Role](r.informers, rbacv1.SchemeGroupVersion.WithResource("roles"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleLabel)),
+		libctrl.NewIndexedComponent[*rbacv1.Role](
+			typed.IndexerFor[*rbacv1.Role](
+				r.registry,
+				typed.NewRegistryKey(DependentFactoryKey, rbacv1.SchemeGroupVersion.WithResource("roles"))),
+			metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleLabel)),
 		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
 			klog.V(4).InfoS("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.RbacV1().Roles(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -272,7 +291,11 @@ func (r *SpiceDBClusterHandler) ensureRole(...handler.Handler) handler.Handler {
 func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handler.Handler {
 	return handler.NewHandlerFromFunc(func(ctx context.Context) {
 		newEnsureClusterComponent(r,
-			libctrl.NewComponent[*rbacv1.RoleBinding](r.informers, rbacv1.SchemeGroupVersion.WithResource("rolebindings"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleBindingLabel)),
+			libctrl.NewIndexedComponent[*rbacv1.RoleBinding](
+				typed.IndexerFor[*rbacv1.RoleBinding](
+					r.registry,
+					typed.NewRegistryKey(DependentFactoryKey, rbacv1.SchemeGroupVersion.WithResource("rolebindings"))),
+				metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentRoleBindingLabel)),
 			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
 				klog.V(4).InfoS("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
 				return r.kclient.RbacV1().RoleBindings(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -291,7 +314,12 @@ func (r *SpiceDBClusterHandler) ensureRoleBinding(next ...handler.Handler) handl
 
 func (r *SpiceDBClusterHandler) ensureService(...handler.Handler) handler.Handler {
 	return handler.NewHandler(newEnsureClusterComponent(r,
-		libctrl.NewComponent[*corev1.Service](r.informers, corev1.SchemeGroupVersion.WithResource("services"), metadata.OwningClusterIndex, metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceLabel)),
+		libctrl.NewIndexedComponent[*corev1.Service](
+			typed.IndexerFor[*corev1.Service](
+				r.registry,
+				typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("services"))),
+			metadata.OwningClusterIndex,
+			metadata.SelectorForComponent(r.cluster.Name, metadata.ComponentServiceLabel)),
 		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
 			klog.V(4).InfoS("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
 			return r.kclient.CoreV1().Services(r.cluster.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)

@@ -17,6 +17,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 )
 
 // Options contains the input to the run command.
@@ -110,7 +111,8 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 	}
 
 	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := controller.NewController(ctx, dclient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
+	registry := typed.NewRegistry()
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
 	if err != nil {
 		return err
 	}

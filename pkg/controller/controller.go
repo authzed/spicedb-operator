@@ -25,15 +25,12 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -107,11 +104,11 @@ type OperatorConfig struct {
 }
 
 type Controller struct {
-	queue     workqueue.RateLimitingInterface
-	client    dynamic.Interface
-	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder  record.EventRecorder
-	kclient   kubernetes.Interface
+	registry *typed.Registry
+	queue    workqueue.RateLimitingInterface
+	client   dynamic.Interface
+	recorder record.EventRecorder
+	kclient  kubernetes.Interface
 
 	// config
 	configLock     sync.RWMutex
@@ -124,12 +121,17 @@ type Controller struct {
 
 var _ manager.Controller = &Controller{}
 
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
+var (
+	OwnedFactoryKey     = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "unfiltered")
+	DependentFactoryKey = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "dependents")
+)
+
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
 	c := &Controller{
-		kclient:   kclient,
-		client:    dclient,
-		queue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
-		informers: make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
+		registry: registry,
+		kclient:  kclient,
+		client:   dclient,
+		queue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 	}
 
 	fileInformerFactory, err := libctrl.NewFileInformerFactory()
@@ -166,13 +168,15 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		})
 	}
 
-	ownedInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+	ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+		OwnedFactoryKey,
 		dclient,
 		0,
 		metav1.NamespaceAll,
 		nil,
 	)
-	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+	externalInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+		DependentFactoryKey,
 		dclient,
 		0,
 		metav1.NamespaceAll,
@@ -188,7 +192,6 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, c.queue, obj) },
 			// Delete is not used right now, we rely on ownerrefs to clean up
 		})
-		c.informers[gvr] = ownedInformerFactory
 	}
 
 	for _, gvr := range ExternalResources {
@@ -202,7 +205,6 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			UpdateFunc: func(_, obj interface{}) { c.syncExternalResource(obj) },
 			DeleteFunc: func(obj interface{}) { c.syncExternalResource(obj) },
 		})
-		c.informers[gvr] = externalInformerFactory
 	}
 
 	// start informers
@@ -214,8 +216,8 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
 	// register with metrics collector
+	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR))
 	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
-		lister := typed.NewLister[*v1alpha1.SpiceDBCluster](c.ListerFor(v1alpha1ClusterGVR))
 		return lister.List(labels.Everything())
 	})
 
@@ -259,24 +261,6 @@ func (c *Controller) HealthChecker() controllerhealthz.UnnamedHealthChecker {
 	return healthz.PingHealthz
 }
 
-func (c *Controller) ListerFor(gvr schema.GroupVersionResource) cache.GenericLister {
-	factory, ok := c.informers[gvr]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("ListerFor called with unknown GVR"))
-		return nil
-	}
-	return factory.ForResource(gvr).Lister()
-}
-
-func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIndexInformer {
-	factory, ok := c.informers[gvr]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("InformerFor called with unknown GVR"))
-		return nil
-	}
-	return factory.ForResource(gvr).Informer()
-}
-
 func (c *Controller) loadConfig(path string) {
 	if len(path) == 0 {
 		return
@@ -318,7 +302,8 @@ func (c *Controller) loadConfig(path string) {
 	klog.V(4).InfoS("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
-	clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
+	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR))
+	clusters, err := lister.List(labels.Everything())
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
@@ -394,23 +379,10 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
-	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
+
+	cluster, err := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR)).ByNamespace(namespace).Get(name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown object (%s::%s/%s): %w", gvr.String(), namespace, name, err))
-		handlers.CtxHandlerControls.Done(ctx)
-		return
-	}
-
-	u, ok := obj.(*unstructured.Unstructured)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object %T", obj))
-		handlers.CtxHandlerControls.Done(ctx)
-		return
-	}
-
-	var cluster v1alpha1.SpiceDBCluster
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object: %w", err))
 		handlers.CtxHandlerControls.Done(ctx)
 		return
 	}
@@ -418,22 +390,20 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	logger := klog.LoggerWithValues(klog.Background(),
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
-		"obj", klog.KObj(&cluster),
+		"obj", klog.KObj(cluster),
 	)
 	ctx = klog.NewContext(ctx, logger)
 
-	ctx = handlers.CtxClusterStatus.WithValue(ctx, &cluster)
+	ctx = handlers.CtxClusterStatus.WithValue(ctx, cluster)
 
 	logger.V(4).Info("syncing owned object", "gvr", gvr)
 
-	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
-
 	r := SpiceDBClusterHandler{
-		cluster:   &cluster,
-		client:    c.client,
-		kclient:   c.kclient,
-		informers: c.informers,
-		recorder:  c.recorder,
+		registry: c.registry,
+		cluster:  cluster,
+		client:   c.client,
+		kclient:  c.kclient,
+		recorder: c.recorder,
 	}
 	c.configLock.RLock()
 	// TODO: pull in an image spec library

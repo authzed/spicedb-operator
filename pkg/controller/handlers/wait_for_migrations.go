@@ -40,7 +40,7 @@ func (m *WaitForMigrationsHandler) Handle(ctx context.Context) {
 		err := fmt.Errorf("migration job failed: %s", c.Message)
 		runtime.HandleError(err)
 		currentStatus.SetStatusCondition(v1alpha1.NewMigrationFailedCondition(config.DatastoreEngine, "head", err))
-		CtxSelfPauseObject.WithValue(ctx, currentStatus)
+		ctx = CtxSelfPauseObject.WithValue(ctx, currentStatus)
 		m.nextSelfPause.Handle(ctx)
 		return
 	}
