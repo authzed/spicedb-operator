@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -214,7 +214,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
 			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
-			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
 
 			var called handler.Key
 			h := &ValidateConfigHandler{
@@ -233,7 +233,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			cluster := CtxClusterStatus.MustValue(ctx)
+			cluster := CtxCluster.MustValue(ctx)
 			t.Log(cluster.Status.Conditions)
 			for _, c := range tt.expectConditions {
 				require.True(t, cluster.IsStatusConditionTrue(c))

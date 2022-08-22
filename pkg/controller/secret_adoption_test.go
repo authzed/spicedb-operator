@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -11,14 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/watch"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -296,7 +295,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 				func(ctx context.Context) (*corev1.Secret, error) {
 					return tt.secretInCache, tt.cacheErr
 				},
-				indexer,
+				typed.NewIndexer[*corev1.Secret](indexer),
 				func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
 					defer func() { applyCallIndex++ }()
 					call := tt.applyCalls[applyCallIndex]
@@ -347,17 +346,3 @@ func IndexAddUnstructured[K runtime.Object](t *testing.T, indexer cache.Indexer,
 		require.NoError(t, indexer.Add(&unstructured.Unstructured{Object: u}))
 	}
 }
-
-type SecretListWatch struct {
-	kubernetes.Interface
-}
-
-func (p SecretListWatch) List(options metav1.ListOptions) (runtime.Object, error) {
-	return p.Interface.CoreV1().Secrets("test").List(context.TODO(), options)
-}
-
-func (p SecretListWatch) Watch(options metav1.ListOptions) (watch.Interface, error) {
-	return p.Interface.CoreV1().Secrets("test").Watch(context.TODO(), options)
-}
-
-var _ cache.ListerWatcher = (*SecretListWatch)(nil)

@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -45,6 +45,6 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 			return
 		}
 	}
-	ctx = CtxClusterStatus.WithValue(ctx, status)
+	ctx = CtxCluster.WithValue(ctx, status)
 	c.next.Handle(ctx)
 }

@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -91,7 +91,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			deleteCalled := false
 			nextCalled := false
 
-			ctx := CtxClusterStatus.WithValue(context.Background(), tt.clusterStatus)
+			ctx := CtxCluster.WithValue(context.Background(), tt.clusterStatus)
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			ctx = CtxConfig.WithValue(ctx, &tt.config)
 			ctx = CtxJobs.WithHandle(ctx)
@@ -117,7 +117,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.True(t, CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
+			require.True(t, CtxCluster.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectNext, nextCalled)

@@ -22,8 +22,10 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
+	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/dynamic"
@@ -44,8 +46,8 @@ import (
 	"sigs.k8s.io/kind/pkg/fs"
 	"sigs.k8s.io/yaml"
 
+	"github.com/authzed/spicedb-operator/pkg/cmd/run"
 	"github.com/authzed/spicedb-operator/pkg/controller"
-	"github.com/authzed/spicedb-operator/pkg/crds"
 )
 
 func listsep(c rune) bool {
@@ -128,24 +130,29 @@ func DeleteNamespace(name string) {
 }
 
 func StartOperator() {
-	dclient, err := dynamic.NewForConfig(restConfig)
-	Expect(err).To(Succeed())
-
-	kclient, err := kubernetes.NewForConfig(restConfig)
-	Expect(err).To(Succeed())
-
-	Expect(crds.BootstrapCRD(restConfig)).To(Succeed())
+	ctx, cancel := context.WithCancel(genericapiserver.SetupSignalContext())
+	DeferCleanup(cancel)
 
 	opconfig := controller.OperatorConfig{
 		ImageName: "spicedb",
 		ImageTag:  "dev",
 	}
-	ctrl, err := controller.NewController(context.Background(), dclient, kclient, WriteConfig(opconfig), "")
-	Expect(err).To(Succeed())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	DeferCleanup(cancel)
-	go ctrl.Start(ctx, 2)
+	testRestConfig := rest.CopyConfig(restConfig)
+	go func() {
+		defer GinkgoRecover()
+		options := run.RecommendedOptions()
+		options.BootstrapCRDs = true
+		options.OperatorConfigPath = WriteConfig(opconfig)
+		options.Run(ctx, cmdutil.NewFactory(ClientGetter{}))
+	}()
+
+	Eventually(func(g Gomega) {
+		c, err := dynamic.NewForConfig(testRestConfig)
+		g.Expect(err).To(Succeed())
+		_, err = c.Resource(v1.SchemeGroupVersion.WithResource("customresourcedefinitions")).Get(ctx, v1alpha1ClusterGVR.GroupResource().String(), metav1.GetOptions{})
+		g.Expect(err).To(Succeed())
+	}).Should(Succeed())
 }
 
 var ConfigFileName = ""

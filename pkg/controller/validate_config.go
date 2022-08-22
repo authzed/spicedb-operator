@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -45,7 +45,7 @@ func NewValidateConfigHandler(uid types.UID, rawConfig json.RawMessage, spicedbI
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
-	currentStatus := CtxClusterStatus.MustValue(ctx)
+	currentStatus := CtxCluster.MustValue(ctx)
 	nn := CtxClusterNN.MustValue(ctx)
 
 	secret := CtxSecret.Value(ctx)
@@ -114,6 +114,6 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	ctx = CtxConfig.WithValue(ctx, validatedConfig)
-	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
+	ctx = CtxCluster.WithValue(ctx, currentStatus)
 	c.next.Handle(ctx)
 }

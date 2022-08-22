@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
@@ -17,7 +17,7 @@ var (
 	CtxSecretNN               = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
-	CtxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
+	CtxCluster                = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
 	CtxConfig                 = libctrl.NewContextDefaultingKey[*config.Config](nil)
 	CtxMigrationHash          = libctrl.NewContextDefaultingKey[string]("")
 	CtxDeployments            = libctrl.NewContextHandleDefaultingKey[[]*appsv1.Deployment](make([]*appsv1.Deployment, 0))

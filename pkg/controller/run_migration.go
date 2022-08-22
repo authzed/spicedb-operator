@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -44,14 +44,14 @@ func NewMigrationRunHandler(
 
 func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	// TODO: setting status is unconditional, should happen in a separate handler
-	currentStatus := CtxClusterStatus.MustValue(ctx)
+	currentStatus := CtxCluster.MustValue(ctx)
 	config := CtxConfig.MustValue(ctx)
 	currentStatus.SetStatusCondition(v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
 	if err := m.patchStatus(ctx, currentStatus); err != nil {
 		CtxHandlerControls.RequeueErr(ctx, err)
 		return
 	}
-	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
+	ctx = CtxCluster.WithValue(ctx, currentStatus)
 
 	jobs := CtxJobs.MustValue(ctx)
 	migrationHash := CtxMigrationHash.Value(ctx)

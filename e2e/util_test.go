@@ -97,7 +97,7 @@ type ClientGetter struct{}
 var _ genericclioptions.RESTClientGetter = &ClientGetter{}
 
 func (c ClientGetter) ToRESTConfig() (*rest.Config, error) {
-	return restConfig, nil
+	return rest.CopyConfig(restConfig), nil
 }
 
 func (c ClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {

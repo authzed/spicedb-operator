@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -107,7 +107,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
-			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
 			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
@@ -132,7 +132,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.Equal(t, tt.expectStatus, CtxClusterStatus.MustValue(ctx))
+			require.Equal(t, tt.expectStatus, CtxCluster.MustValue(ctx))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)

@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -102,7 +102,7 @@ func TestCheckMigrationsHandler(t *testing.T) {
 
 			ctx := CtxConfig.WithValue(context.Background(), &tt.config)
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
-			ctx = CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
+			ctx = CtxCluster.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
 			ctx = CtxJobs.WithValue(ctx, tt.existingJobs)
 			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
 			ctx = CtxMigrationHash.WithValue(ctx, "hash")

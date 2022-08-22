@@ -33,6 +33,7 @@ require (
 	k8s.io/controller-manager v0.23.5
 	k8s.io/klog/v2 v2.70.1
 	k8s.io/kubectl v0.22.0-beta.0
+	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 	mvdan.cc/gofumpt v0.3.0
 	sigs.k8s.io/controller-runtime v0.11.1
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20220322150744-c46b410039fd
@@ -148,7 +149,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	k8s.io/gengo v0.0.0-20210813121822-485abfe95c7c // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.30 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/kustomize/api v0.10.1 // indirect

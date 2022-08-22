@@ -31,7 +31,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/cachekeys"
@@ -90,7 +89,14 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		client:  dclient,
 		kclient: kclient,
 	}
-	c.OwnedResourceController = manager.NewOwnedResourceController(v1alpha1.SpiceDBClusterResourceName, v1alpha1ClusterGVR, registry, broadcaster, c.syncOwnedResource)
+	c.OwnedResourceController = manager.NewOwnedResourceController(
+		v1alpha1.SpiceDBClusterResourceName,
+		v1alpha1ClusterGVR,
+		CtxHandlerControls,
+		registry,
+		broadcaster,
+		c.syncOwnedResource,
+	)
 
 	fileInformerFactory, err := libctrl.NewFileInformerFactory()
 	if err != nil {
@@ -229,7 +235,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	cluster, err := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.Registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR)).ByNamespace(namespace).Get(name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown object (%s::%s/%s): %w", gvr.String(), namespace, name, err))
-		handlers.CtxHandlerControls.Done(ctx)
+		CtxHandlerControls.Done(ctx)
 		return
 	}
 
@@ -239,8 +245,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		"obj", klog.KObj(cluster),
 	)
 	ctx = klog.NewContext(ctx, logger)
-
-	ctx = handlers.CtxClusterStatus.WithValue(ctx, cluster)
+	ctx = CtxCluster.WithValue(ctx, cluster)
 
 	logger.V(4).Info("syncing owned object", "gvr", gvr)
 
@@ -272,7 +277,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 // syncExternalResource is called when a dependent resource is updated:
 // It queues the owning SpiceDBCluster for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
-// machine for PermissionSystem with an entrypoint in the main Handler
+// machine for SpiceDBCluster with an entrypoint in the main Handler
 func (c *Controller) syncExternalResource(obj interface{}) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {

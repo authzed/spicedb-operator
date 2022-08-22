@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (m *WaitForMigrationsHandler) Handle(ctx context.Context) {
 
 	// if migration failed entirely, pause so we can diagnose
 	if c := findJobCondition(job, batchv1.JobFailed); c != nil && c.Status == corev1.ConditionTrue {
-		currentStatus := CtxClusterStatus.MustValue(ctx)
+		currentStatus := CtxCluster.MustValue(ctx)
 		config := CtxConfig.MustValue(ctx)
 		err := fmt.Errorf("migration job failed: %s", c.Message)
 		runtime.HandleError(err)
@@ -47,7 +47,7 @@ func (m *WaitForMigrationsHandler) Handle(ctx context.Context) {
 
 	// if done, go to the nextDeploymentHandler step
 	if jobConditionHasStatus(job, batchv1.JobComplete, corev1.ConditionTrue) {
-		m.recorder.Eventf(CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventMigrationsComplete, "Migrations completed for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(CtxCluster.MustValue(ctx), corev1.EventTypeNormal, EventMigrationsComplete, "Migrations completed for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}

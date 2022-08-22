@@ -1,4 +1,4 @@
-package handlers
+package controller
 
 import (
 	"context"
@@ -19,7 +19,6 @@ const (
 	HandlerWaitForMigrationsKey handler.Key = "waitForMigrationChain"
 )
 
-// TODO: could be generalized as some sort of "Hash Handoff" flow
 type MigrationCheckHandler struct {
 	recorder record.EventRecorder
 
@@ -66,7 +65,7 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
-		m.recorder.Eventf(CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(CtxCluster.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}

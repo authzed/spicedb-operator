@@ -1,6 +1,8 @@
 package run
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -58,8 +60,9 @@ func NewCmdRun(o *Options) *cobra.Command {
 		DisableFlagsInUseLine: true,
 		Short:                 "run SpiceDB operator",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmdutil.CheckErr(o.Validate(cmd, args))
-			cmdutil.CheckErr(o.Run(f, cmd, args))
+			ctx := genericapiserver.SetupSignalContext()
+			cmdutil.CheckErr(o.Validate())
+			cmdutil.CheckErr(o.Run(ctx, f))
 		},
 	}
 
@@ -86,12 +89,12 @@ func NewCmdRun(o *Options) *cobra.Command {
 }
 
 // Validate checks the set of flags provided by the user.
-func (o *Options) Validate(cmd *cobra.Command, args []string) error {
+func (o *Options) Validate() error {
 	return errors.NewAggregate(o.DebugFlags.Validate())
 }
 
 // Run performs the apply operation.
-func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) error {
+func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	restConfig, err := f.ToRESTConfig()
 	if err != nil {
 		return err
@@ -119,7 +122,6 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		}
 	}
 
-	ctx := genericapiserver.SetupSignalContext()
 	registry := typed.NewRegistry()
 	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
 	broadcaster := record.NewBroadcaster()
