@@ -14,9 +14,11 @@ import (
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
+	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/static"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 )
 
@@ -112,14 +114,30 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 
 	ctx := genericapiserver.SetupSignalContext()
 	registry := typed.NewRegistry()
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
+
+	controllers := make([]manager.Controller, 0)
+	if len(o.BootstrapSpicedbsPath) > 0 {
+		staticSpiceDBController, err := static.NewStaticController[*v1alpha1.SpiceDBCluster](
+			"static-spicedbs",
+			o.BootstrapSpicedbsPath,
+			v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName),
+			dclient)
+		if err != nil {
+			return err
+		}
+		controllers = append(controllers, staticSpiceDBController)
+	}
+
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath)
 	if err != nil {
 		return err
 	}
+	controllers = append(controllers, ctrl)
+
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
 
-	return mgr.Start(ctx, ctrl)
+	return mgr.Start(ctx, controllers...)
 }

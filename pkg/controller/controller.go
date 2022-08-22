@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -29,21 +28,18 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
-	controllerhealthz "k8s.io/controller-manager/pkg/healthz"
 	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller/handlers"
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/cachekeys"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
 	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
@@ -91,8 +87,6 @@ var (
 		rbacv1.SchemeGroupVersion.WithResource("roles"),
 		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
 	}
-
-	ConfigFileResource schema.GroupVersionResource
 )
 
 type OperatorConfig struct {
@@ -104,6 +98,7 @@ type OperatorConfig struct {
 }
 
 type Controller struct {
+	*manager.BasicController
 	registry *typed.Registry
 	queue    workqueue.RateLimitingInterface
 	client   dynamic.Interface
@@ -114,9 +109,6 @@ type Controller struct {
 	configLock     sync.RWMutex
 	config         OperatorConfig
 	lastConfigHash atomic.Uint64
-
-	// static spicedb instances
-	lastStaticHash atomic.Uint64
 }
 
 var _ manager.Controller = &Controller{}
@@ -126,12 +118,13 @@ var (
 	DependentFactoryKey = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "dependents")
 )
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string) (*Controller, error) {
 	c := &Controller{
-		registry: registry,
-		kclient:  kclient,
-		client:   dclient,
-		queue:    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
+		BasicController: manager.NewBasicController(v1alpha1.SpiceDBClusterResourceName),
+		registry:        registry,
+		kclient:         kclient,
+		client:          dclient,
+		queue:           workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
 	}
 
 	fileInformerFactory, err := libctrl.NewFileInformerFactory()
@@ -140,8 +133,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 	}
 
 	if len(configFilePath) > 0 {
-		ConfigFileResource = libctrl.FileGroupVersion.WithResource(configFilePath)
-		inf := fileInformerFactory.ForResource(ConfigFileResource).Informer()
+		inf := fileInformerFactory.ForResource(libctrl.FileGroupVersion.WithResource(configFilePath)).Informer()
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
@@ -149,23 +141,6 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		})
 	} else {
 		klog.V(3).InfoS("no operator configuration provided", "path", configFilePath)
-	}
-	if len(staticClusterPath) > 0 {
-		handleStaticSpicedbs := func() {
-			hash, err := bootstrap.ResourceFromFile[*v1alpha1.SpiceDBCluster](ctx, v1alpha1ClusterGVR, c.client, staticClusterPath, c.lastStaticHash.Load())
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-			c.lastStaticHash.Store(hash)
-		}
-		StaticClusterResource := libctrl.FileGroupVersion.WithResource(staticClusterPath)
-		inf := fileInformerFactory.ForResource(StaticClusterResource).Informer()
-		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { handleStaticSpicedbs() },
-			UpdateFunc: func(_, obj interface{}) { handleStaticSpicedbs() },
-			DeleteFunc: func(obj interface{}) { handleStaticSpicedbs() },
-		})
 	}
 
 	ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
@@ -247,18 +222,6 @@ func (c *Controller) Start(ctx context.Context, numThreads int) {
 	}
 
 	<-ctx.Done()
-}
-
-func (c *Controller) Name() string {
-	return v1alpha1.SpiceDBClusterResourceName
-}
-
-func (c *Controller) DebuggingHandler() http.Handler {
-	return http.NotFoundHandler()
-}
-
-func (c *Controller) HealthChecker() controllerhealthz.UnnamedHealthChecker {
-	return healthz.PingHealthz
 }
 
 func (c *Controller) loadConfig(path string) {
