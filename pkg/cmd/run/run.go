@@ -2,13 +2,17 @@ package run
 
 import (
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
 	"k8s.io/klog/v2"
@@ -18,9 +22,12 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
+	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/static"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 )
+
+var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 
 // Options contains the input to the run command.
 type Options struct {
@@ -114,13 +121,15 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 
 	ctx := genericapiserver.SetupSignalContext()
 	registry := typed.NewRegistry()
+	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
+	broadcaster := record.NewBroadcaster()
 
 	controllers := make([]manager.Controller, 0)
 	if len(o.BootstrapSpicedbsPath) > 0 {
 		staticSpiceDBController, err := static.NewStaticController[*v1alpha1.SpiceDBCluster](
 			"static-spicedbs",
 			o.BootstrapSpicedbsPath,
-			v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName),
+			v1alpha1ClusterGVR,
 			dclient)
 		if err != nil {
 			return err
@@ -128,16 +137,25 @@ func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) erro
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, broadcaster)
 	if err != nil {
 		return err
 	}
 	controllers = append(controllers, ctrl)
 
+	// register with metrics collector
+	spiceDBClusterMetrics := ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster]("spicedb_operator", "clusters", v1alpha1.SpiceDBClusterResourceName)
+	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](registry, typed.NewRegistryKey(controller.OwnedFactoryKey, v1alpha1ClusterGVR))
+	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
+		return lister.List(labels.Everything())
+	})
+	legacyregistry.CustomMustRegister(spiceDBClusterMetrics)
+
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
+
+	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress, broadcaster, eventSink)
 
 	return mgr.Start(ctx, controllers...)
 }
