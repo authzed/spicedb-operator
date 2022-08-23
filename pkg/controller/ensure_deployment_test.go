@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -107,7 +108,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
-			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
+			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
 			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
@@ -118,7 +119,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 					applyCalled = true
 					return nil, nil
 				},
-				deleteDeployment: func(ctx context.Context, name string) error {
+				deleteDeployment: func(ctx context.Context, nn types.NamespacedName) error {
 					deleteCalled = true
 					return nil
 				},
@@ -132,7 +133,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.Equal(t, tt.expectStatus, CtxCluster.MustValue(ctx))
+			require.Equal(t, tt.expectStatus, CtxClusterStatus.MustValue(ctx))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)

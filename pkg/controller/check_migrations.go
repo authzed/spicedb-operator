@@ -27,15 +27,6 @@ type MigrationCheckHandler struct {
 	nextDeploymentHandler   handler.ContextHandler
 }
 
-func NewMigrationCheckHandler(recorder record.EventRecorder, next handler.Handlers) handler.Handler {
-	return handler.NewHandler(&MigrationCheckHandler{
-		recorder:                recorder,
-		nextMigrationRunHandler: HandlerMigrationRunKey.MustFind(next),
-		nextWaitForJobHandler:   HandlerWaitForMigrationsKey.MustFind(next),
-		nextDeploymentHandler:   HandlerDeploymentKey.MustFind(next),
-	}, "checkMigrations")
-}
-
 func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 	deployments := CtxDeployments.MustValue(ctx)
 	jobs := CtxJobs.MustValue(ctx)
@@ -65,7 +56,7 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
-		m.recorder.Eventf(CtxCluster.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}

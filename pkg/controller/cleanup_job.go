@@ -5,31 +5,19 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/authzed/spicedb-operator/pkg/libctrl"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
 type JobCleanupHandler struct {
+	registry   *typed.Registry
 	getJobPods func(ctx context.Context) []*corev1.Pod
 	getJobs    func(ctx context.Context) []*batchv1.Job
-	deleteJob  func(ctx context.Context, name string) error
-	deletePod  func(ctx context.Context, name string) error
-}
-
-func NewJobCleanupHandler(
-	getJobPods func(ctx context.Context) []*corev1.Pod,
-	getJobs func(ctx context.Context) []*batchv1.Job,
-	deleteJob func(ctx context.Context, name string) error,
-	deletePod func(ctx context.Context, name string) error,
-) handler.Handler {
-	return handler.NewHandler(&JobCleanupHandler{
-		getJobPods: getJobPods,
-		getJobs:    getJobs,
-		deleteJob:  deleteJob,
-		deletePod:  deletePod,
-	}, "cleanupJob")
+	deleteJob  func(ctx context.Context, nn types.NamespacedName) error
+	deletePod  func(ctx context.Context, nn types.NamespacedName) error
 }
 
 func (s *JobCleanupHandler) Handle(ctx context.Context) {
@@ -51,7 +39,10 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 			j.Annotations[metadata.SpiceDBMigrationRequirementsKey],
 			deployment.Annotations[metadata.SpiceDBMigrationRequirementsKey]) &&
 			jobConditionHasStatus(j, batchv1.JobComplete, corev1.ConditionTrue) {
-			if err := s.deleteJob(ctx, j.GetName()); err != nil {
+			if err := s.deleteJob(ctx, types.NamespacedName{
+				Namespace: j.GetNamespace(),
+				Name:      j.GetName(),
+			}); err != nil {
 				CtxHandlerControls.RequeueAPIErr(ctx, err)
 				return
 			}
@@ -73,7 +64,10 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 			return
 		}
 
-		if err := s.deletePod(ctx, p.GetName()); err != nil {
+		if err := s.deletePod(ctx, types.NamespacedName{
+			Namespace: p.GetNamespace(),
+			Name:      p.GetName(),
+		}); err != nil {
 			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}

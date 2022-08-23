@@ -36,9 +36,9 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
-				Image:                "image",
-				TargetMigrationHash:  "n686h5cchdbh57bh5cdh554h697h565q",
-				CurrentMigrationHash: "n686h5cchdbh57bh5cdh554h697h565q",
+				Image:                "image:tag",
+				TargetMigrationHash:  "n98h56bh5fhc8h577h5fdh58dh5d9q",
+				CurrentMigrationHash: "n98h56bh5fhc8h577h5fdh58dh5d9q",
 			}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
@@ -51,7 +51,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: false,
-			expectStatusImage: "image",
+			expectStatusImage: "image:tag",
 			expectNext:        nextKey,
 		},
 		{
@@ -71,7 +71,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: true,
-			expectStatusImage: "image",
+			expectStatusImage: "image:tag",
 			expectNext:        nextKey,
 		},
 		{
@@ -89,7 +89,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			},
 			expectPatchStatus: true,
 			expectConditions:  []string{"ConfigurationWarning"},
-			expectStatusImage: "image",
+			expectStatusImage: "image:tag",
 			expectNext:        nextKey,
 		},
 		{
@@ -149,7 +149,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: true,
-			expectStatusImage: "image",
+			expectStatusImage: "image:tag",
 			expectNext:        nextKey,
 		},
 		{
@@ -171,7 +171,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			expectPatchStatus: true,
-			expectStatusImage: "image",
+			expectStatusImage: "image:tag",
 			expectNext:        nextKey,
 		},
 		{
@@ -214,14 +214,15 @@ func TestValidateConfigHandler(t *testing.T) {
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
 			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
-			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
-
+			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxCluster.WithValue(ctx, &v1alpha1.SpiceDBCluster{Spec: v1alpha1.ClusterSpec{Config: tt.rawConfig}})
+			ctx = CtxOperatorConfig.WithValue(ctx, &OperatorConfig{ImageName: "image", ImageTag: "tag"})
 			var called handler.Key
 			h := &ValidateConfigHandler{
-				uid:                 "uid",
-				rawConfig:           tt.rawConfig,
-				defaultSpiceDBImage: "image",
-				generation:          1,
+				// uid:                 "uid",
+				// rawConfig:           tt.rawConfig,
+				// defaultSpiceDBImage: "image",
+				// generation:          1,
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
@@ -233,7 +234,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			cluster := CtxCluster.MustValue(ctx)
+			cluster := CtxClusterStatus.MustValue(ctx)
 			t.Log(cluster.Status.Conditions)
 			for _, c := range tt.expectConditions {
 				require.True(t, cluster.IsStatusConditionTrue(c))

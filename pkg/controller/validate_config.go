@@ -6,7 +6,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -18,35 +17,18 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	rawConfig           json.RawMessage
-	defaultSpiceDBImage string
-	allowedImages       []string
-	allowedTags         []string
-	uid                 types.UID
-	generation          int64
-	recorder            record.EventRecorder
-
+	recorder    record.EventRecorder
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
 }
 
-func NewValidateConfigHandler(uid types.UID, rawConfig json.RawMessage, spicedbImage string, allowedImages, allowedTags []string, generation int64, patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error, recorder record.EventRecorder, next handler.Handler) handler.Handler {
-	return handler.NewHandler(&ValidateConfigHandler{
-		uid:                 uid,
-		rawConfig:           rawConfig,
-		defaultSpiceDBImage: spicedbImage,
-		allowedImages:       allowedImages,
-		allowedTags:         allowedTags,
-		generation:          generation,
-		patchStatus:         patchStatus,
-		recorder:            recorder,
-		next:                next,
-	}, "validateConfig")
-}
-
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
-	currentStatus := CtxCluster.MustValue(ctx)
+	currentStatus := CtxClusterStatus.MustValue(ctx)
 	nn := CtxClusterNN.MustValue(ctx)
+	rawConfig := CtxCluster.MustValue(ctx).Spec.Config
+	if rawConfig == nil {
+		rawConfig = json.RawMessage("")
+	}
 
 	secret := CtxSecret.Value(ctx)
 	if secret != nil {
@@ -58,7 +40,8 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		ctx = CtxSecretHash.WithValue(ctx, secretHash)
 	}
 
-	validatedConfig, warning, err := config.NewConfig(nn, c.uid, c.defaultSpiceDBImage, c.allowedImages, c.allowedTags, c.rawConfig, secret)
+	operatorConfig := CtxOperatorConfig.MustValue(ctx)
+	validatedConfig, warning, err := config.NewConfig(nn, CtxCluster.MustValue(ctx).UID, operatorConfig.DefaultImage(), operatorConfig.AllowedImages, operatorConfig.AllowedTags, rawConfig, secret)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
@@ -114,6 +97,6 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	ctx = CtxConfig.WithValue(ctx, validatedConfig)
-	ctx = CtxCluster.WithValue(ctx, currentStatus)
+	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
 	c.next.Handle(ctx)
 }

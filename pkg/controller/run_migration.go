@@ -6,52 +6,31 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	"k8s.io/apimachinery/pkg/types"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
-	"k8s.io/klog/v2"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
-// TODO: see if the config hashing can be generalized / unified with the object hashing
 type MigrationRunHandler struct {
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	applyJob    func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error
-	deleteJob   func(ctx context.Context, name string) error
+	deleteJob   func(ctx context.Context, nn types.NamespacedName) error
 	next        handler.ContextHandler
-}
-
-func NewMigrationRunHandler(
-	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
-	applyJob func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error,
-	deleteJob func(ctx context.Context, name string) error,
-	next handler.ContextHandler,
-) handler.Handler {
-	return handler.NewHandler(&MigrationRunHandler{
-		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
-			klog.V(4).InfoS("creating migration job", "namespace", *job.Namespace, "name", *job.Name)
-			return applyJob(ctx, job)
-		},
-		deleteJob: func(ctx context.Context, name string) error {
-			klog.V(4).InfoS("deleting migration job", "namespace", CtxClusterNN.MustValue(ctx).Namespace, "name", name)
-			return deleteJob(ctx, name)
-		},
-		patchStatus: patchStatus,
-		next:        next,
-	}, "createMigrationJob")
 }
 
 func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	// TODO: setting status is unconditional, should happen in a separate handler
-	currentStatus := CtxCluster.MustValue(ctx)
+	currentStatus := CtxClusterStatus.MustValue(ctx)
 	config := CtxConfig.MustValue(ctx)
 	currentStatus.SetStatusCondition(v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
 	if err := m.patchStatus(ctx, currentStatus); err != nil {
 		CtxHandlerControls.RequeueErr(ctx, err)
 		return
 	}
-	ctx = CtxCluster.WithValue(ctx, currentStatus)
+	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
 
 	jobs := CtxJobs.MustValue(ctx)
 	migrationHash := CtxMigrationHash.Value(ctx)
@@ -81,7 +60,10 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 
 	// delete extra objects
 	for _, o := range extraObjs {
-		if err := m.deleteJob(ctx, o.GetName()); err != nil {
+		if err := m.deleteJob(ctx, types.NamespacedName{
+			Namespace: o.GetNamespace(),
+			Name:      o.GetName(),
+		}); err != nil {
 			CtxHandlerControls.RequeueAPIErr(ctx, err)
 			return
 		}

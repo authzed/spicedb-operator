@@ -57,7 +57,7 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
-			ctx = CtxCluster.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
+			ctx = CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
 			ctx = CtxCurrentMigrationJob.WithValue(ctx, tt.migrationJob)
 
 			recorder := record.NewFakeRecorder(1)

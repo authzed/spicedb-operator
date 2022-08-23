@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -91,7 +92,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			deleteCalled := false
 			nextCalled := false
 
-			ctx := CtxCluster.WithValue(context.Background(), tt.clusterStatus)
+			ctx := CtxClusterStatus.WithValue(context.Background(), tt.clusterStatus)
 			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
 			ctx = CtxConfig.WithValue(ctx, &tt.config)
 			ctx = CtxJobs.WithHandle(ctx)
@@ -106,7 +107,7 @@ func TestRunMigrationHandler(t *testing.T) {
 					applyCalled = true
 					return tt.jobApplyErr
 				},
-				deleteJob: func(ctx context.Context, name string) error {
+				deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
 					deleteCalled = true
 					return tt.jobDeleteErr
 				},
@@ -117,7 +118,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.True(t, CtxCluster.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
+			require.True(t, CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectNext, nextCalled)

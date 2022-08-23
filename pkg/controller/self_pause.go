@@ -11,7 +11,7 @@ import (
 
 const HandlerSelfPauseKey handler.Key = "nextSelfPause"
 
-func NewSelfPauseHandler(cluster *v1alpha1.SpiceDBCluster,
+func NewSelfPauseHandler(
 	patch func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error,
 ) handler.Handler {
@@ -19,7 +19,6 @@ func NewSelfPauseHandler(cluster *v1alpha1.SpiceDBCluster,
 		CtxHandlerControls.ContextKey,
 		metadata.PausedControllerSelectorKey,
 		CtxSelfPauseObject,
-		cluster.UID,
 		patch,
 		patchStatus,
 	), HandlerSelfPauseKey)

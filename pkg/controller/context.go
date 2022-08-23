@@ -13,11 +13,13 @@ import (
 
 var (
 	CtxHandlerControls        = libctrl.HandlerControlContext{}
+	CtxOperatorConfig         = libctrl.NewContextDefaultingKey[*OperatorConfig](nil)
 	CtxClusterNN              = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecretNN               = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
 	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
 	CtxCluster                = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
+	CtxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
 	CtxConfig                 = libctrl.NewContextDefaultingKey[*config.Config](nil)
 	CtxMigrationHash          = libctrl.NewContextDefaultingKey[string]("")
 	CtxDeployments            = libctrl.NewContextHandleDefaultingKey[[]*appsv1.Deployment](make([]*appsv1.Deployment, 0))

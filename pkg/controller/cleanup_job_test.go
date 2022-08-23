@@ -9,6 +9,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -163,12 +164,12 @@ func TestCleanupJobsHandler(t *testing.T) {
 				getJobPods: func(ctx context.Context) []*corev1.Pod {
 					return tt.existingJobPods
 				},
-				deletePod: func(ctx context.Context, name string) error {
-					deletedPods = append(deletedPods, name)
+				deletePod: func(ctx context.Context, nn types.NamespacedName) error {
+					deletedPods = append(deletedPods, nn.Name)
 					return nil
 				},
-				deleteJob: func(ctx context.Context, name string) error {
-					deletedJobs = append(deletedJobs, name)
+				deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
+					deletedJobs = append(deletedJobs, nn.Name)
 					return nil
 				},
 			}
