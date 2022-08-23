@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
@@ -99,11 +100,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	if err != nil {
 		return err
 	}
-
-	// remove rate limiting against the apiserver; we respect priority and fairness
-	// and will back off if the server tells us to
-	restConfig.Burst = 2000
-	restConfig.QPS = -1
+	DisableClientRateLimits(restConfig)
 
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
@@ -160,4 +157,11 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress, broadcaster, eventSink)
 
 	return mgr.Start(ctx, controllers...)
+}
+
+// DisableClientRateLimits removes rate limiting against the apiserver; we
+// respect priority and fairness and will back off if the server tells us to
+func DisableClientRateLimits(restConfig *rest.Config) {
+	restConfig.Burst = 2000
+	restConfig.QPS = -1
 }

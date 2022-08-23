@@ -28,12 +28,12 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	}
 
 	if cluster.GetGeneration() != status.Status.ObservedGeneration || secretHash != status.Status.SecretHash {
-		klog.V(4).InfoS("spicedb configuration changed")
+		klog.FromContext(ctx).V(4).Info("spicedb configuration changed")
 		status.Status.ObservedGeneration = cluster.GetGeneration()
 		status.Status.SecretHash = secretHash
 		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
 		if err := c.patchStatus(ctx, status); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}

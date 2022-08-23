@@ -8,23 +8,24 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/queue"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typedctx"
 )
 
 var (
-	CtxHandlerControls        = libctrl.HandlerControlContext{}
-	CtxOperatorConfig         = libctrl.NewContextDefaultingKey[*OperatorConfig](nil)
-	CtxClusterNN              = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
-	CtxSecretNN               = libctrl.NewContextDefaultingKey[types.NamespacedName](types.NamespacedName{})
-	CtxSecret                 = libctrl.NewContextDefaultingKey[*corev1.Secret](nil)
-	CtxSecretHash             = libctrl.NewContextDefaultingKey[string]("")
-	CtxCluster                = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
-	CtxClusterStatus          = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](nil)
-	CtxConfig                 = libctrl.NewContextDefaultingKey[*config.Config](nil)
-	CtxMigrationHash          = libctrl.NewContextDefaultingKey[string]("")
-	CtxDeployments            = libctrl.NewContextHandleDefaultingKey[[]*appsv1.Deployment](make([]*appsv1.Deployment, 0))
-	CtxJobs                   = libctrl.NewContextHandleDefaultingKey[[]*batchv1.Job](make([]*batchv1.Job, 0))
-	CtxCurrentMigrationJob    = libctrl.NewContextDefaultingKey[*batchv1.Job](nil)
-	CtxCurrentSpiceDeployment = libctrl.NewContextDefaultingKey[*appsv1.Deployment](nil)
-	CtxSelfPauseObject        = libctrl.NewContextDefaultingKey[*v1alpha1.SpiceDBCluster](new(v1alpha1.SpiceDBCluster))
+	QueueOps                  = queue.NewQueueOperationsCtx()
+	CtxOperatorConfig         = typedctx.WithDefault[*OperatorConfig](nil)
+	CtxClusterNN              = typedctx.WithDefault[types.NamespacedName](types.NamespacedName{})
+	CtxSecretNN               = typedctx.WithDefault[types.NamespacedName](types.NamespacedName{})
+	CtxSecret                 = typedctx.WithDefault[*corev1.Secret](nil)
+	CtxSecretHash             = typedctx.WithDefault[string]("")
+	CtxCluster                = typedctx.WithDefault[*v1alpha1.SpiceDBCluster](nil)
+	CtxClusterStatus          = typedctx.WithDefault[*v1alpha1.SpiceDBCluster](nil)
+	CtxConfig                 = typedctx.WithDefault[*config.Config](nil)
+	CtxMigrationHash          = typedctx.WithDefault[string]("")
+	CtxDeployments            = typedctx.Boxed[[]*appsv1.Deployment](make([]*appsv1.Deployment, 0))
+	CtxJobs                   = typedctx.Boxed[[]*batchv1.Job](make([]*batchv1.Job, 0))
+	CtxCurrentMigrationJob    = typedctx.WithDefault[*batchv1.Job](nil)
+	CtxCurrentSpiceDeployment = typedctx.WithDefault[*appsv1.Deployment](nil)
+	CtxSelfPauseObject        = typedctx.WithDefault[*v1alpha1.SpiceDBCluster](new(v1alpha1.SpiceDBCluster))
 )

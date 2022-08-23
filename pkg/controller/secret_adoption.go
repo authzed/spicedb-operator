@@ -18,7 +18,7 @@ const EventSecretAdoptedBySpiceDBCluster = "SecretAdoptedBySpiceDB"
 
 func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(ctx context.Context) (*corev1.Secret, error), secretIndexer *typed.Indexer[*corev1.Secret], secretApplyFunc adopt.ApplyFunc[*corev1.Secret, *applycorev1.SecretApplyConfiguration], next handler.Handler) handler.Handler {
 	return handler.NewHandler(&adopt.AdoptionHandler[*corev1.Secret, *applycorev1.SecretApplyConfiguration]{
-		HandlerControlContext:  CtxHandlerControls,
+		OperationsContext:      QueueOps,
 		ControllerFieldManager: metadata.FieldManager,
 		AdopteeCtx:             CtxSecretNN,
 		OwnerCtx:               CtxClusterNN,

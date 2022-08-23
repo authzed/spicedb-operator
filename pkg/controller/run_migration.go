@@ -27,7 +27,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	config := CtxConfig.MustValue(ctx)
 	currentStatus.SetStatusCondition(v1alpha1.NewMigratingCondition(config.DatastoreEngine, "head"))
 	if err := m.patchStatus(ctx, currentStatus); err != nil {
-		CtxHandlerControls.RequeueErr(ctx, err)
+		QueueOps.RequeueErr(ctx, err)
 		return
 	}
 	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
@@ -53,7 +53,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 		// apply if no matching object in controller
 		err := m.applyJob(ctx, CtxConfig.MustValue(ctx).MigrationJob(migrationHash))
 		if err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
@@ -64,7 +64,7 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 			Namespace: o.GetNamespace(),
 			Name:      o.GetName(),
 		}); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
@@ -77,5 +77,5 @@ func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	}
 
 	// if we had to create a job, requeue after a wait since the job takes time
-	CtxHandlerControls.RequeueAfter(ctx, 5*time.Second)
+	QueueOps.RequeueAfter(ctx, 5*time.Second)
 }

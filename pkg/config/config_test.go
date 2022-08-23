@@ -112,6 +112,48 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "memory",
+			args: args{
+				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
+				uid:           types.UID("1"),
+				image:         "image",
+				allowedImages: []string{"image"},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "memory"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					LogLevel:           "info",
+					DatastoreEngine:    "memory",
+					DatastoreURI:       "",
+					TargetSpiceDBImage: "image",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+				},
+				SpiceConfig: SpiceConfig{
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       1,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "memory",
+						"dispatchClusterEnabled": "false",
+					},
+				},
+			},
+		},
+		{
 			name: "set supported image",
 			args: args{
 				nn:            types.NamespacedName{Namespace: "test", Name: "test"},

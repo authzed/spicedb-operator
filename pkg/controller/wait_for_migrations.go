@@ -45,7 +45,7 @@ func (m *WaitForMigrationsHandler) Handle(ctx context.Context) {
 	}
 
 	// otherwise, it's created but still running, just wait
-	CtxHandlerControls.RequeueAfter(ctx, 5*time.Second)
+	QueueOps.RequeueAfter(ctx, 5*time.Second)
 }
 
 func findJobCondition(job *batchv1.Job, conditionType batchv1.JobConditionType) *batchv1.JobCondition {

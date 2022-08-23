@@ -176,7 +176,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 
 		var ok bool
 		datastoreURI, ok = secret.Data["datastore_uri"]
-		if !ok {
+		if !ok && datastoreEngine != "memory" {
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
 		migrationConfig.DatastoreURI = string(datastoreURI)

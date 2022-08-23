@@ -10,8 +10,8 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
 )
 
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
@@ -32,9 +32,9 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 
 	secret := CtxSecret.Value(ctx)
 	if secret != nil {
-		secretHash, err := libctrl.SecureHashObject(secret.Data)
+		secretHash, err := hash.SecureObject(secret.Data)
 		if err != nil {
-			CtxHandlerControls.RequeueErr(ctx, err)
+			QueueOps.RequeueErr(ctx, err)
 			return
 		}
 		ctx = CtxSecretHash.WithValue(ctx, secretHash)
@@ -43,21 +43,21 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
 	validatedConfig, warning, err := config.NewConfig(nn, CtxCluster.MustValue(ctx).UID, operatorConfig.DefaultImage(), operatorConfig.AllowedImages, operatorConfig.AllowedTags, rawConfig, secret)
 	if err != nil {
-		failedCondition := v1alpha1.NewInvalidConfigCondition("", err)
+		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
-			CtxHandlerControls.Done(ctx)
+			QueueOps.Done(ctx)
 			return
 		}
 		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		currentStatus.SetStatusCondition(failedCondition)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
 		// if the config is invalid, there's no work to do until it has changed
-		CtxHandlerControls.Done(ctx)
+		QueueOps.Done(ctx)
 		return
 	}
 
@@ -67,9 +67,9 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		warningCondition = &cond
 	}
 
-	migrationHash, err := libctrl.SecureHashObject(validatedConfig.MigrationConfig)
+	migrationHash, err := hash.SecureObject(validatedConfig.MigrationConfig)
 	if err != nil {
-		CtxHandlerControls.RequeueErr(ctx, err)
+		QueueOps.RequeueErr(ctx, err)
 		return
 	}
 	ctx = CtxMigrationHash.WithValue(ctx, migrationHash)
@@ -91,7 +91,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		}
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
 		if err := c.patchStatus(ctx, currentStatus); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}

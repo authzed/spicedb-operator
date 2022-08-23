@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -25,7 +25,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 	pods := s.getJobPods(ctx)
 	deployment := *CtxCurrentSpiceDeployment.MustValue(ctx)
 	if deployment.Annotations == nil || len(jobs)+len(pods) == 0 {
-		CtxHandlerControls.Done(ctx)
+		QueueOps.Done(ctx)
 		return
 	}
 
@@ -35,7 +35,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 		if j.Annotations == nil {
 			continue
 		}
-		if libctrl.SecureHashEqual(
+		if hash.SecureEqual(
 			j.Annotations[metadata.SpiceDBMigrationRequirementsKey],
 			deployment.Annotations[metadata.SpiceDBMigrationRequirementsKey]) &&
 			jobConditionHasStatus(j, batchv1.JobComplete, corev1.ConditionTrue) {
@@ -43,7 +43,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 				Namespace: j.GetNamespace(),
 				Name:      j.GetName(),
 			}); err != nil {
-				CtxHandlerControls.RequeueAPIErr(ctx, err)
+				QueueOps.RequeueAPIErr(ctx, err)
 				return
 			}
 		}
@@ -60,7 +60,7 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 		}
 		if _, ok := jobNames[jobName]; ok {
 			// job still exists
-			CtxHandlerControls.Requeue(ctx)
+			QueueOps.Requeue(ctx)
 			return
 		}
 
@@ -68,10 +68,10 @@ func (s *JobCleanupHandler) Handle(ctx context.Context) {
 			Namespace: p.GetNamespace(),
 			Name:      p.GetName(),
 		}); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
 
-	CtxHandlerControls.Done(ctx)
+	QueueOps.Done(ctx)
 }

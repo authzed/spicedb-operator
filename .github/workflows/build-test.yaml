@@ -76,7 +76,7 @@ jobs:
           tags: "spicedb:dev,spicedb:updated"
           outputs: "type=docker,dest=/tmp/image.tar"
       - name: "Run Ginkgo Tests"
-        run: "go run github.com/onsi/ginkgo/v2/ginkgo --skip-package ./spicedb --tags=e2e -r --procs=2 --randomize-all --randomize-suites --fail-on-pending --race --trace --json-report=report.json"
+        run: "go run github.com/onsi/ginkgo/v2/ginkgo --skip-package ./spicedb --tags=e2e -r --procs=2 -v --randomize-all --randomize-suites --fail-on-pending --race --trace --json-report=report.json -- -v=4"
         env:
           PROVISION: "true"
           ARCHIVES: "/tmp/image.tar"

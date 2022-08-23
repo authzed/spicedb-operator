@@ -12,8 +12,8 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -94,7 +94,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeControlAll{}
+			ctrls := &fake.FakeOperations{}
 			applyCalled := false
 			deleteCalled := false
 			patchCalled := false
@@ -107,7 +107,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
-			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)

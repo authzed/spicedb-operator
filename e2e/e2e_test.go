@@ -6,7 +6,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,7 +80,7 @@ func TestEndToEnd(t *testing.T) {
 	klog.SetOutput(GinkgoWriter)
 
 	// Test Defaults
-	SetDefaultEventuallyTimeout(3 * time.Minute)
+	SetDefaultEventuallyTimeout(5 * time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
@@ -106,6 +105,8 @@ var _ = BeforeSuite(func() {
 	restConfig, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(testEnv.Stop)
+
+	run.DisableClientRateLimits(restConfig)
 
 	StartOperator()
 	CreateNamespace("test")
@@ -142,6 +143,7 @@ func StartOperator() {
 	go func() {
 		defer GinkgoRecover()
 		options := run.RecommendedOptions()
+		options.DebugAddress = ":"
 		options.BootstrapCRDs = true
 		options.OperatorConfigPath = WriteConfig(opconfig)
 		options.Run(ctx, cmdutil.NewFactory(ClientGetter{}))
@@ -162,7 +164,7 @@ func WriteConfig(operatorConfig controller.OperatorConfig) string {
 	Expect(err).To(Succeed())
 	var file *os.File
 	if len(ConfigFileName) == 0 {
-		file, err = ioutil.TempFile("", "operator-config")
+		file, err = os.CreateTemp("", "operator-config")
 		Expect(err).To(Succeed())
 		ConfigFileName = file.Name()
 	} else {

@@ -15,8 +15,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -283,7 +283,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeControlAll{}
+			ctrls := &fake.FakeOperations{}
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta})
 			IndexAddUnstructured(t, indexer, tt.secretsInIndex)
 
@@ -310,7 +310,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 			)
 			ctx := CtxClusterNN.WithValue(context.Background(), tt.cluster)
 			ctx = CtxSecretNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: tt.secretName})
-			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = QueueOps.WithValue(ctx, ctrls)
 			s.Handle(ctx)
 			for _, call := range tt.applyCalls {
 				require.True(t, call.called)

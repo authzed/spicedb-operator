@@ -6,8 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -28,20 +28,18 @@ type MigrationCheckHandler struct {
 }
 
 func (m *MigrationCheckHandler) Handle(ctx context.Context) {
-	deployments := CtxDeployments.MustValue(ctx)
-	jobs := CtxJobs.MustValue(ctx)
 	migrationHash := CtxMigrationHash.MustValue(ctx)
 
 	hasJob := false
 	hasDeployment := false
-	for _, d := range deployments {
-		if d.Annotations != nil && libctrl.SecureHashEqual(d.Annotations[metadata.SpiceDBMigrationRequirementsKey], migrationHash) {
+	for _, d := range CtxDeployments.MustValue(ctx) {
+		if d.Annotations != nil && hash.SecureEqual(d.Annotations[metadata.SpiceDBMigrationRequirementsKey], migrationHash) {
 			hasDeployment = true
 			break
 		}
 	}
-	for _, j := range jobs {
-		if j.Annotations != nil && libctrl.SecureHashEqual(j.Annotations[metadata.SpiceDBMigrationRequirementsKey], migrationHash) {
+	for _, j := range CtxJobs.MustValue(ctx) {
+		if j.Annotations != nil && hash.SecureEqual(j.Annotations[metadata.SpiceDBMigrationRequirementsKey], migrationHash) {
 			hasJob = true
 			ctx = CtxCurrentMigrationJob.WithValue(ctx, j)
 			break

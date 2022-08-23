@@ -12,8 +12,8 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/fake"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 )
 
 func TestWaitForMigrationsHandler(t *testing.T) {
@@ -53,10 +53,10 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeControlAll{}
+			ctrls := &fake.FakeOperations{}
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
-			ctx = CtxHandlerControls.WithValue(ctx, ctrls)
+			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxClusterStatus.WithValue(ctx, &v1alpha1.SpiceDBCluster{})
 			ctx = CtxCurrentMigrationJob.WithValue(ctx, tt.migrationJob)
 

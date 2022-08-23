@@ -8,8 +8,8 @@ import (
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -29,7 +29,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
 		currentStatus.Status.CurrentMigrationHash = currentStatus.Status.TargetMigrationHash
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 		ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
@@ -39,9 +39,9 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	secretHash := CtxSecretHash.MustValue(ctx)
 	config := CtxConfig.MustValue(ctx)
 	newDeployment := config.Deployment(migrationHash, secretHash)
-	deploymentHash, err := libctrl.HashObject(newDeployment)
+	deploymentHash, err := hash.Object(newDeployment)
 	if err != nil {
-		CtxHandlerControls.RequeueErr(ctx, err)
+		QueueOps.RequeueErr(ctx, err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		if annotations == nil {
 			extraObjs = append(extraObjs, o)
 		}
-		if libctrl.HashEqual(annotations[metadata.SpiceDBConfigKey], deploymentHash) {
+		if hash.Equal(annotations[metadata.SpiceDBConfigKey], deploymentHash) {
 			matchingObjs = append(matchingObjs, o)
 		} else {
 			extraObjs = append(extraObjs, o)
@@ -66,7 +66,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		// delete extra objects
 		for _, o := range extraObjs {
 			if err := m.deleteDeployment(ctx, types.NamespacedName{Namespace: currentStatus.Namespace, Name: o.GetName()}); err != nil {
-				CtxHandlerControls.RequeueAPIErr(ctx, err)
+				QueueOps.RequeueAPIErr(ctx, err)
 				return
 			}
 		}
@@ -80,7 +80,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			),
 		)
 		if err != nil {
-			CtxHandlerControls.RequeueAPIErr(ctx, err)
+			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, deployment)
