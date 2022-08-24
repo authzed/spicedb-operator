@@ -3,50 +3,48 @@ package controller
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"net/http"
+	"io"
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"go.uber.org/atomic"
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/kubernetes/scheme"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/component-base/metrics/legacyregistry"
-
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/apiserver/pkg/server/healthz"
+	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
+	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
+	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
-	controllerhealthz "k8s.io/controller-manager/pkg/healthz"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/cachekeys"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/component"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/fileinformer"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
-	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/pause"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -71,29 +69,6 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 }
 
-var (
-	spiceDBClusterMetrics = ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster]("spicedb_operator", "clusters", v1alpha1.SpiceDBClusterResourceName)
-
-	// OwnedResources are always synced unless they're marked unmanaged
-	OwnedResources = []schema.GroupVersionResource{
-		v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName),
-	}
-
-	// ExternalResources are not synced unless they're marked as managed
-	ExternalResources = []schema.GroupVersionResource{
-		appsv1.SchemeGroupVersion.WithResource("deployments"),
-		corev1.SchemeGroupVersion.WithResource("secrets"),
-		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
-		corev1.SchemeGroupVersion.WithResource("services"),
-		corev1.SchemeGroupVersion.WithResource("pods"),
-		batchv1.SchemeGroupVersion.WithResource("jobs"),
-		rbacv1.SchemeGroupVersion.WithResource("roles"),
-		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
-	}
-
-	ConfigFileResource schema.GroupVersionResource
-)
-
 type OperatorConfig struct {
 	ImageName     string   `json:"imageName"`
 	ImageTag      string   `json:"imageTag"`
@@ -102,73 +77,86 @@ type OperatorConfig struct {
 	AllowedImages []string `json:"allowedImages"`
 }
 
+func (o OperatorConfig) DefaultImage() string {
+	if len(o.ImageDigest) > 0 {
+		return strings.Join([]string{o.ImageName, o.ImageDigest}, "@")
+	}
+	return strings.Join([]string{o.ImageName, o.ImageTag}, ":")
+}
+
+func (o OperatorConfig) Copy() OperatorConfig {
+	return OperatorConfig{
+		ImageName:     o.ImageName,
+		ImageTag:      o.ImageTag,
+		ImageDigest:   o.ImageDigest,
+		AllowedTags:   slices.Clone(o.AllowedTags),
+		AllowedImages: slices.Clone(o.AllowedImages),
+	}
+}
+
+var (
+	v1alpha1ClusterGVR  = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
+	OwnedFactoryKey     = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "unfiltered")
+	DependentFactoryKey = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "dependents")
+)
+
 type Controller struct {
-	queue     workqueue.RateLimitingInterface
-	client    dynamic.Interface
-	informers map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory
-	recorder  record.EventRecorder
-	kclient   kubernetes.Interface
+	*manager.OwnedResourceController
+	client      dynamic.Interface
+	kclient     kubernetes.Interface
+	mainHandler handler.Handler
 
 	// config
 	configLock     sync.RWMutex
 	config         OperatorConfig
 	lastConfigHash atomic.Uint64
-
-	// static spicedb instances
-	lastStaticHash atomic.Uint64
 }
 
-var _ manager.Controller = &Controller{}
-
-func NewController(ctx context.Context, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath, staticClusterPath string) (*Controller, error) {
-	c := &Controller{
-		kclient:   kclient,
-		client:    dclient,
-		queue:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "cluster_queue"),
-		informers: make(map[schema.GroupVersionResource]dynamicinformer.DynamicSharedInformerFactory),
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string, broadcaster record.EventBroadcaster) (*Controller, error) {
+	c := Controller{
+		client:  dclient,
+		kclient: kclient,
 	}
+	c.OwnedResourceController = manager.NewOwnedResourceController(
+		v1alpha1.SpiceDBClusterResourceName,
+		v1alpha1ClusterGVR,
+		QueueOps,
+		registry,
+		broadcaster,
+		c.syncOwnedResource,
+	)
 
-	fileInformerFactory, err := libctrl.NewFileInformerFactory()
+	fileInformerFactory, err := fileinformer.NewFileInformerFactory()
 	if err != nil {
 		return nil, err
 	}
 
 	if len(configFilePath) > 0 {
-		ConfigFileResource = libctrl.FileGroupVersion.WithResource(configFilePath)
-		inf := fileInformerFactory.ForResource(ConfigFileResource).Informer()
+		inf := fileInformerFactory.ForResource(fileinformer.FileGroupVersion.WithResource(configFilePath)).Informer()
 		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
 			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
 		})
 	} else {
-		klog.V(3).InfoS("no operator configuration provided", "path", configFilePath)
-	}
-	if len(staticClusterPath) > 0 {
-		handleStaticSpicedbs := func() {
-			hash, err := bootstrap.ResourceFromFile[*v1alpha1.SpiceDBCluster](ctx, v1alpha1ClusterGVR, c.client, staticClusterPath, c.lastStaticHash.Load())
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-			c.lastStaticHash.Store(hash)
-		}
-		StaticClusterResource := libctrl.FileGroupVersion.WithResource(staticClusterPath)
-		inf := fileInformerFactory.ForResource(StaticClusterResource).Informer()
-		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { handleStaticSpicedbs() },
-			UpdateFunc: func(_, obj interface{}) { handleStaticSpicedbs() },
-			DeleteFunc: func(obj interface{}) { handleStaticSpicedbs() },
-		})
+		klog.FromContext(ctx).V(3).Info("no operator configuration provided", "path", configFilePath)
 	}
 
-	ownedInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+	ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+		OwnedFactoryKey,
 		dclient,
 		0,
 		metav1.NamespaceAll,
 		nil,
 	)
-	externalInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(
+	ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
+		UpdateFunc: func(_, obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
+		// Delete is not used right now, we rely on ownerrefs to clean up
+	})
+
+	externalInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+		DependentFactoryKey,
 		dclient,
 		0,
 		metav1.NamespaceAll,
@@ -177,18 +165,16 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 		},
 	)
 
-	for _, gvr := range OwnedResources {
-		gvr := gvr
-		ownedInformerFactory.ForResource(gvr).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.enqueue(gvr, c.queue, obj) },
-			UpdateFunc: func(_, obj interface{}) { c.enqueue(gvr, c.queue, obj) },
-			// Delete is not used right now, we rely on ownerrefs to clean up
-		})
-		c.informers[gvr] = ownedInformerFactory
-	}
-
-	for _, gvr := range ExternalResources {
-		gvr := gvr
+	for _, gvr := range []schema.GroupVersionResource{
+		appsv1.SchemeGroupVersion.WithResource("deployments"),
+		corev1.SchemeGroupVersion.WithResource("secrets"),
+		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
+		corev1.SchemeGroupVersion.WithResource("services"),
+		corev1.SchemeGroupVersion.WithResource("pods"),
+		batchv1.SchemeGroupVersion.WithResource("jobs"),
+		rbacv1.SchemeGroupVersion.WithResource("roles"),
+		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+	} {
 		inf := externalInformerFactory.ForResource(gvr).Informer()
 		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
 			return nil, err
@@ -198,7 +184,6 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 			UpdateFunc: func(_, obj interface{}) { c.syncExternalResource(obj) },
 			DeleteFunc: func(obj interface{}) { c.syncExternalResource(obj) },
 		})
-		c.informers[gvr] = externalInformerFactory
 	}
 
 	// start informers
@@ -209,68 +194,49 @@ func NewController(ctx context.Context, dclient dynamic.Interface, kclient kuber
 	externalInformerFactory.WaitForCacheSync(ctx.Done())
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
-	// register with metrics collector
-	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
-		lister := typed.NewLister[*v1alpha1.SpiceDBCluster](c.ListerFor(v1alpha1ClusterGVR))
-		return lister.List(labels.Everything())
-	})
+	// Build mainHandler handler
+	mw := middleware.NewHandlerLoggingMiddleware(4)
+	chain := middleware.ChainWithMiddleware(mw)
+	parallel := middleware.ParallelWithMiddleware(mw)
 
-	return c, nil
-}
+	deploymentHandlerChain := chain(
+		c.ensureDeployment,
+		c.cleanupJob,
+	).Handler(HandlerDeploymentKey)
 
-func (c *Controller) Start(ctx context.Context, numThreads int) {
-	defer utilruntime.HandleCrash()
-	defer c.queue.ShutDown()
+	waitForMigrationsChain := c.waitForMigrationsHandler(
+		deploymentHandlerChain,
+		c.selfPauseCluster(handler.NoopHandler),
+	).WithID(HandlerWaitForMigrationsKey)
 
-	legacyregistry.CustomMustRegister(spiceDBClusterMetrics)
+	c.mainHandler = chain(
+		c.pauseCluster,
+		c.secretAdopter,
+		c.checkConfigChanged,
+		c.validateConfig,
+		parallel(
+			c.ensureServiceAccount,
+			c.ensureRole,
+			c.ensureService,
+		),
+		c.ensureRoleBinding,
+		CtxDeployments.BoxBuilder("deploymentsPre"),
+		CtxJobs.BoxBuilder("jobsPre"),
+		parallel(
+			c.getDeployments,
+			c.getJobs,
+		),
+		c.checkMigrations(
+			deploymentHandlerChain,
+			chain(
+				c.runMigration,
+				waitForMigrationsChain.Builder(),
+			).Handler(HandlerMigrationRunKey),
+			waitForMigrationsChain,
+		).Builder(),
+	).Handler("controller")
 
-	broadcaster := record.NewBroadcaster()
-	defer broadcaster.Shutdown()
-
-	broadcaster.StartStructuredLogging(0)
-	broadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: c.kclient.CoreV1().Events("")})
-	c.recorder = broadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: "spicedb-operator"})
-
-	for _, gvr := range OwnedResources {
-		klog.V(3).InfoS("starting controller", "resource", gvr.Resource)
-		defer klog.V(3).InfoS("stopping controller", "resource", gvr.Resource)
-	}
-
-	for i := 0; i < numThreads; i++ {
-		go wait.Until(func() { c.startWorker(ctx, c.queue, c.syncOwnedResource) }, time.Second, ctx.Done())
-	}
-
-	<-ctx.Done()
-}
-
-func (c *Controller) Name() string {
-	return v1alpha1.SpiceDBClusterResourceName
-}
-
-func (c *Controller) DebuggingHandler() http.Handler {
-	return http.NotFoundHandler()
-}
-
-func (c *Controller) HealthChecker() controllerhealthz.UnnamedHealthChecker {
-	return healthz.PingHealthz
-}
-
-func (c *Controller) ListerFor(gvr schema.GroupVersionResource) cache.GenericLister {
-	factory, ok := c.informers[gvr]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("ListerFor called with unknown GVR"))
-		return nil
-	}
-	return factory.ForResource(gvr).Lister()
-}
-
-func (c *Controller) InformerFor(gvr schema.GroupVersionResource) cache.SharedIndexInformer {
-	factory, ok := c.informers[gvr]
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("InformerFor called with unknown GVR"))
-		return nil
-	}
-	return factory.ForResource(gvr).Informer()
+	return &c, nil
 }
 
 func (c *Controller) loadConfig(path string) {
@@ -285,7 +251,7 @@ func (c *Controller) loadConfig(path string) {
 	defer func() {
 		utilruntime.HandleError(file.Close())
 	}()
-	contents, err := ioutil.ReadAll(file)
+	contents, err := io.ReadAll(file)
 	if err != nil {
 		panic(err)
 	}
@@ -311,136 +277,67 @@ func (c *Controller) loadConfig(path string) {
 		return
 	}
 
-	klog.V(4).InfoS("updated config", "path", path, "config", c.config)
+	klog.V(3).InfoS("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
-	clusters, err := c.ListerFor(v1alpha1ClusterGVR).List(labels.Everything())
+	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.Registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR))
+	clusters, err := lister.List(labels.Everything())
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
 	for _, cluster := range clusters {
-		c.enqueue(v1alpha1ClusterGVR, c.queue, cluster)
+		c.enqueue(v1alpha1ClusterGVR, cluster)
 	}
 }
 
-func (c *Controller) enqueue(gvr schema.GroupVersionResource, queue workqueue.RateLimitingInterface, obj interface{}) {
-	key, err := metadata.GVRMetaNamespaceKeyFunc(gvr, obj)
+func (c *Controller) enqueue(gvr schema.GroupVersionResource, obj interface{}) {
+	key, err := cachekeys.GVRMetaNamespaceKeyFunc(gvr, obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	queue.Add(key)
+	c.Queue.AddRateLimited(key)
 }
-
-func (c *Controller) startWorker(ctx context.Context, queue workqueue.RateLimitingInterface, sync syncFunc) {
-	for c.processNext(ctx, queue, sync) {
-	}
-}
-
-func (c *Controller) processNext(ctx context.Context, queue workqueue.RateLimitingInterface, sync syncFunc) bool {
-	k, quit := queue.Get()
-	defer queue.Done(k)
-	if quit {
-		return false
-	}
-	key, ok := k.(string)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("non-string key found in queue, %T", key))
-		return true
-	}
-
-	gvr, namespace, name, err := metadata.SplitGVRMetaNamespaceKey(key)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("error parsing key %q, skipping", key))
-		return true
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	done := func() {
-		cancel()
-		c.queue.Forget(key)
-	}
-	requeue := func(after time.Duration) {
-		cancel()
-		if after == 0 {
-			c.queue.AddRateLimited(key)
-			return
-		}
-		c.queue.AddAfter(key, after)
-	}
-
-	sync(ctx, *gvr, namespace, name, done, requeue)
-	cancel()
-	<-ctx.Done()
-
-	return true
-}
-
-// syncFunc - an error returned here will do a rate-limited requeue of the object's key
-type syncFunc func(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration))
 
 // syncOwnedResource is called when SpiceDBCluster is updated
-func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, done func(), requeue func(duration time.Duration)) {
-	if gvr != OwnedResources[0] {
-		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown gvr: %s", gvr.String()))
-		done()
-		return
-	}
-	obj, err := c.ListerFor(gvr).ByNamespace(namespace).Get(name)
+func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) {
+	cluster, err := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.Registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR)).ByNamespace(namespace).Get(name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called on unknown object (%s::%s/%s): %w", gvr.String(), namespace, name, err))
-		done()
+		QueueOps.Done(ctx)
 		return
 	}
 
-	u, ok := obj.(*unstructured.Unstructured)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object %T", obj))
-		done()
-		return
-	}
+	logger := klog.LoggerWithValues(klog.Background(),
+		"syncID", middleware.NewSyncID(5),
+		"controller", c.Name(),
+		"obj", klog.KObj(cluster),
+	)
+	ctx = klog.NewContext(ctx, logger)
 
-	var cluster v1alpha1.SpiceDBCluster
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &cluster); err != nil {
-		utilruntime.HandleError(fmt.Errorf("syncOwnedResource called with invalid object: %w", err))
-		done()
-		return
-	}
+	ctx = CtxCluster.WithValue(ctx, cluster)
+	ctx = CtxClusterStatus.WithValue(ctx, cluster)
+	ctx = CtxClusterNN.WithValue(ctx, cluster.NamespacedName())
+	ctx = CtxSecretNN.WithValue(ctx, types.NamespacedName{
+		Name:      cluster.Spec.SecretRef,
+		Namespace: cluster.Namespace,
+	})
 
-	klog.V(4).InfoS("syncing owned object", "gvr", gvr, "obj", klog.KObj(&cluster))
-
-	r := SpiceDBClusterHandler{
-		done:      done,
-		requeue:   requeue,
-		cluster:   &cluster,
-		client:    c.client,
-		kclient:   c.kclient,
-		informers: c.informers,
-		recorder:  c.recorder,
-	}
 	c.configLock.RLock()
-	// TODO: pull in an image spec library
-	if c.config.ImageName == "" {
-		utilruntime.HandleError(errors.New("spicedb image name not specified"))
-	}
-	if len(c.config.ImageDigest) > 0 {
-		r.defaultSpiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageDigest}, "@")
-	} else {
-		r.defaultSpiceDBImage = strings.Join([]string{c.config.ImageName, c.config.ImageTag}, ":")
-	}
-	r.allowedSpiceDBImages = c.config.AllowedImages
-	r.allowedSpiceDBTags = c.config.AllowedTags
+	config := c.config.Copy()
+	ctx = CtxOperatorConfig.WithValue(ctx, &config)
 	c.configLock.RUnlock()
 
-	r.Handle(ctx)
+	logger.V(4).Info("syncing owned object", "gvr", gvr)
+
+	c.Handle(ctx)
 }
 
 // syncExternalResource is called when a dependent resource is updated:
 // It queues the owning SpiceDBCluster for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
-// machine for PermissionSystem with an entrypoint in the main Handler
+// machine for SpiceDBCluster with an entrypoint in the mainHandler Handler
 func (c *Controller) syncExternalResource(obj interface{}) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -450,13 +347,298 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 
 	klog.V(4).InfoS("syncing external object", "obj", klog.KObj(objMeta))
 
-	keys, err := metadata.GetClusterKeyFromMeta(obj)
+	keys, err := adopt.OwnerKeysFromMeta(metadata.OwnerAnnotationKeyPrefix)(obj)
 	if err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
 
 	for _, k := range keys {
-		c.queue.AddRateLimited(metadata.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, k))
+		c.Queue.AddRateLimited(cachekeys.GVRMetaNamespaceKeyer(v1alpha1ClusterGVR, k))
 	}
+}
+
+// Handle inspects the current SpiceDBCluster object and ensures
+// the desired state is persisted on the cluster.
+func (c *Controller) Handle(ctx context.Context) {
+	c.mainHandler.Handle(ctx)
+}
+
+func (c *Controller) ensureDeployment(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&DeploymentHandler{
+		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
+			klog.FromContext(ctx).V(4).Info("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
+			return c.kclient.AppsV1().Deployments(*dep.Namespace).Apply(ctx, dep, metadata.ApplyForceOwned)
+		},
+		deleteDeployment: func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting deployment", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.AppsV1().Deployments(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		patchStatus: c.PatchStatus,
+		next:        handler.Handlers(next).MustOne(),
+	})
+}
+
+func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&JobCleanupHandler{
+		registry: c.Registry,
+		getJobs: func(ctx context.Context) []*batchv1.Job {
+			return component.NewIndexedComponent[*batchv1.Job](
+				typed.IndexerFor[*batchv1.Job](c.Registry, typed.NewRegistryKey(DependentFactoryKey, batchv1.SchemeGroupVersion.WithResource("jobs"))),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentMigrationJobLabelValue)
+				}).List(ctx, CtxClusterNN.MustValue(ctx))
+		},
+		getJobPods: func(ctx context.Context) []*corev1.Pod {
+			return component.NewIndexedComponent[*corev1.Pod](
+				typed.IndexerFor[*corev1.Pod](c.Registry, typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("pods"))),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentMigrationJobLabelValue)
+				},
+			).List(ctx, CtxClusterNN.MustValue(ctx))
+		},
+		deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting job", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.BatchV1().Jobs(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		deletePod: func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting job pod", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.CoreV1().Pods(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+	})
+}
+
+func (c *Controller) waitForMigrationsHandler(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&WaitForMigrationsHandler{
+		recorder:              c.Recorder,
+		nextSelfPause:         HandlerSelfPauseKey.MustFind(next),
+		nextDeploymentHandler: HandlerDeploymentKey.MustFind(next),
+	})
+}
+
+func (c *Controller) pauseCluster(next ...handler.Handler) handler.Handler {
+	return handler.NewHandler(pause.NewPauseContextHandler(
+		QueueOps.Key,
+		metadata.PausedControllerSelectorKey,
+		CtxClusterStatus,
+		c.PatchStatus,
+		handler.Handlers(next).MustOne(),
+	), "pauseCluster")
+}
+
+func (c *Controller) selfPauseCluster(...handler.Handler) handler.Handler {
+	return handler.NewHandler(pause.NewSelfPauseHandler(
+		QueueOps.Key,
+		metadata.PausedControllerSelectorKey,
+		CtxSelfPauseObject,
+		c.Patch,
+		c.PatchStatus,
+	), HandlerSelfPauseKey)
+}
+
+func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
+	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
+	return NewSecretAdoptionHandler(
+		c.Recorder,
+		func(ctx context.Context) (*corev1.Secret, error) {
+			return typed.ListerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
+		},
+		typed.IndexerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
+		func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
+			return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
+		},
+		handler.Handlers(next).MustOne(),
+	)
+}
+
+func (c *Controller) checkConfigChanged(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&ConfigChangedHandler{
+		patchStatus: c.PatchStatus,
+		next:        handler.Handlers(next).MustOne(),
+	})
+}
+
+func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&ValidateConfigHandler{
+		patchStatus: c.PatchStatus,
+		recorder:    c.Recorder,
+		next:        handler.Handlers(next).MustOne(),
+	})
+}
+
+func (c *Controller) getDeployments(...handler.Handler) handler.Handler {
+	return handler.NewHandler(component.NewComponentContextHandler[*appsv1.Deployment](
+		CtxDeployments,
+		component.NewIndexedComponent(
+			typed.IndexerFor[*appsv1.Deployment](c.Registry, typed.NewRegistryKey(DependentFactoryKey, appsv1.SchemeGroupVersion.WithResource("deployments"))),
+			metadata.OwningClusterIndex,
+			func(ctx context.Context) labels.Selector {
+				return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentSpiceDBLabelValue)
+			}),
+		CtxClusterNN,
+		handler.NoopHandler,
+	), "getDeployments")
+}
+
+func (c *Controller) getJobs(...handler.Handler) handler.Handler {
+	return handler.NewHandler(component.NewComponentContextHandler[*batchv1.Job](
+		CtxJobs,
+		component.NewIndexedComponent(
+			typed.IndexerFor[*batchv1.Job](c.Registry, typed.NewRegistryKey(DependentFactoryKey, batchv1.SchemeGroupVersion.WithResource("jobs"))),
+			metadata.OwningClusterIndex,
+			func(ctx context.Context) labels.Selector {
+				return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentMigrationJobLabelValue)
+			}),
+		CtxClusterNN,
+		handler.NoopHandler,
+	), "getJobs")
+}
+
+func (c *Controller) runMigration(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&MigrationRunHandler{
+		applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
+			_, err := c.kclient.BatchV1().Jobs(*job.Namespace).Apply(ctx, job, metadata.ApplyForceOwned)
+			return err
+		},
+		deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
+			return c.kclient.BatchV1().Jobs(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		patchStatus: c.PatchStatus,
+		next:        handler.Handlers(next).MustOne(),
+	})
+}
+
+func (c *Controller) checkMigrations(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&MigrationCheckHandler{
+		recorder:                c.Recorder,
+		nextMigrationRunHandler: HandlerMigrationRunKey.MustFind(next),
+		nextWaitForJobHandler:   HandlerWaitForMigrationsKey.MustFind(next),
+		nextDeploymentHandler:   HandlerDeploymentKey.MustFind(next),
+	})
+}
+
+func (c *Controller) ensureServiceAccount(...handler.Handler) handler.Handler {
+	return handler.NewHandler(component.NewEnsureComponentByHash(
+		component.NewHashableComponent(
+			component.NewIndexedComponent(
+				typed.IndexerFor[*corev1.ServiceAccount](
+					c.Registry,
+					typed.NewRegistryKey(
+						DependentFactoryKey,
+						corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
+					)),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentServiceAccountLabel)
+				}),
+			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
+		CtxClusterNN,
+		QueueOps.Key,
+		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
+			klog.FromContext(ctx).V(4).Info("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
+			return c.kclient.CoreV1().ServiceAccounts(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
+		},
+		func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting serviceaccount", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.CoreV1().ServiceAccounts(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
+			return CtxConfig.MustValue(ctx).ServiceAccount()
+		}), "ensureServiceAccount")
+}
+
+func (c *Controller) ensureRole(...handler.Handler) handler.Handler {
+	return handler.NewHandler(component.NewEnsureComponentByHash(
+		component.NewHashableComponent(
+			component.NewIndexedComponent(
+				typed.IndexerFor[*rbacv1.Role](
+					c.Registry,
+					typed.NewRegistryKey(
+						DependentFactoryKey,
+						rbacv1.SchemeGroupVersion.WithResource("roles"),
+					)),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentRoleLabel)
+				}),
+			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
+		CtxClusterNN,
+		QueueOps.Key,
+		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
+			klog.FromContext(ctx).V(4).Info("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
+			return c.kclient.RbacV1().Roles(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
+		},
+		func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting role", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.RbacV1().Roles(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
+			return CtxConfig.MustValue(ctx).Role()
+		}), "ensureRole")
+}
+
+func (c *Controller) ensureRoleBinding(next ...handler.Handler) handler.Handler {
+	return handler.NewHandlerFromFunc(func(ctx context.Context) {
+		component.NewEnsureComponentByHash(
+			component.NewHashableComponent(
+				component.NewIndexedComponent(
+					typed.IndexerFor[*rbacv1.RoleBinding](
+						c.Registry,
+						typed.NewRegistryKey(
+							DependentFactoryKey,
+							rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+						)),
+					metadata.OwningClusterIndex,
+					func(ctx context.Context) labels.Selector {
+						return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentRoleBindingLabel)
+					}),
+				hash.NewObjectHash(), "authzed.com/controller-component-hash"),
+			CtxClusterNN,
+			QueueOps.Key,
+			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
+				klog.FromContext(ctx).V(4).Info("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
+				return c.kclient.RbacV1().RoleBindings(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
+			},
+			func(ctx context.Context, nn types.NamespacedName) error {
+				klog.FromContext(ctx).V(4).Info("deleting rolebinding", "namespace", nn.Namespace, "name", nn.Name)
+				return c.kclient.RbacV1().RoleBindings(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+			},
+			func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
+				return CtxConfig.MustValue(ctx).RoleBinding()
+			},
+		).Handle(ctx)
+		handler.Handlers(next).MustOne().Handle(ctx)
+	}, "ensureRoleBinding")
+}
+
+func (c *Controller) ensureService(...handler.Handler) handler.Handler {
+	return handler.NewHandler(component.NewEnsureComponentByHash(
+		component.NewHashableComponent(
+			component.NewIndexedComponent(
+				typed.IndexerFor[*corev1.Service](
+					c.Registry,
+					typed.NewRegistryKey(
+						DependentFactoryKey,
+						corev1.SchemeGroupVersion.WithResource("services"),
+					)),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentServiceLabel)
+				}),
+			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
+		CtxClusterNN,
+		QueueOps.Key,
+		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
+			klog.FromContext(ctx).V(4).Info("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
+			return c.kclient.CoreV1().Services(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
+		},
+		func(ctx context.Context, nn types.NamespacedName) error {
+			klog.FromContext(ctx).V(4).Info("deleting service", "namespace", nn.Namespace, "name", nn.Name)
+			return c.kclient.CoreV1().Services(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+		},
+		func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {
+			return CtxConfig.MustValue(ctx).Service()
+		}), "ensureService")
 }

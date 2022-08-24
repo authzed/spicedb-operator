@@ -10,7 +10,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
-func (r *SpiceDBClusterHandler) PatchStatus(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+func (c *Controller) PatchStatus(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 	for _, c := range patch.Status.Conditions {
 		c.ObservedGeneration = patch.Generation
 	}
@@ -19,15 +19,15 @@ func (r *SpiceDBClusterHandler) PatchStatus(ctx context.Context, patch *v1alpha1
 	if err != nil {
 		return err
 	}
-	_, err = r.client.Resource(v1alpha1ClusterGVR).Namespace(patch.Namespace).Patch(ctx, patch.Name, types.ApplyPatchType, data, metadata.PatchForceOwned, "status")
+	_, err = c.client.Resource(v1alpha1ClusterGVR).Namespace(patch.Namespace).Patch(ctx, patch.Name, types.ApplyPatchType, data, metadata.PatchForceOwned, "status")
 	return err
 }
 
-func (r *SpiceDBClusterHandler) Patch(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+func (c *Controller) Patch(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 	data, err := client.Apply.Data(patch)
 	if err != nil {
 		return err
 	}
-	_, err = r.client.Resource(v1alpha1ClusterGVR).Namespace(patch.Namespace).Patch(ctx, patch.Name, types.ApplyPatchType, data, metadata.PatchForceOwned)
+	_, err = c.client.Resource(v1alpha1ClusterGVR).Namespace(patch.Namespace).Patch(ctx, patch.Name, types.ApplyPatchType, data, metadata.PatchForceOwned)
 	return err
 }

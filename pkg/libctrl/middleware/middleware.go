@@ -1,40 +1,51 @@
 package middleware
 
 import (
-	"context"
-	"encoding/base64"
-	"math/rand"
-
-	"k8s.io/klog/v2"
-
-	"github.com/authzed/spicedb-operator/pkg/libctrl"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
 
-var CtxSyncID = libctrl.NewContextKey[string]()
+// HandlerMiddleware returns a new (wrapped) Handler given a Handler
+type HandlerMiddleware func(handler.Handler) handler.Handler
 
-func NewSyncID(size uint8) string {
-	buf := make([]byte, size)
-	rand.Read(buf) // nolint
-	str := base64.StdEncoding.EncodeToString(buf)
-	return str[:size]
-}
+// BuilderMiddleware returns a new (wrapped) Builder given a Builder
+type BuilderMiddleware func(handler.Builder) handler.Builder
 
-func SyncIDMiddleware(in handler.Handler) handler.Handler {
-	return handler.NewHandlerFromFunc(func(ctx context.Context) {
-		_, ok := CtxSyncID.Value(ctx)
-		if !ok {
-			ctx = CtxSyncID.WithValue(ctx, NewSyncID(5))
+// BuilderComposer is a function that composes sets of handler.Builder into
+// one handler.Builder, see `Chain` and `Parallel`.
+type BuilderComposer func(builder ...handler.Builder) handler.Builder
+
+// Middleware operates on BuilderComposer (to wrap all underlying builders)
+type Middleware func(BuilderComposer) BuilderComposer
+
+// MakeMiddleware generates the corresponding Middleware for HandlerMiddleware
+func MakeMiddleware(w HandlerMiddleware) Middleware {
+	builderWrapper := MakeBuilderMiddleware(w)
+	return func(f BuilderComposer) BuilderComposer {
+		return func(builder ...handler.Builder) handler.Builder {
+			wrapped := make([]handler.Builder, 0, len(builder))
+			for _, b := range builder {
+				wrapped = append(wrapped, builderWrapper(b))
+			}
+			return f(wrapped...)
 		}
-		in.Handle(ctx)
-	}, in.ID())
+	}
 }
 
-func KlogMiddleware(controllerName string, ref klog.ObjectRef) libctrl.HandlerMiddleware {
-	return func(in handler.Handler) handler.Handler {
-		return handler.NewHandlerFromFunc(func(ctx context.Context) {
-			klog.V(4).InfoS("entering handler", "controller", controllerName, "syncID", CtxSyncID.MustValue(ctx), "object", ref, "handler", in.ID())
-			in.Handle(ctx)
-		}, in.ID())
+// MakeBuilderMiddleware generates the corresponding BuilderMiddleware from a
+// HandlerMiddleware.
+func MakeBuilderMiddleware(w HandlerMiddleware) BuilderMiddleware {
+	return func(in handler.Builder) handler.Builder {
+		return func(next ...handler.Handler) handler.Handler {
+			return w(in(next...))
+		}
 	}
+}
+
+// WithMiddleware returns a new BuilderComposer with all middleware applied
+func WithMiddleware(composer BuilderComposer, middleware ...Middleware) BuilderComposer {
+	out := composer
+	for _, m := range middleware {
+		out = m(out)
+	}
+	return out
 }

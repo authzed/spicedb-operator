@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"time"
 
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
@@ -286,16 +287,30 @@ var _ = Describe("SpiceDBClusters", func() {
 		namespace, name, datastoreEngine := args()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		Eventually(func(g Gomega) {
-			var c *v1alpha1.SpiceDBCluster
-			out, err := client.Resource(v1alpha1ClusterGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
-			g.Expect(err).To(Succeed())
-			g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
+		var c *v1alpha1.SpiceDBCluster
 
-			GinkgoWriter.Println(c.Status)
+		watchCtx, watchCancel := context.WithTimeout(ctx, 3*time.Minute)
+		watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(namespace).Watch(watchCtx, metav1.ListOptions{
+			Watch:           true,
+			ResourceVersion: "0",
+		})
+		Expect(err).To(Succeed())
+		foundMigratingCondition := false
+		for event := range watcher.ResultChan() {
+			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &c)).To(Succeed())
+			if c.Name != name {
+				continue
+			}
+			GinkgoWriter.Println(c)
 			condition := c.FindStatusCondition("Migrating")
-			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
-		}).Should(Succeed())
+			if condition != nil {
+				foundMigratingCondition = true
+				Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
+				break
+			}
+		}
+		watchCancel()
+		Expect(foundMigratingCondition).To(BeTrue())
 
 		Eventually(func(g Gomega) {
 			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
@@ -372,13 +387,28 @@ var _ = Describe("SpiceDBClusters", func() {
 			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Delete, ctx, "test", metav1.DeleteOptions{})
 
 			var c *v1alpha1.SpiceDBCluster
-			Eventually(func(g Gomega) {
-				out, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Get(ctx, "test", metav1.GetOptions{})
-				g.Expect(err).To(Succeed())
-				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(out.Object, &c)).To(Succeed())
+			watchCtx, watchCancel := context.WithTimeout(ctx, 3*time.Minute)
+			watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Watch(watchCtx, metav1.ListOptions{
+				Watch:           true,
+				ResourceVersion: "0",
+			})
+			Expect(err).To(Succeed())
+			foundValidationFailed := false
+			for event := range watcher.ResultChan() {
+				Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &c)).To(Succeed())
+				if c.Name != "test" {
+					continue
+				}
+				GinkgoWriter.Println(c)
 				condition := c.FindStatusCondition("ValidatingFailed")
-				g.Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
-			}).Should(Succeed())
+				if condition != nil {
+					foundValidationFailed = true
+					Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
+					break
+				}
+			}
+			watchCancel()
+			Expect(foundValidationFailed).To(BeTrue())
 		})
 	})
 

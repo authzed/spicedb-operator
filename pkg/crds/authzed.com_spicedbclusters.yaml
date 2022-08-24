@@ -9,6 +9,8 @@ metadata:
 spec:
   group: authzed.com
   names:
+    categories:
+    - authzed
     kind: SpiceDBCluster
     listKind: SpiceDBClusterList
     plural: spicedbclusters

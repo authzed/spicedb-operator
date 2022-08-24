@@ -1,21 +1,36 @@
 package run
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/cli/globalflag"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
+	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
+	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/static"
+	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 )
+
+var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 
 // Options contains the input to the run command.
 type Options struct {
@@ -46,8 +61,9 @@ func NewCmdRun(o *Options) *cobra.Command {
 		DisableFlagsInUseLine: true,
 		Short:                 "run SpiceDB operator",
 		Run: func(cmd *cobra.Command, args []string) {
-			cmdutil.CheckErr(o.Validate(cmd, args))
-			cmdutil.CheckErr(o.Run(f, cmd, args))
+			ctx := genericapiserver.SetupSignalContext()
+			cmdutil.CheckErr(o.Validate())
+			cmdutil.CheckErr(o.Run(ctx, f))
 		},
 	}
 
@@ -74,42 +90,78 @@ func NewCmdRun(o *Options) *cobra.Command {
 }
 
 // Validate checks the set of flags provided by the user.
-func (o *Options) Validate(cmd *cobra.Command, args []string) error {
+func (o *Options) Validate() error {
 	return errors.NewAggregate(o.DebugFlags.Validate())
 }
 
 // Run performs the apply operation.
-func (o *Options) Run(f cmdutil.Factory, cmd *cobra.Command, args []string) error {
-	dclient, err := f.DynamicClient()
+func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
+	restConfig, err := f.ToRESTConfig()
+	if err != nil {
+		return err
+	}
+	DisableClientRateLimits(restConfig)
+
+	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return err
 	}
 
-	kclient, err := f.KubernetesClientSet()
+	kclient, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		return err
 	}
 
 	if o.BootstrapCRDs {
-		restConfig, err := f.ToRESTConfig()
-		if err != nil {
-			return err
-		}
 		klog.V(3).InfoS("bootstrapping CRDs")
 		if err := crds.BootstrapCRD(restConfig); err != nil {
 			return err
 		}
 	}
 
-	ctx := genericapiserver.SetupSignalContext()
-	ctrl, err := controller.NewController(ctx, dclient, kclient, o.OperatorConfigPath, o.BootstrapSpicedbsPath)
+	registry := typed.NewRegistry()
+	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
+	broadcaster := record.NewBroadcaster()
+
+	controllers := make([]manager.Controller, 0)
+	if len(o.BootstrapSpicedbsPath) > 0 {
+		staticSpiceDBController, err := static.NewStaticController[*v1alpha1.SpiceDBCluster](
+			"static-spicedbs",
+			o.BootstrapSpicedbsPath,
+			v1alpha1ClusterGVR,
+			dclient)
+		if err != nil {
+			return err
+		}
+		controllers = append(controllers, staticSpiceDBController)
+	}
+
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, broadcaster)
 	if err != nil {
 		return err
 	}
+	controllers = append(controllers, ctrl)
+
+	// register with metrics collector
+	spiceDBClusterMetrics := ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster]("spicedb_operator", "clusters", v1alpha1.SpiceDBClusterResourceName)
+	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](registry, typed.NewRegistryKey(controller.OwnedFactoryKey, v1alpha1ClusterGVR))
+	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
+		return lister.List(labels.Everything())
+	})
+	legacyregistry.CustomMustRegister(spiceDBClusterMetrics)
+
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress)
 
-	return mgr.StartControllers(ctx, ctrl)
+	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress, broadcaster, eventSink)
+
+	return mgr.Start(ctx, controllers...)
+}
+
+// DisableClientRateLimits removes rate limiting against the apiserver; we
+// respect priority and fairness and will back off if the server tells us to
+func DisableClientRateLimits(restConfig *rest.Config) {
+	restConfig.Burst = 2000
+	restConfig.QPS = -1
 }
