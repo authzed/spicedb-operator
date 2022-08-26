@@ -34,7 +34,7 @@ require (
 	k8s.io/klog/v2 v2.70.1
 	k8s.io/kubectl v0.22.0-beta.0
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
-	mvdan.cc/gofumpt v0.3.0
+	mvdan.cc/gofumpt v0.3.1
 	sigs.k8s.io/controller-runtime v0.11.1
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20220322150744-c46b410039fd
 	sigs.k8s.io/controller-tools v0.8.0
