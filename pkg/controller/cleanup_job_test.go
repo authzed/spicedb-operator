@@ -11,7 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
+	"github.com/authzed/controller-idioms/queue/fake"
+
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -143,7 +144,7 @@ func TestCleanupJobsHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeOperations{}
+			ctrls := &fake.FakeInterface{}
 
 			ctx := context.Background()
 			ctx = QueueOps.WithValue(ctx, ctrls)

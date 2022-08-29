@@ -10,10 +10,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/queue/fake"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -54,7 +55,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n5b9h76h5f5h596hf7h7dh657h69q",
+				metadata.SpiceDBConfigKey: "n644h668h66h56ch5f9h5c5h5fbh65cq",
 			}}}},
 			expectNext: nextKey,
 		},
@@ -63,7 +64,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n5b9h76h5f5h596hf7h7dh657h69q",
+				metadata.SpiceDBConfigKey: "n644h668h66h56ch5f9h5c5h5fbh65cq",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
@@ -94,7 +95,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeOperations{}
+			ctrls := &fake.FakeInterface{}
 			applyCalled := false
 			deleteCalled := false
 			patchCalled := false

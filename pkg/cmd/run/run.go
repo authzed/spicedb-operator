@@ -21,13 +21,14 @@ import (
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
+	"github.com/authzed/controller-idioms/manager"
+	ctrlmetrics "github.com/authzed/controller-idioms/metrics"
+	"github.com/authzed/controller-idioms/static"
+	"github.com/authzed/controller-idioms/typed"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
-	ctrlmetrics "github.com/authzed/spicedb-operator/pkg/libctrl/metrics"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/static"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 )
 
 var v1alpha1ClusterGVR = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)

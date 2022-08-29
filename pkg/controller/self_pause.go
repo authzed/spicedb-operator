@@ -3,9 +3,10 @@ package controller
 import (
 	"context"
 
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/pause"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/pause"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 

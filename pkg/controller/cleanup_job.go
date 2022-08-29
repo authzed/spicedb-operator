@@ -7,8 +7,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
+	"github.com/authzed/controller-idioms/hash"
+	"github.com/authzed/controller-idioms/typed"
+
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 

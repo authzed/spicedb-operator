@@ -35,17 +35,18 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/strings/slices"
 
+	"github.com/authzed/controller-idioms/adopt"
+	"github.com/authzed/controller-idioms/cachekeys"
+	"github.com/authzed/controller-idioms/component"
+	"github.com/authzed/controller-idioms/fileinformer"
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
+	"github.com/authzed/controller-idioms/manager"
+	"github.com/authzed/controller-idioms/middleware"
+	"github.com/authzed/controller-idioms/pause"
+	"github.com/authzed/controller-idioms/typed"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/cachekeys"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/component"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/fileinformer"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/hash"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/manager"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/middleware"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/pause"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 

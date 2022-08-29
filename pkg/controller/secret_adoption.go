@@ -8,9 +8,10 @@ import (
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/typed"
+	"github.com/authzed/controller-idioms/adopt"
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/typed"
+
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 

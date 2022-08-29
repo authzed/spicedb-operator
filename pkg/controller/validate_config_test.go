@@ -11,9 +11,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/queue/fake"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 )
 
 func TestValidateConfigHandler(t *testing.T) {
@@ -206,7 +207,7 @@ func TestValidateConfigHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeOperations{}
+			ctrls := &fake.FakeInterface{}
 			recorder := record.NewFakeRecorder(1)
 			patchCalled := false
 

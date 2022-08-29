@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/pointer"
 
-	"github.com/authzed/spicedb-operator/pkg/libctrl/adopt"
+	"github.com/authzed/controller-idioms/adopt"
 )
 
 const (
