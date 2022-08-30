@@ -34,7 +34,7 @@ require (
 	mvdan.cc/gofumpt v0.3.1
 	sigs.k8s.io/controller-runtime v0.12.3
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20220322150744-c46b410039fd
-	sigs.k8s.io/controller-tools v0.8.0
+	sigs.k8s.io/controller-tools v0.9.2
 	sigs.k8s.io/kind v0.11.1
 	sigs.k8s.io/yaml v1.3.0
 
@@ -71,7 +71,7 @@ require (
 	github.com/go-openapi/jsonreference v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
-	github.com/gobuffalo/flect v0.2.3 // indirect
+	github.com/gobuffalo/flect v0.2.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
