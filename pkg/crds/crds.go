@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	libbootstrap "github.com/authzed/spicedb-operator/pkg/libctrl/bootstrap"
+	libbootstrap "github.com/authzed/controller-idioms/bootstrap"
 )
 
 //go:embed *.yaml

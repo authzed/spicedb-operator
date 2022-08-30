@@ -10,10 +10,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/queue/fake"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/queue/fake"
 )
 
 func TestWaitForMigrationsHandler(t *testing.T) {
@@ -53,7 +54,7 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrls := &fake.FakeOperations{}
+			ctrls := &fake.FakeInterface{}
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
 			ctx = QueueOps.WithValue(ctx, ctrls)

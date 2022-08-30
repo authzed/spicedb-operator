@@ -10,8 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/record"
 
+	"github.com/authzed/controller-idioms/handler"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/handler"
 )
 
 const EventMigrationsComplete = "MigrationsCompleted"

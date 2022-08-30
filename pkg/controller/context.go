@@ -6,10 +6,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/authzed/controller-idioms/queue"
+	"github.com/authzed/controller-idioms/typedctx"
+
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/queue"
-	"github.com/authzed/spicedb-operator/pkg/libctrl/typedctx"
 )
 
 var (
