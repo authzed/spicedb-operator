@@ -17,6 +17,7 @@ require (
 	github.com/stretchr/testify v1.8.0
 	go.uber.org/atomic v1.7.0
 	go.uber.org/zap v1.23.0
+	golang.org/x/exp v0.0.0-20220823124025-807a23277127
 	google.golang.org/genproto v0.0.0-20220815135757-37a418bb8959
 	k8s.io/api v0.25.0
 	k8s.io/apiextensions-apiserver v0.25.0
@@ -130,7 +131,6 @@ require (
 	go.opentelemetry.io/proto/otlp v0.7.0 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/exp v0.0.0-20220823124025-807a23277127 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
 	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2 // indirect

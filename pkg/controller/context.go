@@ -15,7 +15,7 @@ import (
 
 var (
 	QueueOps                  = queue.NewQueueOperationsCtx()
-	CtxOperatorConfig         = typedctx.WithDefault[*OperatorConfig](nil)
+	CtxOperatorConfig         = typedctx.WithDefault[*config.OperatorConfig](nil)
 	CtxClusterNN              = typedctx.WithDefault[types.NamespacedName](types.NamespacedName{})
 	CtxSecretNN               = typedctx.WithDefault[types.NamespacedName](types.NamespacedName{})
 	CtxSecret                 = typedctx.WithDefault[*corev1.Secret](nil)

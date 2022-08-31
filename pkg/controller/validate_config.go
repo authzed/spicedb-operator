@@ -42,7 +42,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
-	validatedConfig, warning, err := config.NewConfig(nn, CtxCluster.MustValue(ctx).UID, operatorConfig.DefaultImage(), operatorConfig.AllowedImages, operatorConfig.AllowedTags, rawConfig, secret)
+	validatedConfig, warning, err := config.NewConfig(nn, CtxCluster.MustValue(ctx).UID, operatorConfig, rawConfig, secret)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {

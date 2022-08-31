@@ -15,6 +15,7 @@ import (
 	"github.com/authzed/controller-idioms/queue/fake"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/config"
 )
 
 func TestValidateConfigHandler(t *testing.T) {
@@ -217,7 +218,7 @@ func TestValidateConfigHandler(t *testing.T) {
 			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
 			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
 			ctx = CtxCluster.WithValue(ctx, &v1alpha1.SpiceDBCluster{Spec: v1alpha1.ClusterSpec{Config: tt.rawConfig}})
-			ctx = CtxOperatorConfig.WithValue(ctx, &OperatorConfig{ImageName: "image", ImageTag: "tag"})
+			ctx = CtxOperatorConfig.WithValue(ctx, &config.OperatorConfig{ImageName: "image", ImageTag: "tag"})
 			var called handler.Key
 			h := &ValidateConfigHandler{
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
