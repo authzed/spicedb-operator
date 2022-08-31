@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
@@ -33,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
-	"k8s.io/utils/strings/slices"
 
 	"github.com/authzed/controller-idioms/adopt"
 	"github.com/authzed/controller-idioms/cachekeys"
@@ -47,6 +45,7 @@ import (
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -70,31 +69,6 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme.Scheme))
 }
 
-type OperatorConfig struct {
-	ImageName     string   `json:"imageName"`
-	ImageTag      string   `json:"imageTag"`
-	ImageDigest   string   `json:"imageDigest"`
-	AllowedTags   []string `json:"allowedTags"`
-	AllowedImages []string `json:"allowedImages"`
-}
-
-func (o OperatorConfig) DefaultImage() string {
-	if len(o.ImageDigest) > 0 {
-		return strings.Join([]string{o.ImageName, o.ImageDigest}, "@")
-	}
-	return strings.Join([]string{o.ImageName, o.ImageTag}, ":")
-}
-
-func (o OperatorConfig) Copy() OperatorConfig {
-	return OperatorConfig{
-		ImageName:     o.ImageName,
-		ImageTag:      o.ImageTag,
-		ImageDigest:   o.ImageDigest,
-		AllowedTags:   slices.Clone(o.AllowedTags),
-		AllowedImages: slices.Clone(o.AllowedImages),
-	}
-}
-
 var (
 	v1alpha1ClusterGVR  = v1alpha1.SchemeGroupVersion.WithResource(v1alpha1.SpiceDBClusterResourceName)
 	OwnedFactoryKey     = typed.NewFactoryKey(v1alpha1.SpiceDBClusterResourceName, "local", "unfiltered")
@@ -109,7 +83,7 @@ type Controller struct {
 
 	// config
 	configLock     sync.RWMutex
-	config         OperatorConfig
+	config         config.OperatorConfig
 	lastConfigHash atomic.Uint64
 }
 
@@ -257,13 +231,9 @@ func (c *Controller) loadConfig(path string) {
 		panic(err)
 	}
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
-	var config OperatorConfig
+	var config config.OperatorConfig
 	if err := decoder.Decode(&config); err != nil {
 		panic(err)
-	}
-
-	if len(config.ImageName)+len(config.ImageTag) == 0 && len(config.ImageName)+len(config.ImageDigest) == 0 {
-		panic(fmt.Errorf("unable to load config from %s", path))
 	}
 
 	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {

@@ -35,7 +35,7 @@ import (
 	"k8s.io/client-go/util/cert"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
-	"github.com/authzed/spicedb-operator/pkg/controller"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -725,7 +725,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							var imageName string
 
 							BeforeAll(func() {
-								newConfig := controller.OperatorConfig{
+								newConfig := config.OperatorConfig{
 									ImageTag:  "updated",
 									ImageName: "spicedb",
 								}
@@ -734,7 +734,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							})
 
 							AfterAll(func() {
-								newConfig := controller.OperatorConfig{
+								newConfig := config.OperatorConfig{
 									ImageName: "spicedb",
 									ImageTag:  "dev",
 								}

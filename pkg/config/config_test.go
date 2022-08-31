@@ -34,13 +34,11 @@ func TestToEnvVarName(t *testing.T) {
 
 func TestNewConfig(t *testing.T) {
 	type args struct {
-		nn            types.NamespacedName
-		uid           types.UID
-		image         string
-		allowedImages []string
-		allowedTags   []string
-		rawConfig     json.RawMessage
-		secret        *corev1.Secret
+		nn           types.NamespacedName
+		uid          types.UID
+		globalConfig OperatorConfig
+		rawConfig    json.RawMessage
+		secret       *corev1.Secret
 	}
 	tests := []struct {
 		name         string
@@ -52,10 +50,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "missing required",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"test": "field"
@@ -71,10 +71,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "simple",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb"
@@ -114,10 +116,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "memory",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "memory"
@@ -156,10 +160,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set supported image",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image", "image2"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image", "image2"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -200,11 +206,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set supported tag",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image", "other"},
-				allowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image", "other"},
+					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -245,11 +253,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set supported digest",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image", "other"},
-				allowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image", "other"},
+					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -290,11 +300,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set supported tagless digest",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image", "other"},
-				allowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image", "other"},
+					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -335,11 +347,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set an unsupported image",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
-				allowedTags:   []string{"tag"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+					AllowedTags:   []string{"tag"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -383,11 +397,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set an unsupported tag",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
-				allowedTags:   []string{"taggood", "taggood@sha256:abcd"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+					AllowedTags:   []string{"taggood", "taggood@sha256:abcd"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -431,11 +447,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set an unsupported digest",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
-				allowedTags:   []string{"taggood", "taggood@sha256:abcd"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+					AllowedTags:   []string{"taggood", "taggood@sha256:abcd"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -477,12 +495,64 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "set an unsupported image with validation disabled",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					DisableImageValidation: true,
+					ImageName:              "image",
+					AllowedImages:          []string{"image"},
+					AllowedTags:            []string{"tag"},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"image": "otherImage:otherTag"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{
+				fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\""),
+			},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					LogLevel:           "info",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "otherImage:otherTag",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+				},
+				SpiceConfig: SpiceConfig{
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
 			name: "set replicas as int",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -523,10 +593,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set replicas as string",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -567,10 +639,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as string",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -615,10 +689,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as map",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -666,10 +742,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations bool",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -712,10 +790,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations string",
 			args: args{
-				nn:            types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:           types.UID("1"),
-				image:         "image",
-				allowedImages: []string{"image"},
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
@@ -758,7 +838,7 @@ func TestNewConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.image, tt.args.allowedImages, tt.args.allowedTags, tt.args.rawConfig, tt.args.secret)
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, &tt.args.globalConfig, tt.args.rawConfig, tt.args.secret)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)

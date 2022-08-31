@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fatih/camelcase"
+	"golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -126,7 +127,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage string, allowedImages, allowedTags []string, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -154,9 +155,12 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
 	}
 
-	image, imgWarnings := validateImage(imageKey.pop(config), defaultSpiceDBImage, allowedImages, allowedTags)
+	image, imgWarnings := validateImage(imageKey.pop(config), globalConfig)
 	migrationConfig.TargetSpiceDBImage = image
-	warnings = append(warnings, imgWarnings...)
+
+	if !globalConfig.DisableImageValidation {
+		warnings = append(warnings, imgWarnings...)
+	}
 
 	datastoreEngine := datastoreEngineKey.pop(config)
 	if len(datastoreEngine) == 0 {
@@ -278,9 +282,12 @@ func NewConfig(nn types.NamespacedName, uid types.UID, defaultSpiceDBImage strin
 	}, warning, nil
 }
 
-func validateImage(image, defaultImage string, allowedImages, allowedTags []string) (string, []error) {
+func validateImage(image string, globalConfig *OperatorConfig) (string, []error) {
+	if len(image) == 0 && len(globalConfig.ImageName) == 0 {
+		return "", []error{fmt.Errorf("no defualt image configured for operator and no image provided in spec")}
+	}
 	if len(image) == 0 {
-		return defaultImage, nil
+		return globalConfig.DefaultImage(), nil
 	}
 
 	warnings := make([]error, 0)
@@ -288,21 +295,14 @@ func validateImage(image, defaultImage string, allowedImages, allowedTags []stri
 	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
 	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
 
-	allowedImage := false
-	for _, i := range allowedImages {
-		if i == baseImage {
-			allowedImage = true
-			break
-		}
-	}
-	if !allowedImage {
+	if !slices.Contains(globalConfig.AllowedImages, baseImage) {
 		warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed images", image, baseImage))
 	}
 
 	// check tag
 	if hasTag {
 		allowedTag := false
-		for _, t := range allowedTags {
+		for _, t := range globalConfig.AllowedTags {
 			tagInList, _, _ := strings.Cut(t, "@")
 			if tagInList == tag {
 				allowedTag = true
@@ -317,7 +317,7 @@ func validateImage(image, defaultImage string, allowedImages, allowedTags []stri
 	// check digest
 	if hasDigest {
 		allowedDigest := false
-		for _, t := range allowedTags {
+		for _, t := range globalConfig.AllowedTags {
 			// plain digest
 			if strings.HasPrefix(t, "sha") && t == digest {
 				allowedDigest = true
