@@ -838,7 +838,8 @@ func TestNewConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, &tt.args.globalConfig, tt.args.rawConfig, tt.args.secret)
+			global := tt.args.globalConfig.Copy()
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, &global, tt.args.rawConfig, tt.args.secret)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
