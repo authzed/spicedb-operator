@@ -28,10 +28,11 @@ func (o OperatorConfig) DefaultImage() string {
 
 func (o OperatorConfig) Copy() OperatorConfig {
 	return OperatorConfig{
-		ImageName:     o.ImageName,
-		ImageTag:      o.ImageTag,
-		ImageDigest:   o.ImageDigest,
-		AllowedTags:   slices.Clone(o.AllowedTags),
-		AllowedImages: slices.Clone(o.AllowedImages),
+		DisableImageValidation: o.DisableImageValidation,
+		ImageName:              o.ImageName,
+		ImageTag:               o.ImageTag,
+		ImageDigest:            o.ImageDigest,
+		AllowedTags:            slices.Clone(o.AllowedTags),
+		AllowedImages:          slices.Clone(o.AllowedImages),
 	}
 }
