@@ -37,37 +37,82 @@ We recommend one of the following:
 Next, you'll install the operator:
 
 ```console
-kubectl apply -k github.com/authzed/spicedb-operator/config
+kubectl apply --server-side -k github.com/authzed/spicedb-operator/config
 ```
 
 Finally you can create your first cluster:
 
 ```console
-kubectl apply -f - <<EOF
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: spicedb
----
+kubectl apply --server-side -f - <<EOF
 apiVersion: authzed.com/v1alpha1
 kind: SpiceDBCluster
 metadata:
-  name: dev-spicedb
-  namespace: spicedb
+  name: dev
 spec:
   config:
-    replicas: 2
-    datastoreEngine: postgres
+    datastoreEngine: memory 
   secretName: dev-spicedb-config
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: dev-spicedb-config
-  namespace: spicedb
 stringData:
-  datastore_uri: "postgresql:///the-url-of-your-datastore"
   preshared_key: "averysecretpresharedkey" 
 EOF
+```
+
+## Connecting To Your Cluster
+
+If you haven't already, make sure you've installed [zed](https://github.com/authzed/zed#installation).
+
+Port forward the grpc endpoint:
+
+```console
+kubectl port-forward deployment/dev-spicedb 50051:50051
+```
+
+Now you can use zed to interact with SpiceDB:
+
+```console
+zed --insecure --endpoint=localhost:50051 --token=averysecretpresharedkey schema read
+```
+
+## Where To Go From Here
+
+- Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, and Ingress.
+- Learn how to use SpiceDB via the [docs](https://docs.authzed.com/) and [playground](https://play.authzed.com/).
+- Ask questions and join the community in [discord](https://discord.gg/jTysUaxXzM).
+
+## Updating SpiceDBClusters 
+
+The operator handles the rollout of `SpiceDB` upgrades, inluding coordinating migrations.
+By default, the operator will upgrade all `SpiceDBCluster`s that it manages when the operator sees a new default image in the config (see [default-operator-config.yaml](default-operator-config.yaml) for the current default images).
+This config can be updated manually, but it is also updated with each release of spicedb-operator and included in the operator image.
+
+If you wish to opt out of automated updates, you can specify an image for the SpiceDBCluster in the config:
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: dev
+spec:
+  config:
+    image: ghcr.io/authzed/spicedb:v1.11.0
+    datastoreEngine: memory 
+  secretName: dev-spicedb-config
+```
+
+The spicedb-operator will happily attempt to run any image you specify, but if you specify an image that is not in the list of `allowedImages`, `allowedTags`, or `allowedDigests`, the status will warn you:
+
+```yaml
+status:
+  conditions:
+  - lastTransitionTime: "2022-09-02T21:49:19Z"
+    message: '["ubuntu" invalid: "ubuntu" is not in the configured list of allowed
+      images"]'
+    reason: WarningsPresent
+    status: "True"
+    type: ConfigurationWarning
 ```

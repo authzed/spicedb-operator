@@ -36,7 +36,7 @@ spec:
           - --crd=false
           - --config
           - /opt/operator/config.yaml
-          image: authzed/spicedb-operator:latest
+          image: ghcr.io/authzed/spicedb-operator:latest
           livenessProbe:
             httpGet:
               path: /healthz
