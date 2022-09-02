@@ -60,16 +60,7 @@ spec:
             successThreshold: 1
             timeoutSeconds: 15
           terminationMessagePolicy: FallbackToLogsOnError
-          volumeMounts:
-            - mountPath: /opt/operator
-              name: config
-              readOnly: true
       serviceAccountName: spicedb-operator
-      volumes:
-        - configMap:
-            defaultMode: 420
-            name: spicedb-operator-config
-          name: config
 ---
 apiVersion: v1
 kind: ServiceAccount

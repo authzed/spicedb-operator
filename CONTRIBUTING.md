@@ -109,3 +109,13 @@ go get github.com/org/newdependency@version
 ```
 
 Continuous integration enforces that `go mod tidy` has been run.
+
+### Regenerating `default-operator-config.yaml`
+
+The default config can be regenerated whenever there is a new spicedb release.
+
+```go
+cd tools
+go generate ./...
+```
+
