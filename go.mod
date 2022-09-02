@@ -10,8 +10,8 @@ require (
 	github.com/go-logr/zapr v1.2.3
 	github.com/jzelinskie/stringz v0.0.1
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.5.0
-	github.com/onsi/ginkgo/v2 v2.1.4
-	github.com/onsi/gomega v1.19.0
+	github.com/onsi/ginkgo/v2 v2.1.6
+	github.com/onsi/gomega v1.20.1
 	github.com/spf13/afero v1.8.2
 	github.com/spf13/cobra v1.4.0
 	github.com/stretchr/testify v1.8.0
@@ -28,7 +28,7 @@ require (
 	k8s.io/code-generator v0.25.0
 	k8s.io/component-base v0.25.0
 	k8s.io/controller-manager v0.25.0
-	k8s.io/klog/v2 v2.70.1
+	k8s.io/klog/v2 v2.80.0
 	k8s.io/kubectl v0.25.0
 	k8s.io/utils v0.0.0-20220823124924-e9cbc92d1a73
 	mvdan.cc/gofumpt v0.3.1
