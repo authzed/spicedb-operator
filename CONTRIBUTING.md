@@ -118,4 +118,3 @@ The default config can be regenerated whenever there is a new spicedb release.
 cd tools
 go generate ./...
 ```
-

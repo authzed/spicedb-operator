@@ -25,6 +25,9 @@ func main() {
 	}
 	ctx := context.Background()
 	client := github.NewClient(nil)
+
+	// this returns the newest release by date, not by version
+	// note that spicedb uses the same API to determine if it's up to date
 	latestRelease, _, err := client.Repositories.GetLatestRelease(ctx, githubNamespace, githubRepository)
 	if err != nil {
 		panic(err)
@@ -54,7 +57,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := os.WriteFile(os.Args[1], yamlBytes, 0666); err != nil {
+	if err := os.WriteFile(os.Args[1], yamlBytes, 0o666); err != nil {
 		panic(err)
 	}
 }

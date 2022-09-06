@@ -2,8 +2,10 @@
 ---
 ignore: |
   config/
-  pkg/crds
+  default-operator-config.yaml
   e2e/
+  examples
+  pkg/crds
 yaml-files:
   - "*.yaml"
   - "*.yml"

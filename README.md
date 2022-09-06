@@ -82,9 +82,9 @@ zed --insecure --endpoint=localhost:50051 --token=averysecretpresharedkey schema
 
 - Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, and Ingress.
 - Learn how to use SpiceDB via the [docs](https://docs.authzed.com/) and [playground](https://play.authzed.com/).
-- Ask questions and join the community in [discord](https://discord.gg/jTysUaxXzM).
+- Ask questions and join the community in [discord](https://authzed.com/discord).
 
-## Updating SpiceDBClusters 
+## Updating SpiceDBClusters
 
 The operator handles the rollout of `SpiceDB` upgrades, inluding coordinating migrations.
 By default, the operator will upgrade all `SpiceDBCluster`s that it manages when the operator sees a new default image in the config (see [default-operator-config.yaml](default-operator-config.yaml) for the current default images).

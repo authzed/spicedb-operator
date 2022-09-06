@@ -1,0 +1,29 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: localhost
+  namespace: spicedb
+spec:
+  secretName: ingress-tls
+  issuerRef:
+    name: local-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "localhost"
+---
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: example-ingress
+  namespace: spicedb
+spec:
+  includes:
+  - name: example
+    namespace: spicedb
+  - name: example-reflection
+    namespace: spicedb
+  virtualhost:
+    fqdn: "localhost"
+    tls:
+      secretName: ingress-tls
