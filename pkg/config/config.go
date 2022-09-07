@@ -49,6 +49,7 @@ var (
 	spiceDBCmdKey                 = newKey("cmd", "spicedb")
 	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
 	logLevelKey                   = newKey("logLevel", "info")
+	migrationLogLevelKey          = newKey("migrationLogLevel", "debug")
 	spannerCredentialsKey         = newStringKey("spannerCredentials")
 	datastoreTLSSecretKey         = newStringKey("datastoreTLSSecretName")
 	datastoreEngineKey            = newStringKey("datastoreEngine")
@@ -97,7 +98,7 @@ type Config struct {
 // MigrationConfig stores data that is relevant for running migrations
 // or deciding if migrations need to be run
 type MigrationConfig struct {
-	LogLevel               string
+	MigrationLogLevel      string
 	DatastoreEngine        string
 	DatastoreURI           string
 	SpannerCredsSecretRef  string
@@ -110,6 +111,7 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
+	LogLevel                     string
 	SkipMigrations               bool
 	Name                         string
 	Namespace                    string
@@ -146,9 +148,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, globalConfig *OperatorCon
 		EnvPrefix:                    envPrefixKey.pop(config),
 		SpiceDBCmd:                   spiceDBCmdKey.pop(config),
 		ExtraPodLabels:               make(map[string]string, 0),
+		LogLevel:                     logLevelKey.pop(config),
 	}
 	migrationConfig := MigrationConfig{
-		LogLevel:               logLevelKey.pop(config),
+		MigrationLogLevel:      migrationLogLevelKey.pop(config),
 		SpannerCredsSecretRef:  spannerCredentialsKey.pop(config),
 		EnvPrefix:              spiceConfig.EnvPrefix,
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
@@ -456,7 +459,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 	name := fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:15])
 	envPrefix := c.SpiceConfig.EnvPrefix
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
-		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
+		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.MigrationLogLevel),
 		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
 		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
 	}
