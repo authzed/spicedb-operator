@@ -349,12 +349,14 @@ func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_DISPATCH_UPSTREAM_ADDR").
 			WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", c.Name, c.Namespace)),
-		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_DATASTORE_CONN_URI").
-			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
-				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_GRPC_PRESHARED_KEY").
 			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
 				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("preshared_key"))),
+	}
+	if c.DatastoreEngine != "memory" {
+		envVars = append(envVars, applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_CONN_URI").
+			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
+				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))))
 	}
 
 	// Passthrough config is user-provided and only affects spicedb runtime.

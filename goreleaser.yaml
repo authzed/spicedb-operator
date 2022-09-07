@@ -26,6 +26,8 @@ dockers:
     use: "buildx"
     build_flag_templates:
       - "--platform=linux/amd64"
+    extra_files:
+      - "default-operator-config.yaml"
   # ARM64
   - image_templates:
       - &arm_image_quay "quay.io/authzed/spicedb-operator:v{{ .Version }}-arm64"
@@ -37,6 +39,8 @@ dockers:
     use: "buildx"
     build_flag_templates:
       - "--platform=linux/arm64"
+    extra_files:
+      - "default-operator-config.yaml"
 docker_manifests:
   # Quay
   - name_template: "quay.io/authzed/spicedb-operator:v{{ .Version }}"

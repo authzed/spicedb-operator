@@ -47,8 +47,10 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 		}
 	}
 
-	// don't handle migrations at all if `skipMigrations` is set
-	if CtxConfig.MustValue(ctx).SkipMigrations {
+	// don't handle migrations at all if `skipMigrations` is set or if the
+	// `memory` datastore is used
+	config := CtxConfig.MustValue(ctx)
+	if config.SkipMigrations || config.DatastoreEngine == "memory" {
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}

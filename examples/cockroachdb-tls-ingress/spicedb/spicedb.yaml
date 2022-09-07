@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    kubernetes.io/metadata.name: spicedb
+  name: spicedb
+---
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: example
+  namespace: spicedb
+spec:
+  config:
+    logLevel: debug
+    datastoreEngine: cockroachdb
+    replicas: 2
+    tlsSecretName: example-spicedb-tls
+    dispatchUpstreamCASecretName: internal-ca
+  secretName: example-spicedb-config
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: example-spicedb-config
+  namespace: spicedb
+stringData:
+  datastore_uri: "postgresql://root@cockroachdb.cockroachdb:26257/defaultdb?sslmode=disable"
+  preshared_key: "averysecretpresharedkey"
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: example-spicedb
+  namespace: spicedb
+spec:
+  secretName: example-spicedb-tls
+  issuerRef:
+    name: internal
+    kind: Issuer
+    group: cert-manager.io
+  dnsNames:
+    - "example"
+    - "example.spicedb"
+    - "example.spicedb.svc.cluster.local"
+---
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: example
+  namespace: spicedb
+spec:
+  routes:
+  - conditions:
+    - prefix: "/authzed.api.v1"
+    services:
+    - name: example
+      port: 50051
+      protocol: h2
+---
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: example-reflection
+  namespace: spicedb
+spec:
+  routes:
+  - conditions:
+    - prefix: "/grpc.reflection."
+    services:
+    - name: example
+      port: 50051
+      protocol: h2

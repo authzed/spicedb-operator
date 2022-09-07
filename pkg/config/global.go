@@ -11,7 +11,7 @@ type OperatorConfig struct {
 	DisableImageValidation bool     `json:"disableImageValidation"`
 	ImageName              string   `json:"imageName"`
 	ImageTag               string   `json:"imageTag"`
-	ImageDigest            string   `json:"imageDigest"`
+	ImageDigest            string   `json:"imageDigest,omitempty"`
 	AllowedTags            []string `json:"allowedTags"`
 	AllowedImages          []string `json:"allowedImages"`
 }
