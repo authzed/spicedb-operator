@@ -90,7 +90,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
@@ -98,6 +98,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -134,7 +135,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "memory",
 					DatastoreURI:       "",
 					TargetSpiceDBImage: "image",
@@ -142,6 +143,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -180,7 +182,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image2",
@@ -188,6 +190,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -227,7 +230,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "other:tag",
@@ -235,6 +238,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -274,7 +278,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "other@sha256:abc",
@@ -282,6 +286,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -321,7 +326,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "other@sha256:abcd",
@@ -329,6 +334,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -371,7 +377,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "otherImage:tag",
@@ -379,6 +385,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -421,7 +428,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image:tagbad",
@@ -429,6 +436,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -471,7 +479,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image@sha256:1234",
@@ -479,6 +487,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -521,7 +530,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "otherImage:otherTag",
@@ -529,6 +538,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -567,7 +577,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
@@ -575,6 +585,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -613,7 +624,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
@@ -621,6 +632,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -659,7 +671,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
@@ -667,6 +679,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -712,7 +725,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:           "info",
+					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
 					TargetSpiceDBImage: "image",
@@ -720,6 +733,7 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
@@ -762,7 +776,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:               "info",
+					MigrationLogLevel:      "debug",
 					DatastoreEngine:        "cockroachdb",
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
@@ -772,6 +786,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreTLSSecretName: "",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
 					SkipMigrations: true,
 					Name:           "test",
 					Namespace:      "test",
@@ -810,7 +825,7 @@ func TestNewConfig(t *testing.T) {
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
-					LogLevel:               "info",
+					MigrationLogLevel:      "debug",
 					DatastoreEngine:        "cockroachdb",
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
@@ -820,6 +835,58 @@ func TestNewConfig(t *testing.T) {
 					DatastoreTLSSecretName: "",
 				},
 				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: true,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
+			name: "set different migration and spicedb log level",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "info",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "debug",
 					SkipMigrations: true,
 					Name:           "test",
 					Namespace:      "test",
