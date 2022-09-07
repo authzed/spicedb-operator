@@ -79,7 +79,7 @@ See the minikube docs on [accessing apps](https://minikube.sigs.k8s.io/docs/hand
 Ensure kubectl is pointing to your cluster with `kubectl config current-context`, and then apply the example manifests with:
 
 ```sh
-kubectl apply -k --server-side cockroachdb-tls-ingress
+kubectl apply --server-side -k  .
 ```
 
 It is safe and may be necessary to run this multiple times if any of the resources fail to apply.
