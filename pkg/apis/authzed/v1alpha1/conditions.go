@@ -16,10 +16,13 @@ func (c *SpiceDBCluster) NamespacedName() types.NamespacedName {
 }
 
 const (
-	ConditionTypeValidating     = "Validating"
-	ConditionValidatingFailed   = "ValidatingFailed"
-	ConditionTypeMigrating      = "Migrating"
-	ConditionTypeConfigWarnings = "ConfigurationWarning"
+	ConditionTypeValidating          = "Validating"
+	ConditionValidatingFailed        = "ValidatingFailed"
+	ConditionTypeMigrating           = "Migrating"
+	ConditionTypeConfigWarnings      = "ConfigurationWarning"
+	ConditionTypePreconditionsFailed = "PreconditionsFailed"
+
+	ConditionReasonMissingSecret = "MissingSecret"
 )
 
 func NewValidatingConfigCondition(secretHash string) metav1.Condition {
@@ -64,10 +67,20 @@ func NewMigratingCondition(engine, headRevision string) metav1.Condition {
 
 func NewMigrationFailedCondition(engine, headRevision string, err error) metav1.Condition {
 	return metav1.Condition{
-		Type:               ConditionTypeMigrating, // TODO: constants, etc
+		Type:               ConditionTypeMigrating,
 		Status:             metav1.ConditionFalse,
 		Reason:             "MigrationFailed",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 		Message:            fmt.Sprintf("Migrating %s datastore to %s failed with error: %s", engine, headRevision, err),
+	}
+}
+
+func NewMissingSecretCondition(nn types.NamespacedName) metav1.Condition {
+	return metav1.Condition{
+		Type:               ConditionTypePreconditionsFailed,
+		Status:             metav1.ConditionTrue,
+		Reason:             ConditionReasonMissingSecret,
+		LastTransitionTime: metav1.NewTime(time.Now()),
+		Message:            fmt.Sprintf("Secret %s not found", nn.String()),
 	}
 }

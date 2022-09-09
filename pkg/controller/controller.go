@@ -427,9 +427,32 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 		func(ctx context.Context) (*corev1.Secret, error) {
 			return typed.ListerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
 		},
+		func(ctx context.Context, err error) {
+			cluster := CtxCluster.MustValue(ctx)
+			status := &v1alpha1.SpiceDBCluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       v1alpha1.SpiceDBClusterKind,
+					APIVersion: v1alpha1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{Namespace: cluster.Namespace, Name: cluster.Name},
+				Status:     *cluster.Status.DeepCopy(),
+			}
+			status.Status.ObservedGeneration = cluster.GetGeneration()
+			status.SetStatusCondition(v1alpha1.NewMissingSecretCondition(types.NamespacedName{
+				Namespace: cluster.Namespace,
+				Name:      cluster.Spec.SecretRef,
+			}))
+			if err := c.PatchStatus(ctx, status); err != nil {
+				QueueOps.RequeueAPIErr(ctx, err)
+			}
+		},
 		typed.IndexerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
 		func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
 			return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
+		},
+		func(ctx context.Context, nn types.NamespacedName) error {
+			_, err := c.kclient.CoreV1().Secrets(nn.Namespace).Get(ctx, nn.Name, metav1.GetOptions{})
+			return err
 		},
 		handler.Handlers(next).MustOne(),
 	)
