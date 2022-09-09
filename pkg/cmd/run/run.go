@@ -18,7 +18,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
-	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
 	"github.com/authzed/controller-idioms/manager"
@@ -103,6 +103,8 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
+	logger := klogr.New()
+
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return err
@@ -114,7 +116,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 
 	if o.BootstrapCRDs {
-		klog.V(3).InfoS("bootstrapping CRDs")
+		logger.V(3).Info("bootstrapping CRDs")
 		if err := crds.BootstrapCRD(restConfig); err != nil {
 			return err
 		}
@@ -127,6 +129,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	controllers := make([]manager.Controller, 0)
 	if len(o.BootstrapSpicedbsPath) > 0 {
 		staticSpiceDBController, err := static.NewStaticController[*v1alpha1.SpiceDBCluster](
+			logger,
 			"static-spicedbs",
 			o.BootstrapSpicedbsPath,
 			v1alpha1ClusterGVR,
