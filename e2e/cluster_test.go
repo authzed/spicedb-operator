@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/discovery"
 	memory "k8s.io/client-go/discovery/cached"
@@ -409,6 +410,110 @@ var _ = Describe("SpiceDBClusters", func() {
 			}
 			watchCancel()
 			Expect(foundValidationFailed).To(BeTrue())
+		})
+	})
+
+	Describe("With missing secret", func() {
+		testNamespace := "test"
+		rv := "0"
+
+		BeforeEach(func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			aec := &v1alpha1.SpiceDBCluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       v1alpha1.SpiceDBClusterKind,
+					APIVersion: v1alpha1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.ClusterSpec{
+					Config:    []byte(`{"datastoreEngine": "memory"}`),
+					SecretRef: "nonexistent",
+				},
+			}
+			u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(aec)
+			Expect(err).To(Succeed())
+			_, err = client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+			Expect(err).To(Succeed())
+			DeferCleanup(client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Delete, ctx, "test", metav1.DeleteOptions{})
+		})
+
+		It("Reports missing secret on the status", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			DeferCleanup(cancel)
+
+			var c *v1alpha1.SpiceDBCluster
+			watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Watch(ctx, metav1.ListOptions{
+				Watch:           true,
+				ResourceVersion: rv,
+			})
+			Expect(err).To(Succeed())
+			foundMissingSecret := false
+			for event := range watcher.ResultChan() {
+				Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &c)).To(Succeed())
+				if c.Name != "test" {
+					continue
+				}
+				GinkgoWriter.Println(c)
+				condition := c.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
+				if condition != nil {
+					foundMissingSecret = true
+					Expect(condition).To(EqualCondition(v1alpha1.NewMissingSecretCondition(ktypes.NamespacedName{
+						Namespace: c.Namespace,
+						Name:      "nonexistent",
+					})))
+					break
+				}
+			}
+			Expect(foundMissingSecret).To(BeTrue())
+		})
+
+		Describe("when the secret is created", func() {
+			BeforeEach(func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				DeferCleanup(cancel)
+				secret := corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "nonexistent",
+						Namespace: testNamespace,
+					},
+					StringData: map[string]string{
+						"logLevel":      "debug",
+						"preshared_key": "testtesttesttest",
+					},
+				}
+				_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, &secret, metav1.CreateOptions{})
+				Expect(err).To(Succeed())
+			})
+
+			It("removes the missing secret condition", func() {
+				var c *v1alpha1.SpiceDBCluster
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+				DeferCleanup(cancel)
+				watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Watch(ctx, metav1.ListOptions{
+					Watch:           true,
+					ResourceVersion: rv,
+				})
+				Expect(err).To(Succeed())
+
+				foundMissingSecret := true
+				for event := range watcher.ResultChan() {
+					Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &c)).To(Succeed())
+					if c.Name != "test" {
+						continue
+					}
+					GinkgoWriter.Println(c)
+					condition := c.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
+					if condition == nil {
+						foundMissingSecret = false
+						break
+					}
+				}
+				Expect(foundMissingSecret).To(BeFalse())
+			})
 		})
 	})
 

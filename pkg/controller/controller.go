@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/go-logr/logr"
 	"go.uber.org/atomic"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 
 	"github.com/authzed/controller-idioms/adopt"
 	"github.com/authzed/controller-idioms/cachekeys"
@@ -93,6 +95,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		kclient: kclient,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
+		klogr.New(),
 		v1alpha1.SpiceDBClusterResourceName,
 		v1alpha1ClusterGVR,
 		QueueOps,
@@ -101,7 +104,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		c.syncOwnedResource,
 	)
 
-	fileInformerFactory, err := fileinformer.NewFileInformerFactory()
+	fileInformerFactory, err := fileinformer.NewFileInformerFactory(klogr.New())
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +117,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
 		})
 	} else {
-		klog.FromContext(ctx).V(3).Info("no operator configuration provided", "path", configFilePath)
+		logr.FromContextOrDiscard(ctx).V(3).Info("no operator configuration provided", "path", configFilePath)
 	}
 
 	ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
@@ -218,7 +221,10 @@ func (c *Controller) loadConfig(path string) {
 	if len(path) == 0 {
 		return
 	}
-	klog.V(3).InfoS("loading config", "path", path)
+
+	logger := klogr.New()
+	logger.V(3).Info("loading config", "path", path)
+
 	file, err := os.Open(path)
 	if err != nil {
 		panic(err)
@@ -248,7 +254,7 @@ func (c *Controller) loadConfig(path string) {
 		return
 	}
 
-	klog.V(3).InfoS("updated config", "path", path, "config", c.config)
+	logger.V(3).Info("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
 	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](c.Registry, typed.NewRegistryKey(OwnedFactoryKey, v1alpha1ClusterGVR))
@@ -280,12 +286,12 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	logger := klog.LoggerWithValues(klog.Background(),
+	logger := klogr.New().WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
-		"obj", klog.KObj(cluster),
+		"obj", klog.KObj(cluster).MarshalLog(),
 	)
-	ctx = klog.NewContext(ctx, logger)
+	ctx = logr.NewContext(ctx, logger)
 
 	ctx = CtxCluster.WithValue(ctx, cluster)
 	ctx = CtxClusterStatus.WithValue(ctx, cluster)
@@ -316,7 +322,12 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 		return
 	}
 
-	klog.V(4).InfoS("syncing external object", "obj", klog.KObj(objMeta))
+	logger := klogr.New().WithValues(
+		"syncID", middleware.NewSyncID(5),
+		"controller", c.Name(),
+		"obj", klog.KObj(objMeta),
+	)
+	logger.V(4).Info("syncing external object")
 
 	keys, err := adopt.OwnerKeysFromMeta(metadata.OwnerAnnotationKeyPrefix)(obj)
 	if err != nil {
@@ -338,11 +349,11 @@ func (c *Controller) Handle(ctx context.Context) {
 func (c *Controller) ensureDeployment(next ...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&DeploymentHandler{
 		applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
-			klog.FromContext(ctx).V(4).Info("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("updating deployment", "namespace", *dep.Namespace, "name", *dep.Name)
 			return c.kclient.AppsV1().Deployments(*dep.Namespace).Apply(ctx, dep, metadata.ApplyForceOwned)
 		},
 		deleteDeployment: func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting deployment", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting deployment", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.AppsV1().Deployments(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 		patchStatus: c.PatchStatus,
@@ -371,11 +382,11 @@ func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {
 			).List(ctx, CtxClusterNN.MustValue(ctx))
 		},
 		deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting job", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting job", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.BatchV1().Jobs(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 		deletePod: func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting job pod", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting job pod", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.CoreV1().Pods(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 	})
@@ -416,9 +427,32 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 		func(ctx context.Context) (*corev1.Secret, error) {
 			return typed.ListerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
 		},
+		func(ctx context.Context, err error) {
+			cluster := CtxCluster.MustValue(ctx)
+			status := &v1alpha1.SpiceDBCluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       v1alpha1.SpiceDBClusterKind,
+					APIVersion: v1alpha1.SchemeGroupVersion.String(),
+				},
+				ObjectMeta: metav1.ObjectMeta{Namespace: cluster.Namespace, Name: cluster.Name},
+				Status:     *cluster.Status.DeepCopy(),
+			}
+			status.Status.ObservedGeneration = cluster.GetGeneration()
+			status.SetStatusCondition(v1alpha1.NewMissingSecretCondition(types.NamespacedName{
+				Namespace: cluster.Namespace,
+				Name:      cluster.Spec.SecretRef,
+			}))
+			if err := c.PatchStatus(ctx, status); err != nil {
+				QueueOps.RequeueAPIErr(ctx, err)
+			}
+		},
 		typed.IndexerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
 		func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
 			return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
+		},
+		func(ctx context.Context, nn types.NamespacedName) error {
+			_, err := c.kclient.CoreV1().Secrets(nn.Namespace).Get(ctx, nn.Name, metav1.GetOptions{})
+			return err
 		},
 		handler.Handlers(next).MustOne(),
 	)
@@ -508,11 +542,11 @@ func (c *Controller) ensureServiceAccount(...handler.Handler) handler.Handler {
 		CtxClusterNN,
 		QueueOps.Key,
 		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
-			klog.FromContext(ctx).V(4).Info("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.CoreV1().ServiceAccounts(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting serviceaccount", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting serviceaccount", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.CoreV1().ServiceAccounts(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceAccountApplyConfiguration {
@@ -538,11 +572,11 @@ func (c *Controller) ensureRole(...handler.Handler) handler.Handler {
 		CtxClusterNN,
 		QueueOps.Key,
 		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
-			klog.FromContext(ctx).V(4).Info("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.RbacV1().Roles(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting role", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting role", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.RbacV1().Roles(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applyrbacv1.RoleApplyConfiguration {
@@ -569,11 +603,11 @@ func (c *Controller) ensureRoleBinding(next ...handler.Handler) handler.Handler 
 			CtxClusterNN,
 			QueueOps.Key,
 			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
-				klog.FromContext(ctx).V(4).Info("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
+				logr.FromContextOrDiscard(ctx).V(4).Info("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
 				return c.kclient.RbacV1().RoleBindings(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 			},
 			func(ctx context.Context, nn types.NamespacedName) error {
-				klog.FromContext(ctx).V(4).Info("deleting rolebinding", "namespace", nn.Namespace, "name", nn.Name)
+				logr.FromContextOrDiscard(ctx).V(4).Info("deleting rolebinding", "namespace", nn.Namespace, "name", nn.Name)
 				return c.kclient.RbacV1().RoleBindings(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 			},
 			func(ctx context.Context) *applyrbacv1.RoleBindingApplyConfiguration {
@@ -602,11 +636,11 @@ func (c *Controller) ensureService(...handler.Handler) handler.Handler {
 		CtxClusterNN,
 		QueueOps.Key,
 		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
-			klog.FromContext(ctx).V(4).Info("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.CoreV1().Services(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
 		},
 		func(ctx context.Context, nn types.NamespacedName) error {
-			klog.FromContext(ctx).V(4).Info("deleting service", "namespace", nn.Namespace, "name", nn.Name)
+			logr.FromContextOrDiscard(ctx).V(4).Info("deleting service", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.CoreV1().Services(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
 		func(ctx context.Context) *applycorev1.ServiceApplyConfiguration {

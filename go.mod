@@ -4,9 +4,10 @@ go 1.18
 
 require (
 	cloud.google.com/go/spanner v1.37.0
-	github.com/authzed/controller-idioms v0.3.0
+	github.com/authzed/controller-idioms v0.4.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/fatih/camelcase v1.0.0
+	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3
 	github.com/jzelinskie/stringz v0.0.1
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.5.0
@@ -66,7 +67,6 @@ require (
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fvbommel/sortorder v1.0.1 // indirect
 	github.com/go-errors/errors v1.0.1 // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect

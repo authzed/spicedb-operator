@@ -49,19 +49,21 @@ func TestSecretAdopterHandler(t *testing.T) {
 		},
 	}
 	tests := []struct {
-		name                string
-		secretName          string
-		cluster             types.NamespacedName
-		secretInCache       *corev1.Secret
-		cacheErr            error
-		secretsInIndex      []*corev1.Secret
-		applyCalls          []*applyCall
-		expectEvents        []string
-		expectNext          bool
-		expectRequeueErr    error
-		expectRequeueAPIErr error
-		expectRequeue       bool
-		expectCtxSecret     *corev1.Secret
+		name                   string
+		secretName             string
+		cluster                types.NamespacedName
+		secretInCache          *corev1.Secret
+		cacheErr               error
+		secretExistsErr        error
+		secretsInIndex         []*corev1.Secret
+		applyCalls             []*applyCall
+		expectEvents           []string
+		expectNext             bool
+		expectRequeueErr       error
+		expectRequeueAPIErr    error
+		expectRequeue          bool
+		expectObjectMissingErr error
+		expectCtxSecret        *corev1.Secret
 	}{
 		{
 			name: "no secret",
@@ -72,6 +74,19 @@ func TestSecretAdopterHandler(t *testing.T) {
 			secretName: "",
 			applyCalls: []*applyCall{},
 			expectNext: true,
+		},
+		{
+			name:       "secret does not exist",
+			secretName: "secret",
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			cacheErr:               secretNotFound("test"),
+			secretExistsErr:        secretNotFound("test"),
+			secretsInIndex:         []*corev1.Secret{},
+			applyCalls:             []*applyCall{},
+			expectObjectMissingErr: secretNotFound("test"),
 		},
 		{
 			name:       "secret needs adopting",
@@ -296,6 +311,9 @@ func TestSecretAdopterHandler(t *testing.T) {
 				func(ctx context.Context) (*corev1.Secret, error) {
 					return tt.secretInCache, tt.cacheErr
 				},
+				func(ctx context.Context, err error) {
+					require.Equal(t, tt.expectObjectMissingErr, err)
+				},
 				typed.NewIndexer[*corev1.Secret](indexer),
 				func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
 					defer func() { applyCallIndex++ }()
@@ -303,6 +321,9 @@ func TestSecretAdopterHandler(t *testing.T) {
 					call.called = true
 					require.Equal(t, call.input, secret, "error on call %d", applyCallIndex)
 					return call.result, call.err
+				},
+				func(ctx context.Context, nn types.NamespacedName) error {
+					return tt.secretExistsErr
 				},
 				handler.NewHandlerFromFunc(func(ctx context.Context) {
 					nextCalled = true

@@ -17,7 +17,7 @@ import (
 
 const EventSecretAdoptedBySpiceDBCluster = "SecretAdoptedBySpiceDB"
 
-func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(ctx context.Context) (*corev1.Secret, error), secretIndexer *typed.Indexer[*corev1.Secret], secretApplyFunc adopt.ApplyFunc[*corev1.Secret, *applycorev1.SecretApplyConfiguration], next handler.Handler) handler.Handler {
+func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(ctx context.Context) (*corev1.Secret, error), missingFunc func(ctx context.Context, err error), secretIndexer *typed.Indexer[*corev1.Secret], secretApplyFunc adopt.ApplyFunc[*corev1.Secret, *applycorev1.SecretApplyConfiguration], existsFunc func(ctx context.Context, name types.NamespacedName) error, next handler.Handler) handler.Handler {
 	return handler.NewHandler(&adopt.AdoptionHandler[*corev1.Secret, *applycorev1.SecretApplyConfiguration]{
 		OperationsContext:      QueueOps,
 		ControllerFieldManager: metadata.FieldManager,
@@ -27,10 +27,11 @@ func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(c
 		ObjectAdoptedFunc: func(ctx context.Context, secret *corev1.Secret) {
 			recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for SpiceDBCluster %s; it has been labelled to mark it as part of the configuration for that controller.", CtxClusterNN.MustValue(ctx).String())
 		},
-		GetFromCache: getFromCache,
-		Indexer:      secretIndexer,
-		IndexName:    metadata.OwningClusterIndex,
-		Labels:       map[string]string{metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue},
+		ObjectMissingFunc: missingFunc,
+		GetFromCache:      getFromCache,
+		Indexer:           secretIndexer,
+		IndexName:         metadata.OwningClusterIndex,
+		Labels:            map[string]string{metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue},
 		NewPatch: func(nn types.NamespacedName) *applycorev1.SecretApplyConfiguration {
 			return applycorev1.Secret(nn.Name, nn.Namespace)
 		},
@@ -41,7 +42,8 @@ func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(c
 		OwnerFieldManagerFunc: func(owner types.NamespacedName) string {
 			return "spicedbcluster-owner-" + owner.Namespace + "-" + owner.Name
 		},
-		ApplyFunc: secretApplyFunc,
-		Next:      next,
+		ApplyFunc:  secretApplyFunc,
+		ExistsFunc: existsFunc,
+		Next:       next,
 	}, "adoptSecret")
 }

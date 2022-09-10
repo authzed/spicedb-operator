@@ -3,10 +3,9 @@ package controller
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
-
 	"github.com/authzed/controller-idioms/handler"
+	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
@@ -28,10 +27,13 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 		Status:     *cluster.Status.DeepCopy(),
 	}
 
-	if cluster.GetGeneration() != status.Status.ObservedGeneration || secretHash != status.Status.SecretHash {
-		klog.FromContext(ctx).V(4).Info("spicedb configuration changed")
+	preconditionsFailedCondition := cluster.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
+	if cluster.GetGeneration() != status.Status.ObservedGeneration || secretHash != status.Status.SecretHash ||
+		(preconditionsFailedCondition != nil && preconditionsFailedCondition.Reason == v1alpha1.ConditionReasonMissingSecret) {
+		logr.FromContextOrDiscard(ctx).V(4).Info("spicedb configuration changed")
 		status.Status.ObservedGeneration = cluster.GetGeneration()
 		status.Status.SecretHash = secretHash
+		status.RemoveStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
 		status.SetStatusCondition(v1alpha1.NewValidatingConfigCondition(secretHash))
 		if err := c.patchStatus(ctx, status); err != nil {
 			QueueOps.RequeueAPIErr(ctx, err)
