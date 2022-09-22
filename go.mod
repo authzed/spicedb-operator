@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	cloud.google.com/go/spanner v1.37.0
-	github.com/authzed/controller-idioms v0.4.0
+	github.com/authzed/controller-idioms v0.5.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/fatih/camelcase v1.0.0
 	github.com/go-logr/logr v1.2.3

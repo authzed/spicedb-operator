@@ -540,7 +540,7 @@ func (c *Controller) ensureServiceAccount(...handler.Handler) handler.Handler {
 				}),
 			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 		CtxClusterNN,
-		QueueOps.Key,
+		QueueOps,
 		func(ctx context.Context, apply *applycorev1.ServiceAccountApplyConfiguration) (*corev1.ServiceAccount, error) {
 			logr.FromContextOrDiscard(ctx).V(4).Info("applying serviceaccount", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.CoreV1().ServiceAccounts(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -570,7 +570,7 @@ func (c *Controller) ensureRole(...handler.Handler) handler.Handler {
 				}),
 			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 		CtxClusterNN,
-		QueueOps.Key,
+		QueueOps,
 		func(ctx context.Context, apply *applyrbacv1.RoleApplyConfiguration) (*rbacv1.Role, error) {
 			logr.FromContextOrDiscard(ctx).V(4).Info("applying role", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.RbacV1().Roles(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -601,7 +601,7 @@ func (c *Controller) ensureRoleBinding(next ...handler.Handler) handler.Handler 
 					}),
 				hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 			CtxClusterNN,
-			QueueOps.Key,
+			QueueOps,
 			func(ctx context.Context, apply *applyrbacv1.RoleBindingApplyConfiguration) (*rbacv1.RoleBinding, error) {
 				logr.FromContextOrDiscard(ctx).V(4).Info("applying rolebinding", "namespace", *apply.Namespace, "name", *apply.Name)
 				return c.kclient.RbacV1().RoleBindings(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
@@ -634,7 +634,7 @@ func (c *Controller) ensureService(...handler.Handler) handler.Handler {
 				}),
 			hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 		CtxClusterNN,
-		QueueOps.Key,
+		QueueOps,
 		func(ctx context.Context, apply *applycorev1.ServiceApplyConfiguration) (*corev1.Service, error) {
 			logr.FromContextOrDiscard(ctx).V(4).Info("applying service", "namespace", *apply.Namespace, "name", *apply.Name)
 			return c.kclient.CoreV1().Services(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
