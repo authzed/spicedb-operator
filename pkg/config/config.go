@@ -129,7 +129,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, currentImage string, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -158,7 +158,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, globalConfig *OperatorCon
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
 	}
 
-	image, imgWarnings := validateImage(imageKey.pop(config), globalConfig)
+	image, imgWarnings := validateImage(imageKey.pop(config), globalConfig, currentImage)
 	migrationConfig.TargetSpiceDBImage = image
 
 	if !globalConfig.DisableImageValidation {
@@ -285,7 +285,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, globalConfig *OperatorCon
 	}, warning, nil
 }
 
-func validateImage(image string, globalConfig *OperatorConfig) (string, []error) {
+func validateImage(image string, globalConfig *OperatorConfig, currentImage string) (string, []error) {
 	if len(image) == 0 && len(globalConfig.ImageName) == 0 {
 		return "", []error{fmt.Errorf("no defualt image configured for operator and no image provided in spec")}
 	}
@@ -297,6 +297,15 @@ func validateImage(image string, globalConfig *OperatorConfig) (string, []error)
 
 	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
 	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
+
+	// if there's a required edge from the current image, that edge is taken
+	// unless the current tag is equal to the input tag.
+	currentImageMaybeTag, _, _ := strings.Cut(currentImage, "@")
+	if _, currentTag, ok := strings.Cut(currentImageMaybeTag, ":"); ok && currentTag != tag {
+		if next, ok := globalConfig.RequiredTagEdges[currentTag]; ok {
+			return baseImage + ":" + next, warnings
+		}
+	}
 
 	if !slices.Contains(globalConfig.AllowedImages, baseImage) {
 		warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed images", image, baseImage))
@@ -539,7 +548,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 	if c.SkipMigrations {
 		migrationHash = "skipped"
 	}
-	name := fmt.Sprintf("%s-spicedb", c.Name)
+	name := DeploymentName(c.Name)
 	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 		WithAnnotations(map[string]string{
@@ -586,4 +595,9 @@ func ToEnvVarName(prefix string, key string) string {
 		envVarParts = append(envVarParts, strings.ToUpper(p))
 	}
 	return strings.Join(envVarParts, "_")
+}
+
+// DeploymentName returns the name of the deployment given a SpiceDBCluster name
+func DeploymentName(name string) string {
+	return fmt.Sprintf("%s-spicedb", name)
 }

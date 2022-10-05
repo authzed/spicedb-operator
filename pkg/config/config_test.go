@@ -36,6 +36,7 @@ func TestNewConfig(t *testing.T) {
 	type args struct {
 		nn           types.NamespacedName
 		uid          types.UID
+		currentImage string
 		globalConfig OperatorConfig
 		rawConfig    json.RawMessage
 		secret       *corev1.Secret
@@ -902,11 +903,68 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "required edge different from input image",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					ImageTag:      "init",
+					AllowedImages: []string{"image"},
+					RequiredTagEdges: map[string]string{
+						"init": "tag",
+					},
+				},
+				currentImage: "image:init",
+				rawConfig: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"image": "image:tag2",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "info",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:tag",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "debug",
+					SkipMigrations: true,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, &global, tt.args.rawConfig, tt.args.secret)
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentImage, &global, tt.args.rawConfig, tt.args.secret)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)

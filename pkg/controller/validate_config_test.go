@@ -23,9 +23,10 @@ func TestValidateConfigHandler(t *testing.T) {
 	tests := []struct {
 		name string
 
-		rawConfig      json.RawMessage
-		currentStatus  *v1alpha1.SpiceDBCluster
-		existingSecret *corev1.Secret
+		rawConfig       json.RawMessage
+		currentStatus   *v1alpha1.SpiceDBCluster
+		existingSecret  *corev1.Secret
+		deploymentImage string
 
 		expectNext        handler.Key
 		expectEvents      []string
@@ -224,6 +225,9 @@ func TestValidateConfigHandler(t *testing.T) {
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
+				},
+				getDeploymentImage: func(ctx context.Context, nn types.NamespacedName) (string, error) {
+					return tt.deploymentImage, nil
 				},
 				recorder: recorder,
 				next: handler.ContextHandlerFunc(func(ctx context.Context) {

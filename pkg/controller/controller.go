@@ -466,10 +466,34 @@ func (c *Controller) checkConfigChanged(next ...handler.Handler) handler.Handler
 }
 
 func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
+	lister := typed.ListerFor[*appsv1.Deployment](c.Registry, typed.NewRegistryKey(DependentFactoryKey, appsv1.SchemeGroupVersion.WithResource("deployments")))
 	return handler.NewTypeHandler(&ValidateConfigHandler{
 		patchStatus: c.PatchStatus,
 		recorder:    c.Recorder,
-		next:        handler.Handlers(next).MustOne(),
+		getDeploymentImage: func(ctx context.Context, nn types.NamespacedName) (string, error) {
+			obj, err := lister.ByNamespace(nn.Namespace).Get(nn.Name)
+			if err != nil {
+				return "", err
+			}
+			var image string
+			for _, c := range obj.Spec.Template.Spec.Containers {
+				// spicedb container name is equal to deployment name
+				if c.Name != nn.Name {
+					continue
+				}
+				image = c.Image
+			}
+
+			// check if deployment is finished rolling out
+			if obj.Status.AvailableReplicas == obj.Status.Replicas &&
+				obj.Status.ReadyReplicas == obj.Status.Replicas &&
+				obj.Status.UpdatedReplicas == obj.Status.Replicas &&
+				obj.Status.ObservedGeneration == obj.Generation {
+				return image, nil
+			}
+			return "", fmt.Errorf("no up-to-date deployment found with correct image")
+		},
+		next: handler.Handlers(next).MustOne(),
 	})
 }
 
