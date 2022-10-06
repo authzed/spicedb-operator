@@ -15,6 +15,7 @@ import (
 
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
+	"github.com/authzed/controller-idioms/typed"
 	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -102,16 +103,21 @@ var datastoreDefs = []datastoreDef{
 
 			defer func() { instancesClient.Close() }()
 
-			createInstanceOp, err := instancesClient.CreateInstance(ctx, &instance.CreateInstanceRequest{
-				Parent:     "projects/fake-project-id",
-				InstanceId: "fake-instance",
-				Instance: &instance.Instance{
-					Config:      "emulator-config",
-					DisplayName: "Test Instance",
-					NodeCount:   1,
-				},
-			})
-			Expect(err).To(Succeed())
+			var createInstanceOp *instances.CreateInstanceOperation
+			Eventually(func(g Gomega) {
+				var err error
+				createInstanceOp, err = instancesClient.CreateInstance(ctx, &instance.CreateInstanceRequest{
+					Parent:     "projects/fake-project-id",
+					InstanceId: "fake-instance",
+					Instance: &instance.Instance{
+						Config:      "emulator-config",
+						DisplayName: "Test Instance",
+						NodeCount:   1,
+					},
+				})
+				g.Expect(err).To(Succeed())
+			}).Should(Succeed())
+
 			spannerInstance, err := createInstanceOp.Wait(ctx)
 			Expect(err).To(Succeed())
 
@@ -420,6 +426,9 @@ var _ = Describe("SpiceDBClusters", func() {
 		BeforeEach(func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
+
+			_ = kclient.CoreV1().Secrets(testNamespace).Delete(ctx, "nonexistent", metav1.DeleteOptions{})
+
 			aec := &v1alpha1.SpiceDBCluster{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       v1alpha1.SpiceDBClusterKind,
@@ -774,6 +783,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
+					DeferCleanup(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete, ctx, tlsSecret.Name, metav1.DeleteOptions{})
 
 					secret := corev1.Secret{
 						ObjectMeta: metav1.ObjectMeta{
@@ -864,6 +874,165 @@ var _ = Describe("SpiceDBClusters", func() {
 								AssertMigrationJobCleanup(func() (string, string) {
 									return spiceCluster.Namespace, spiceCluster.Name
 								})
+							})
+						})
+					})
+				})
+			})
+
+			When("a valid SpiceDBCluster with required upgrade edges", Ordered, func() {
+				var spiceCluster *v1alpha1.SpiceDBCluster
+
+				BeforeAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					DeferCleanup(cancel)
+
+					newConfig := config.OperatorConfig{
+						RequiredTagEdges: map[string]string{
+							"dev": "updated",
+						},
+					}
+					WriteConfig(newConfig)
+
+					config := map[string]any{
+						"datastoreEngine": dsDef.datastoreEngine,
+						"envPrefix":       spicedbEnvPrefix,
+						"cmd":             spicedbCmd,
+						"tlsSecretName":   "spicedb-grpc-tls",
+						"image":           "spicedb:dev",
+					}
+					for k, v := range dsDef.passthroughConfig {
+						config[k] = v
+					}
+					jsonConfig, err := json.Marshal(config)
+					Expect(err).To(BeNil())
+					spiceCluster = &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      fmt.Sprintf("test2-%s", dsDef.label),
+							Namespace: testNamespace,
+						},
+						Spec: v1alpha1.ClusterSpec{
+							Config:    jsonConfig,
+							SecretRef: "spicedb3",
+						},
+					}
+
+					certPem, keyPem, err := cert.GenerateSelfSignedCertKey("test2", nil, []string{
+						"localhost",
+						"test2." + spiceCluster.Namespace,
+						fmt.Sprintf("test2.%s.svc.spiceCluster.local", spiceCluster.Namespace),
+					})
+					Expect(err).To(Succeed())
+
+					tlsSecret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb-grpc-tls",
+							Namespace: spiceCluster.Namespace,
+						},
+						Data: map[string][]byte{
+							"tls.key": keyPem,
+							"tls.crt": certPem,
+						},
+					}
+					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &tlsSecret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete, ctx, tlsSecret.Name, metav1.DeleteOptions{})
+
+					secret := corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "spicedb3",
+							Namespace: spiceCluster.Namespace,
+						},
+						StringData: map[string]string{
+							"datastore_uri":     dsDef.datastoreUri,
+							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+							"preshared_key":     "testtesttesttest",
+						},
+					}
+					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+					DeferCleanup(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete, ctx, secret.Name, metav1.DeleteOptions{})
+
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
+					Expect(err).To(Succeed())
+
+					AssertMigrationsCompleted("spicedb:dev",
+						func() (string, string, string) {
+							return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
+						})
+				})
+
+				AfterAll(func() {
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+
+					newConfig := config.OperatorConfig{
+						ImageName: "spicedb",
+						ImageTag:  "dev",
+					}
+					WriteConfig(newConfig)
+
+					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
+
+					AssertDependentResourceCleanup(spiceCluster.Namespace, spiceCluster.Name, "spicedb3")
+				})
+
+				Describe("with a migrated datastore", func() {
+					BeforeEach(func() {
+						AssertHealthySpiceDBCluster("spicedb:dev",
+							func() (string, string) {
+								return testNamespace, spiceCluster.Name
+							}, Not(ContainSubstring("ERROR: kuberesolver")))
+					})
+
+					When("the image is updated but there is a required edge", func() {
+						BeforeEach(func() {
+							ctx, cancel := context.WithCancel(context.Background())
+							DeferCleanup(cancel)
+
+							clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
+							Expect(err).To(Succeed())
+							cluster, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
+							Expect(err).To(Succeed())
+
+							config := map[string]any{
+								"datastoreEngine": dsDef.datastoreEngine,
+								"envPrefix":       spicedbEnvPrefix,
+								"cmd":             spicedbCmd,
+								"tlsSecretName":   "spicedb-grpc-tls",
+								"image":           "spicedb:next",
+							}
+							for k, v := range dsDef.passthroughConfig {
+								config[k] = v
+							}
+							jsonConfig, err := json.Marshal(config)
+							Expect(err).To(Succeed())
+							cluster.Spec.Config = jsonConfig
+							u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
+							Expect(err).To(Succeed())
+							_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: u}, metav1.UpdateOptions{})
+							Expect(err).To(Succeed())
+						})
+
+						It("migrates to the required edge", func() {
+							AssertMigrationsCompleted("spicedb:updated",
+								func() (string, string, string) {
+									return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
+								})
+						})
+
+						Describe("after it has updated to the required edge", func() {
+							It("migrates to the desired image", func() {
+								AssertMigrationsCompleted("spicedb:next",
+									func() (string, string, string) {
+										return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
+									})
 							})
 						})
 					})
