@@ -48,6 +48,7 @@ var (
 	envPrefixKey                  = newKey("envPrefix", "SPICEDB")
 	spiceDBCmdKey                 = newKey("cmd", "spicedb")
 	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
+	targetMigrationKey            = newStringKey("targetMigration")
 	logLevelKey                   = newKey("logLevel", "info")
 	migrationLogLevelKey          = newKey("migrationLogLevel", "debug")
 	spannerCredentialsKey         = newStringKey("spannerCredentials")
@@ -98,6 +99,7 @@ type Config struct {
 // MigrationConfig stores data that is relevant for running migrations
 // or deciding if migrations need to be run
 type MigrationConfig struct {
+	TargetMigration        string
 	MigrationLogLevel      string
 	DatastoreEngine        string
 	DatastoreURI           string
@@ -129,7 +131,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, currentImage string, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBState, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -156,9 +158,29 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentImage string, glob
 		EnvPrefix:              spiceConfig.EnvPrefix,
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
+		TargetMigration:        targetMigrationKey.pop(config),
 	}
 
-	image, imgWarnings := validateImage(imageKey.pop(config), globalConfig, currentImage)
+	// if there's a required edge from the current image, that edge is taken
+	// unless the current config is equal to the input.
+	image := imageKey.pop(config)
+	targetMigratonPhase := ""
+	specBaseImage, tag, _ := ExplodeImage(image)
+	if currentState != nil && currentState.Tag != tag {
+		if requiredEdge, ok := globalConfig.RequiredEdges[currentState.String()]; ok {
+			if reguiredNode, ok := globalConfig.Nodes[requiredEdge]; ok {
+				image = specBaseImage + ":" + reguiredNode.Tag
+				migrationConfig.TargetMigration = reguiredNode.Migration
+				targetMigratonPhase = reguiredNode.Phase
+			} else {
+				warnings = append(warnings, fmt.Errorf("required edge defined but not found: %s -> %s", currentState.String(), requiredEdge))
+			}
+		}
+	}
+	if len(migrationConfig.TargetMigration) == 0 {
+		migrationConfig.TargetMigration = "head"
+	}
+	image, imgWarnings := validateImage(image, globalConfig)
 	migrationConfig.TargetSpiceDBImage = image
 
 	if !globalConfig.DisableImageValidation {
@@ -250,6 +272,11 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentImage string, glob
 		passthroughConfig["telemetryCAOverridePath"] = "/telemetry-tls/tls.crt"
 	}
 
+	// set targetMigrationPhase if needed
+	if len(targetMigratonPhase) > 0 {
+		passthroughConfig["datastoreMigrationPhase"] = targetMigratonPhase
+	}
+
 	// the rest of the config is passed through to spicedb as strings
 	for k := range config {
 		passthroughConfig[k] = config.Pop(k)
@@ -285,7 +312,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentImage string, glob
 	}, warning, nil
 }
 
-func validateImage(image string, globalConfig *OperatorConfig, currentImage string) (string, []error) {
+func validateImage(image string, globalConfig *OperatorConfig) (string, []error) {
 	if len(image) == 0 && len(globalConfig.ImageName) == 0 {
 		return "", []error{fmt.Errorf("no defualt image configured for operator and no image provided in spec")}
 	}
@@ -295,24 +322,13 @@ func validateImage(image string, globalConfig *OperatorConfig, currentImage stri
 
 	warnings := make([]error, 0)
 
-	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
-	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
-
-	// if there's a required edge from the current image, that edge is taken
-	// unless the current tag is equal to the input tag.
-	currentImageMaybeTag, _, _ := strings.Cut(currentImage, "@")
-	if _, currentTag, ok := strings.Cut(currentImageMaybeTag, ":"); ok && currentTag != tag {
-		if next, ok := globalConfig.RequiredTagEdges[currentTag]; ok {
-			return baseImage + ":" + next, warnings
-		}
-	}
-
+	baseImage, tag, digest := ExplodeImage(image)
 	if !slices.Contains(globalConfig.AllowedImages, baseImage) {
 		warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed images", image, baseImage))
 	}
 
 	// check tag
-	if hasTag {
+	if len(tag) > 0 {
 		allowedTag := false
 		for _, t := range globalConfig.AllowedTags {
 			tagInList, _, _ := strings.Cut(t, "@")
@@ -327,7 +343,7 @@ func validateImage(image string, globalConfig *OperatorConfig, currentImage stri
 	}
 
 	// check digest
-	if hasDigest {
+	if len(digest) > 0 {
 		allowedDigest := false
 		for _, t := range globalConfig.AllowedTags {
 			// plain digest
@@ -349,6 +365,18 @@ func validateImage(image string, globalConfig *OperatorConfig, currentImage stri
 	}
 
 	return image, warnings
+}
+
+func ExplodeImage(image string) (baseImage, tag, digest string) {
+	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
+	if !hasDigest {
+		digest = ""
+	}
+	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
+	if !hasTag {
+		tag = ""
+	}
+	return
 }
 
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
@@ -494,14 +522,19 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
 			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).
 				WithContainers(
-					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", "head").WithEnv(
-						envVars...,
-					).WithVolumeMounts(c.jobVolumeMounts()...).WithPorts(
-						applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
-						applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
-						applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
-						applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
-					).WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+					applycorev1.Container().
+						WithName(name).
+						WithImage(c.TargetSpiceDBImage).
+						WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", c.MigrationConfig.TargetMigration).
+						WithEnv(envVars...).
+						WithVolumeMounts(c.jobVolumeMounts()...).
+						WithPorts(
+							applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
+							applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
+							applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
+							applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
+						).
+						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
 				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
 }
 
@@ -563,6 +596,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 			WithTemplate(applycorev1.PodTemplateSpec().
 				WithAnnotations(map[string]string{
 					metadata.SpiceDBSecretRequirementsKey: secretHash,
+					metadata.SpiceDBTargetMigrationKey:    c.MigrationConfig.TargetMigration,
 				}).
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).

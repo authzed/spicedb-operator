@@ -36,7 +36,7 @@ func TestNewConfig(t *testing.T) {
 	type args struct {
 		nn           types.NamespacedName
 		uid          types.UID
-		currentImage string
+		currentState *SpiceDBState
 		globalConfig OperatorConfig
 		rawConfig    json.RawMessage
 		secret       *corev1.Secret
@@ -97,6 +97,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -142,6 +143,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -189,6 +191,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image2",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -237,6 +240,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other:tag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -285,6 +289,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other@sha256:abc",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -333,6 +338,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other@sha256:abcd",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -384,6 +390,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "otherImage:tag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -435,6 +442,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image:tagbad",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -486,6 +494,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image@sha256:1234",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -537,6 +546,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "otherImage:otherTag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -584,6 +594,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -631,6 +642,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -678,6 +690,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -732,6 +745,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -785,6 +799,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -834,6 +849,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -885,6 +901,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -912,11 +929,30 @@ func TestNewConfig(t *testing.T) {
 					ImageName:     "image",
 					ImageTag:      "init",
 					AllowedImages: []string{"image"},
-					RequiredTagEdges: map[string]string{
-						"init": "tag",
+					AllowedTags:   []string{"tag", "tag2"},
+					RequiredEdges: map[string]string{
+						SpiceDBState{
+							Tag: "init",
+						}.String(): SpiceDBState{
+							Tag: "tag",
+						}.String(),
+					},
+					Nodes: map[string]SpiceDBState{
+						SpiceDBState{
+							Tag: "init",
+						}.String(): {
+							Tag: "init",
+						},
+						SpiceDBState{
+							Tag: "tag",
+						}.String(): {
+							Tag: "tag",
+						},
 					},
 				},
-				currentImage: "image:init",
+				currentState: &SpiceDBState{
+					Tag: "init",
+				},
 				rawConfig: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -942,6 +978,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -964,7 +1001,7 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentImage, &global, tt.args.rawConfig, tt.args.secret)
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentState, &global, tt.args.rawConfig, tt.args.secret)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)

@@ -20,10 +20,10 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	recorder           record.EventRecorder
-	patchStatus        func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
-	getDeploymentImage func(ctx context.Context, nn types.NamespacedName) (string, error)
-	next               handler.ContextHandler
+	recorder               record.EventRecorder
+	patchStatus            func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	getCurrentSpiceDBState func(ctx context.Context, nn types.NamespacedName) (*config.SpiceDBState, error)
+	next                   handler.ContextHandler
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
@@ -46,11 +46,11 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
-	currentImage, err := c.getDeploymentImage(ctx, types.NamespacedName{Namespace: nn.Namespace, Name: config.DeploymentName(nn.Name)})
+	currentState, err := c.getCurrentSpiceDBState(ctx, types.NamespacedName{Namespace: nn.Namespace, Name: config.DeploymentName(nn.Name)})
 	if err != nil {
 		logr.FromContextOrDiscard(ctx).Error(err, "error fetching current deployment - normal if cluster is not yet created")
 	}
-	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentImage, operatorConfig, rawConfig, secret)
+	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {

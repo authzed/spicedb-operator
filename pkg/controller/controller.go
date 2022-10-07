@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
@@ -470,11 +471,13 @@ func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&ValidateConfigHandler{
 		patchStatus: c.PatchStatus,
 		recorder:    c.Recorder,
-		getDeploymentImage: func(ctx context.Context, nn types.NamespacedName) (string, error) {
+		getCurrentSpiceDBState: func(ctx context.Context, nn types.NamespacedName) (*config.SpiceDBState, error) {
+			currentState := config.SpiceDBState{}
 			obj, err := lister.ByNamespace(nn.Namespace).Get(nn.Name)
 			if err != nil {
-				return "", err
+				return nil, err
 			}
+			var container corev1.Container
 			var image string
 			for _, c := range obj.Spec.Template.Spec.Containers {
 				// spicedb container name is equal to deployment name
@@ -482,6 +485,7 @@ func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
 					continue
 				}
 				image = c.Image
+				container = c
 			}
 
 			// check if deployment is finished rolling out
@@ -489,9 +493,25 @@ func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
 				obj.Status.ReadyReplicas == obj.Status.Replicas &&
 				obj.Status.UpdatedReplicas == obj.Status.Replicas &&
 				obj.Status.ObservedGeneration == obj.Generation {
-				return image, nil
+				_, currentState.Tag, _ = config.ExplodeImage(image)
 			}
-			return "", fmt.Errorf("no up-to-date deployment found with correct image")
+
+			// returning an empty state if the deployment is still rolling out
+			// will prevent the next stage from running in multi-step migrations
+			if len(currentState.Tag) == 0 {
+				return nil, fmt.Errorf("no up-to-date deployment found with correct image")
+			}
+
+			if obj.Annotations != nil {
+				currentState.Migration = obj.Annotations[metadata.SpiceDBTargetMigrationKey]
+			}
+
+			for _, e := range container.Env {
+				if strings.HasSuffix(e.Name, "DATASTORE_MIGRATION_PHASE") {
+					currentState.Phase = e.Value
+				}
+			}
+			return &currentState, nil
 		},
 		next: handler.Handlers(next).MustOne(),
 	})

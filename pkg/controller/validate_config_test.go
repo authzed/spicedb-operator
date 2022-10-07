@@ -23,10 +23,10 @@ func TestValidateConfigHandler(t *testing.T) {
 	tests := []struct {
 		name string
 
-		rawConfig       json.RawMessage
-		currentStatus   *v1alpha1.SpiceDBCluster
-		existingSecret  *corev1.Secret
-		deploymentImage string
+		rawConfig      json.RawMessage
+		currentStatus  *v1alpha1.SpiceDBCluster
+		existingSecret *corev1.Secret
+		currentState   *config.SpiceDBState
 
 		expectNext        handler.Key
 		expectEvents      []string
@@ -40,8 +40,8 @@ func TestValidateConfigHandler(t *testing.T) {
 			name: "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
 				Image:                "image:tag",
-				TargetMigrationHash:  "n58dh574h555h7dhcfh559h86h656q",
-				CurrentMigrationHash: "n58dh574h555h7dhcfh559h86h656q",
+				TargetMigrationHash:  "n695h689h684h5bbh64h649hfch579q",
+				CurrentMigrationHash: "n695h689h684h5bbh64h649hfch579q",
 			}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
@@ -213,6 +213,10 @@ func TestValidateConfigHandler(t *testing.T) {
 			recorder := record.NewFakeRecorder(1)
 			patchCalled := false
 
+			if tt.currentState == nil {
+				tt.currentState = &config.SpiceDBState{}
+			}
+
 			ctx := context.Background()
 			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
@@ -226,8 +230,8 @@ func TestValidateConfigHandler(t *testing.T) {
 					patchCalled = true
 					return nil
 				},
-				getDeploymentImage: func(ctx context.Context, nn types.NamespacedName) (string, error) {
-					return tt.deploymentImage, nil
+				getCurrentSpiceDBState: func(ctx context.Context, nn types.NamespacedName) (*config.SpiceDBState, error) {
+					return tt.currentState, nil
 				},
 				recorder: recorder,
 				next: handler.ContextHandlerFunc(func(ctx context.Context) {

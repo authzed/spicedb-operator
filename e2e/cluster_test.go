@@ -290,34 +290,21 @@ var _ = Describe("SpiceDBClusters", func() {
 		}).Should(Succeed())
 	}
 
-	AssertMigrationsCompleted := func(image string, args func() (string, string, string)) {
-		namespace, name, datastoreEngine := args()
+	AssertMigrationsCompleted := func(image, migration, phase string, args func() (string, string, string)) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		var c *v1alpha1.SpiceDBCluster
 
-		watchCtx, watchCancel := context.WithTimeout(ctx, 3*time.Minute)
-		watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(namespace).Watch(watchCtx, metav1.ListOptions{
-			Watch:           true,
-			ResourceVersion: "0",
-		})
-		Expect(err).To(Succeed())
-		foundMigratingCondition := false
-		for event := range watcher.ResultChan() {
-			Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &c)).To(Succeed())
-			if c.Name != name {
-				continue
-			}
-			GinkgoWriter.Println(c)
-			condition := c.FindStatusCondition("Migrating")
-			if condition != nil {
-				foundMigratingCondition = true
-				Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
-				break
-			}
+		if migration == "" {
+			migration = "head"
 		}
-		watchCancel()
-		Expect(foundMigratingCondition).To(BeTrue())
+		namespace, name, datastoreEngine := args()
+
+		var condition *metav1.Condition
+		Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: name, Namespace: namespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
+			condition = c.FindStatusCondition("Migrating")
+			return condition == nil
+		})
+		Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, "head")))
 
 		Eventually(func(g Gomega) {
 			jobs, err := kclient.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{
@@ -329,6 +316,18 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			job := &jobs.Items[len(jobs.Items)-1]
 			Expect(job.Spec.Template.Spec.Containers[0].Image).To(Equal(image))
+			Expect(job.Spec.Template.Spec.Containers[0].Command).To(ContainSubstring(migration))
+			if phase != "" {
+				foundPhase := false
+				for _, e := range job.Spec.Template.Spec.Containers[0].Env {
+					GinkgoWriter.Println(e)
+					if e.Value == phase {
+						foundPhase = true
+					}
+				}
+				Expect(foundPhase).To(BeTrue())
+			}
+
 			if datastoreEngine == "spanner" {
 				var spannerVolume corev1.Volume
 				for _, v := range job.Spec.Template.Spec.Volumes {
@@ -351,6 +350,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			TailF(job)
 			Eventually(func(g Gomega) {
 				job, err := kclient.BatchV1().Jobs(namespace).Get(ctx, job.Name, metav1.GetOptions{})
+				GinkgoWriter.Println(job, err)
 				g.Expect(err).To(Succeed())
 				g.Expect(job.Status.Succeeded).ToNot(BeZero())
 			}).Should(Succeed())
@@ -638,7 +638,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 
-					AssertMigrationsCompleted("spicedb:dev", func() (string, string, string) { return cluster.Namespace, cluster.Name, dsDef.datastoreEngine })
+					AssertMigrationsCompleted("spicedb:dev", "", "", func() (string, string, string) { return cluster.Namespace, cluster.Name, dsDef.datastoreEngine })
 				})
 
 				AfterAll(func() {
@@ -804,7 +804,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 
-					AssertMigrationsCompleted("spicedb:dev",
+					AssertMigrationsCompleted("spicedb:dev", "", "",
 						func() (string, string, string) {
 							return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 						})
@@ -858,7 +858,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							})
 
 							It("migrates to the latest version", func() {
-								AssertMigrationsCompleted(imageName,
+								AssertMigrationsCompleted(imageName, "", "",
 									func() (string, string, string) {
 										return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 									})
@@ -882,19 +882,38 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			When("a valid SpiceDBCluster with required upgrade edges", Ordered, func() {
 				var spiceCluster *v1alpha1.SpiceDBCluster
+				var migration string
 
 				BeforeAll(func() {
 					ctx, cancel := context.WithCancel(context.Background())
 					DeferCleanup(cancel)
 
+					switch dsDef.datastoreEngine {
+					case "spanner":
+						migration = "add-metadata-and-counters"
+					case "cockroachdb":
+						migration = "add-metadata-and-counters"
+					case "postgres":
+						migration = "add-ns-config-id"
+					case "mysql":
+						migration = "add_ns_config_id"
+					}
+
+					dev := config.SpiceDBState{Tag: "dev"}
+					updated := config.SpiceDBState{Tag: "updated", Migration: migration, Phase: "phase2"}
 					newConfig := config.OperatorConfig{
-						RequiredTagEdges: map[string]string{
-							"dev": "updated",
+						RequiredEdges: map[string]string{
+							dev.String(): updated.String(),
+						},
+						Nodes: map[string]config.SpiceDBState{
+							dev.String():     dev,
+							updated.String(): updated,
 						},
 					}
 					WriteConfig(newConfig)
 
 					config := map[string]any{
+						"logLevel":        "debug",
 						"datastoreEngine": dsDef.datastoreEngine,
 						"envPrefix":       spicedbEnvPrefix,
 						"cmd":             spicedbCmd,
@@ -962,7 +981,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 
-					AssertMigrationsCompleted("spicedb:dev",
+					AssertMigrationsCompleted("spicedb:dev", "", "",
 						func() (string, string, string) {
 							return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 						})
@@ -1021,7 +1040,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						})
 
 						It("migrates to the required edge", func() {
-							AssertMigrationsCompleted("spicedb:updated",
+							AssertMigrationsCompleted("spicedb:updated", migration, "phase2",
 								func() (string, string, string) {
 									return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 								})
@@ -1029,7 +1048,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 						Describe("after it has updated to the required edge", func() {
 							It("migrates to the desired image", func() {
-								AssertMigrationsCompleted("spicedb:next",
+								AssertMigrationsCompleted("spicedb:next", "", "",
 									func() (string, string, string) {
 										return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
 									})

@@ -3,6 +3,8 @@
 package e2e
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,11 +14,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/disk"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
@@ -88,6 +94,24 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 			assert(g)
 		}).WithTimeout(4 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 	}()
+}
+
+func Watch[K runtime.Object](ctx context.Context, client dynamic.Interface, gvr schema.GroupVersionResource, nn types.NamespacedName, rv string, eventFunc func(obj K) bool) {
+	watcher, err := client.Resource(gvr).Namespace(nn.Namespace).Watch(ctx, metav1.ListOptions{
+		Watch:           true,
+		ResourceVersion: rv,
+		FieldSelector:   fmt.Sprintf("metadata.name=%s", nn.Name),
+	})
+	Expect(err).To(Succeed())
+	defer watcher.Stop()
+
+	for event := range watcher.ResultChan() {
+		var obj *K
+		Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(event.Object.(*unstructured.Unstructured).Object, &obj)).To(Succeed())
+		if !eventFunc(*obj) {
+			break
+		}
+	}
 }
 
 // ClientGetter implements RESTClientGetter to return values for the configured
