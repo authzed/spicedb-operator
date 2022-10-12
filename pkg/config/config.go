@@ -100,6 +100,7 @@ type Config struct {
 // or deciding if migrations need to be run
 type MigrationConfig struct {
 	TargetMigration        string
+	TargetPhase            string
 	MigrationLogLevel      string
 	DatastoreEngine        string
 	DatastoreURI           string
@@ -131,7 +132,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBState, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigrationState, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret, rolling bool) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -161,36 +162,26 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBStat
 		TargetMigration:        targetMigrationKey.pop(config),
 	}
 
+	datastoreEngine := datastoreEngineKey.pop(config)
+	if len(datastoreEngine) == 0 {
+		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
+	}
+
 	// if there's a required edge from the current image, that edge is taken
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
-	targetMigratonPhase := ""
-	specBaseImage, tag, _ := ExplodeImage(image)
-	if currentState != nil && currentState.Tag != tag {
-		if requiredEdge, ok := globalConfig.RequiredEdges[currentState.String()]; ok {
-			if reguiredNode, ok := globalConfig.Nodes[requiredEdge]; ok {
-				image = specBaseImage + ":" + reguiredNode.Tag
-				migrationConfig.TargetMigration = reguiredNode.Migration
-				targetMigratonPhase = reguiredNode.Phase
-			} else {
-				warnings = append(warnings, fmt.Errorf("required edge defined but not found: %s -> %s", currentState.String(), requiredEdge))
-			}
-		}
-	}
-	if len(migrationConfig.TargetMigration) == 0 {
-		migrationConfig.TargetMigration = "head"
-	}
 	image, imgWarnings := validateImage(image, globalConfig)
-	migrationConfig.TargetSpiceDBImage = image
+
+	var err error
+	migrationConfig.TargetSpiceDBImage, migrationConfig.TargetMigration, migrationConfig.TargetPhase, err = computeTargets(image, datastoreEngine, currentState, globalConfig, rolling)
+	if err != nil {
+		imgWarnings = append(imgWarnings, err)
+	}
 
 	if !globalConfig.DisableImageValidation {
 		warnings = append(warnings, imgWarnings...)
 	}
 
-	datastoreEngine := datastoreEngineKey.pop(config)
-	if len(datastoreEngine) == 0 {
-		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
-	}
 	migrationConfig.DatastoreEngine = datastoreEngine
 	passthroughConfig["datastoreEngine"] = datastoreEngine
 	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(datastoreEngine != "memory")
@@ -273,8 +264,8 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBStat
 	}
 
 	// set targetMigrationPhase if needed
-	if len(targetMigratonPhase) > 0 {
-		passthroughConfig["datastoreMigrationPhase"] = targetMigratonPhase
+	if len(migrationConfig.TargetPhase) > 0 {
+		passthroughConfig["datastoreMigrationPhase"] = migrationConfig.TargetPhase
 	}
 
 	// the rest of the config is passed through to spicedb as strings
@@ -365,6 +356,56 @@ func validateImage(image string, globalConfig *OperatorConfig) (string, []error)
 	}
 
 	return image, warnings
+}
+
+func computeTargets(image, engine string, currentState *SpiceDBMigrationState, globalConfig *OperatorConfig, rolling bool) (targetImage, targetMigration, targetPhase string, err error) {
+	specBaseImage, tag, _ := ExplodeImage(image)
+	targetImage = image
+
+	// if head migration, look up the actual migration name
+	if headMigration, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: tag, Datastore: engine}.String()]; ok {
+		targetMigration = headMigration
+	} else {
+		targetMigration = "head"
+	}
+
+	// don't look for required edges if the currently running image is
+	// the desired one (only check when the image is changed)
+	if currentState == nil || currentState.Tag == tag {
+		return
+	}
+
+	// if already migrating or rolling, use current state
+	if rolling {
+		targetImage = specBaseImage + ":" + currentState.Tag
+		targetMigration = currentState.Migration
+		targetPhase = currentState.Phase
+		return
+	}
+
+	// if head migration, look up the actual migration name (if present)
+	if currentState.Migration == "" || currentState.Migration == "head" {
+		if headMigration, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: currentState.Tag, Datastore: engine}.String()]; ok {
+			currentState.Migration = headMigration
+		}
+	}
+
+	// if there's a required edge, take it
+	requiredEdge, ok := globalConfig.RequiredEdges[currentState.String()]
+	if !ok {
+		return
+	}
+	reguiredNode, ok := globalConfig.Nodes[requiredEdge]
+	if !ok {
+		err = fmt.Errorf("required edge defined but not found: %s -> %s", currentState.String(), requiredEdge)
+		return
+	}
+
+	targetImage = specBaseImage + ":" + reguiredNode.Tag
+	targetMigration = reguiredNode.Migration
+	targetPhase = reguiredNode.Phase
+
+	return
 }
 
 func ExplodeImage(image string) (baseImage, tag, digest string) {

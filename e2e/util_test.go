@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -29,6 +31,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
+	"k8s.io/client-go/util/cert"
 	"k8s.io/kubectl/pkg/cmd/logs"
 	"k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
@@ -111,6 +114,32 @@ func Watch[K runtime.Object](ctx context.Context, client dynamic.Interface, gvr 
 		if !eventFunc(*obj) {
 			break
 		}
+	}
+}
+
+// GenerateCertManagerCompliantTLSSecretForService creates a self-signed TLS
+// keypair and returns a secret in the same format the cert-manager generates;
+// with keys `tls.crt`, `tls.key`, and `ca.crt`.
+func GenerateCertManagerCompliantTLSSecretForService(service, secret types.NamespacedName) *corev1.Secret {
+	certPem, keyPem, err := cert.GenerateSelfSignedCertKey(service.Name, nil, []string{
+		"localhost",
+		service.Name + "." + service.Namespace,
+		fmt.Sprintf("%s.%s.svc.cluster.local", service.Name, service.Namespace),
+	})
+	Expect(err).To(Succeed())
+	_, rest := pem.Decode(certPem)
+	ca, _ := pem.Decode(rest)
+
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secret.Name,
+			Namespace: secret.Namespace,
+		},
+		Data: map[string][]byte{
+			"tls.key": keyPem,
+			"tls.crt": certPem,
+			"ca.crt":  pem.EncodeToMemory(ca),
+		},
 	}
 }
 

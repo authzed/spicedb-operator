@@ -7,7 +7,7 @@ spec:
   selector:
     matchLabels:
       app: postgresql-db
-  replicas: 2
+  replicas: 1
   template:
     metadata:
       labels:
@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: postgresql-db
-          image: postgres:10.20
+          image: postgres:13-alpine
           imagePullPolicy: IfNotPresent
           env:
             - name: POSTGRES_PASSWORD

@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,6 +31,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
 		currentStatus.Status.CurrentMigrationHash = currentStatus.Status.TargetMigrationHash
+		currentStatus.SetStatusCondition(v1alpha1.NewRollingCondition("Rolling deployment to latest version"))
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
 			QueueOps.RequeueAPIErr(ctx, err)
 			return
@@ -60,9 +63,11 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		}
 	}
 
+	var cachedDeployment *appsv1.Deployment
 	// deployment with correct hash exists
 	if len(matchingObjs) == 1 {
-		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, matchingObjs[0])
+		cachedDeployment = matchingObjs[0]
+		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, cachedDeployment)
 
 		// delete extra objects
 		for _, o := range extraObjs {
@@ -85,6 +90,42 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			return
 		}
 		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, deployment)
+	}
+
+	// if the deployment isn't in the cache yet, wait until another event
+	// comes in for it
+	if cachedDeployment == nil {
+		QueueOps.RequeueAfter(ctx, time.Second)
+		return
+	}
+
+	// wait for deployment to be available
+	if cachedDeployment.Status.AvailableReplicas != config.Replicas ||
+		cachedDeployment.Status.ReadyReplicas != config.Replicas ||
+		cachedDeployment.Status.UpdatedReplicas != config.Replicas ||
+		cachedDeployment.Status.ObservedGeneration != cachedDeployment.Generation {
+		currentStatus.SetStatusCondition(v1alpha1.NewRollingCondition(
+			fmt.Sprintf("Waiting for deployment to be available: %d/%d available, %d/%d ready, %d/%d updated, %d/%d generation.",
+				cachedDeployment.Status.AvailableReplicas, config.Replicas,
+				cachedDeployment.Status.ReadyReplicas, config.Replicas,
+				cachedDeployment.Status.UpdatedReplicas, config.Replicas,
+				cachedDeployment.Status.ObservedGeneration, cachedDeployment.Generation,
+			)))
+		if err := m.patchStatus(ctx, currentStatus); err != nil {
+			QueueOps.RequeueAPIErr(ctx, err)
+			return
+		}
+		QueueOps.RequeueAfter(ctx, 2*time.Second)
+		return
+	}
+
+	// deployment is finished rolling out, remove condition
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) {
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeRolling)
+		if err := m.patchStatus(ctx, currentStatus); err != nil {
+			QueueOps.RequeueAPIErr(ctx, err)
+			return
+		}
 	}
 
 	m.next.Handle(ctx)

@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/controller-idioms/handler"
@@ -20,10 +18,9 @@ import (
 const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
-	recorder               record.EventRecorder
-	patchStatus            func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
-	getCurrentSpiceDBState func(ctx context.Context, nn types.NamespacedName) (*config.SpiceDBState, error)
-	next                   handler.ContextHandler
+	recorder    record.EventRecorder
+	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	next        handler.ContextHandler
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
@@ -34,23 +31,16 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	if rawConfig == nil {
 		rawConfig = json.RawMessage("")
 	}
-
 	secret := CtxSecret.Value(ctx)
-	if secret != nil {
-		secretHash, err := hash.SecureObject(secret.Data)
-		if err != nil {
-			QueueOps.RequeueErr(ctx, err)
-			return
-		}
-		ctx = CtxSecretHash.WithValue(ctx, secretHash)
-	}
-
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
-	currentState, err := c.getCurrentSpiceDBState(ctx, types.NamespacedName{Namespace: nn.Namespace, Name: config.DeploymentName(nn.Name)})
-	if err != nil {
-		logr.FromContextOrDiscard(ctx).Error(err, "error fetching current deployment - normal if cluster is not yet created")
+	status := CtxClusterStatus.MustValue(ctx).Status
+	_, tag, _ := config.ExplodeImage(status.Image)
+	currentState := &config.SpiceDBMigrationState{
+		Tag:       tag,
+		Phase:     status.Phase,
+		Migration: status.Migration,
 	}
-	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret)
+	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret, currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) || currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
@@ -93,6 +83,8 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
 		currentStatus.Status.TargetMigrationHash = migrationHash
 		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()
+		currentStatus.Status.Phase = validatedConfig.TargetPhase
+		currentStatus.Status.Migration = validatedConfig.TargetMigration
 		if warningCondition != nil {
 			currentStatus.SetStatusCondition(*warningCondition)
 		} else {

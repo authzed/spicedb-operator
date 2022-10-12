@@ -83,6 +83,12 @@ type ClusterStatus struct {
 	// Image is the image that is or will be used for this cluster
 	Image string `json:"image,omitempty"`
 
+	// Migration is the name of the last migration applied
+	Migration string `json:"migration,omitempty"`
+
+	// Phase is the currently running phase (used for phased migrations)
+	Phase string `json:"phase,omitempty"`
+
 	// Conditions for the current state of the Stack.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`

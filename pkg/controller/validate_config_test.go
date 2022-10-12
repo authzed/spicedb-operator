@@ -26,7 +26,6 @@ func TestValidateConfigHandler(t *testing.T) {
 		rawConfig      json.RawMessage
 		currentStatus  *v1alpha1.SpiceDBCluster
 		existingSecret *corev1.Secret
-		currentState   *config.SpiceDBState
 
 		expectNext        handler.Key
 		expectEvents      []string
@@ -40,8 +39,8 @@ func TestValidateConfigHandler(t *testing.T) {
 			name: "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
 				Image:                "image:tag",
-				TargetMigrationHash:  "n695h689h684h5bbh64h649hfch579q",
-				CurrentMigrationHash: "n695h689h684h5bbh64h649hfch579q",
+				TargetMigrationHash:  "n5dbh8fh58dh5b7h79h599h64bh5dbq",
+				CurrentMigrationHash: "n5dbh8fh58dh5b7h79h599h64bh5dbq",
 			}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
@@ -213,10 +212,6 @@ func TestValidateConfigHandler(t *testing.T) {
 			recorder := record.NewFakeRecorder(1)
 			patchCalled := false
 
-			if tt.currentState == nil {
-				tt.currentState = &config.SpiceDBState{}
-			}
-
 			ctx := context.Background()
 			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
@@ -229,9 +224,6 @@ func TestValidateConfigHandler(t *testing.T) {
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
-				},
-				getCurrentSpiceDBState: func(ctx context.Context, nn types.NamespacedName) (*config.SpiceDBState, error) {
-					return tt.currentState, nil
 				},
 				recorder: recorder,
 				next: handler.ContextHandlerFunc(func(ctx context.Context) {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -17,7 +18,17 @@ type ConfigChangedHandler struct {
 
 func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	cluster := CtxCluster.MustValue(ctx)
-	secretHash := CtxSecretHash.Value(ctx)
+	secret := CtxSecret.Value(ctx)
+	var secretHash string
+	if secret != nil {
+		var err error
+		secretHash, err = hash.SecureObject(secret.Data)
+		if err != nil {
+			QueueOps.RequeueErr(ctx, err)
+			return
+		}
+		ctx = CtxSecretHash.WithValue(ctx, secretHash)
+	}
 	status := &v1alpha1.SpiceDBCluster{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       v1alpha1.SpiceDBClusterKind,

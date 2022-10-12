@@ -36,10 +36,11 @@ func TestNewConfig(t *testing.T) {
 	type args struct {
 		nn           types.NamespacedName
 		uid          types.UID
-		currentState *SpiceDBState
+		currentState *SpiceDBMigrationState
 		globalConfig OperatorConfig
 		rawConfig    json.RawMessage
 		secret       *corev1.Secret
+		rolling      bool
 	}
 	tests := []struct {
 		name         string
@@ -931,26 +932,26 @@ func TestNewConfig(t *testing.T) {
 					AllowedImages: []string{"image"},
 					AllowedTags:   []string{"tag", "tag2"},
 					RequiredEdges: map[string]string{
-						SpiceDBState{
+						SpiceDBMigrationState{
 							Tag: "init",
-						}.String(): SpiceDBState{
+						}.String(): SpiceDBMigrationState{
 							Tag: "tag",
 						}.String(),
 					},
-					Nodes: map[string]SpiceDBState{
-						SpiceDBState{
+					Nodes: map[string]SpiceDBMigrationState{
+						SpiceDBMigrationState{
 							Tag: "init",
 						}.String(): {
 							Tag: "init",
 						},
-						SpiceDBState{
+						SpiceDBMigrationState{
 							Tag: "tag",
 						}.String(): {
 							Tag: "tag",
 						},
 					},
 				},
-				currentState: &SpiceDBState{
+				currentState: &SpiceDBMigrationState{
 					Tag: "init",
 				},
 				rawConfig: json.RawMessage(`
@@ -978,7 +979,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
-					TargetMigration:        "head",
+					TargetMigration:        "",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -1001,7 +1002,7 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentState, &global, tt.args.rawConfig, tt.args.secret)
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentState, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
