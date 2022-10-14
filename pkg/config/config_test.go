@@ -36,9 +36,11 @@ func TestNewConfig(t *testing.T) {
 	type args struct {
 		nn           types.NamespacedName
 		uid          types.UID
+		currentState *SpiceDBMigrationState
 		globalConfig OperatorConfig
 		rawConfig    json.RawMessage
 		secret       *corev1.Secret
+		rolling      bool
 	}
 	tests := []struct {
 		name         string
@@ -96,6 +98,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -141,6 +144,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -188,6 +192,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image2",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -236,6 +241,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other:tag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -284,6 +290,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other@sha256:abc",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -332,6 +339,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "other@sha256:abcd",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -383,6 +391,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "otherImage:tag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -434,6 +443,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image:tagbad",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -485,6 +495,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image@sha256:1234",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -536,6 +547,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "otherImage:otherTag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -583,6 +595,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -630,6 +643,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -677,6 +691,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -731,6 +746,7 @@ func TestNewConfig(t *testing.T) {
 					TargetSpiceDBImage: "image",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -784,6 +800,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -833,6 +850,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -884,6 +902,84 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "debug",
+					SkipMigrations: true,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
+			name: "required edge different from input image",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					ImageTag:      "init",
+					AllowedImages: []string{"image"},
+					AllowedTags:   []string{"tag", "tag2"},
+					RequiredEdges: map[string]string{
+						SpiceDBMigrationState{
+							Tag: "init",
+						}.String(): SpiceDBMigrationState{
+							Tag: "tag",
+						}.String(),
+					},
+					Nodes: map[string]SpiceDBMigrationState{
+						SpiceDBMigrationState{
+							Tag: "init",
+						}.String(): {
+							Tag: "init",
+						},
+						SpiceDBMigrationState{
+							Tag: "tag",
+						}.String(): {
+							Tag: "tag",
+						},
+					},
+				},
+				currentState: &SpiceDBMigrationState{
+					Tag: "init",
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"image": "image:tag2",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "info",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:tag",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -906,7 +1002,7 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, &global, tt.args.rawConfig, tt.args.secret)
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentState, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)

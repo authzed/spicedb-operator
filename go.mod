@@ -3,7 +3,7 @@ module github.com/authzed/spicedb-operator
 go 1.18
 
 require (
-	cloud.google.com/go/spanner v1.37.0
+	cloud.google.com/go/spanner v1.39.0
 	github.com/authzed/controller-idioms v0.5.0
 	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/fatih/camelcase v1.0.0
@@ -19,7 +19,7 @@ require (
 	go.uber.org/atomic v1.7.0
 	go.uber.org/zap v1.23.0
 	golang.org/x/exp v0.0.0-20220823124025-807a23277127
-	google.golang.org/genproto v0.0.0-20220815135757-37a418bb8959
+	google.golang.org/genproto v0.0.0-20220916134934-764224ccc2d1
 	k8s.io/api v0.25.0
 	k8s.io/apiextensions-apiserver v0.25.0
 	k8s.io/apimachinery v0.25.0
@@ -132,15 +132,15 @@ require (
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
-	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2 // indirect
+	golang.org/x/net v0.0.0-20220909164309-bea034e7d591 // indirect
+	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1 // indirect
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde // indirect
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
+	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	golang.org/x/tools v0.1.12 // indirect
-	google.golang.org/api v0.93.0 // indirect
+	google.golang.org/api v0.96.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/grpc v1.48.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect

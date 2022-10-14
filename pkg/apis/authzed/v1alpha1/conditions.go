@@ -21,6 +21,7 @@ const (
 	ConditionTypeMigrating           = "Migrating"
 	ConditionTypeConfigWarnings      = "ConfigurationWarning"
 	ConditionTypePreconditionsFailed = "PreconditionsFailed"
+	ConditionTypeRolling             = "RollingDeployment"
 
 	ConditionReasonMissingSecret = "MissingSecret"
 )
@@ -59,7 +60,7 @@ func NewMigratingCondition(engine, headRevision string) metav1.Condition {
 	return metav1.Condition{
 		Type:               ConditionTypeMigrating,
 		Status:             metav1.ConditionTrue,
-		Reason:             "MigratingDatastoreToHead",
+		Reason:             "MigrationJobRunning",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 		Message:            fmt.Sprintf("Migrating %s datastore to %s", engine, headRevision),
 	}
@@ -82,5 +83,15 @@ func NewMissingSecretCondition(nn types.NamespacedName) metav1.Condition {
 		Reason:             ConditionReasonMissingSecret,
 		LastTransitionTime: metav1.NewTime(time.Now()),
 		Message:            fmt.Sprintf("Secret %s not found", nn.String()),
+	}
+}
+
+func NewRollingCondition(message string) metav1.Condition {
+	return metav1.Condition{
+		Type:               ConditionTypeRolling,
+		Status:             metav1.ConditionTrue,
+		Reason:             "WaitingForDeploymentAvailability",
+		LastTransitionTime: metav1.NewTime(time.Now()),
+		Message:            message,
 	}
 }

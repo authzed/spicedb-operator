@@ -26,23 +26,21 @@ type ValidateConfigHandler struct {
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	currentStatus := CtxClusterStatus.MustValue(ctx)
 	nn := CtxClusterNN.MustValue(ctx)
-	rawConfig := CtxCluster.MustValue(ctx).Spec.Config
+	cluster := CtxCluster.MustValue(ctx)
+	rawConfig := cluster.Spec.Config
 	if rawConfig == nil {
 		rawConfig = json.RawMessage("")
 	}
-
 	secret := CtxSecret.Value(ctx)
-	if secret != nil {
-		secretHash, err := hash.SecureObject(secret.Data)
-		if err != nil {
-			QueueOps.RequeueErr(ctx, err)
-			return
-		}
-		ctx = CtxSecretHash.WithValue(ctx, secretHash)
-	}
-
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
-	validatedConfig, warning, err := config.NewConfig(nn, CtxCluster.MustValue(ctx).UID, operatorConfig, rawConfig, secret)
+	status := CtxClusterStatus.MustValue(ctx).Status
+	_, tag, _ := config.ExplodeImage(status.Image)
+	currentState := &config.SpiceDBMigrationState{
+		Tag:       tag,
+		Phase:     status.Phase,
+		Migration: status.Migration,
+	}
+	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret, currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) || currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling))
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
@@ -85,6 +83,8 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
 		currentStatus.Status.TargetMigrationHash = migrationHash
 		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()
+		currentStatus.Status.Phase = validatedConfig.TargetPhase
+		currentStatus.Status.Migration = validatedConfig.TargetMigration
 		if warningCondition != nil {
 			currentStatus.SetStatusCondition(*warningCondition)
 		} else {

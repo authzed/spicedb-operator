@@ -127,12 +127,19 @@ spec:
               image:
                 description: Image is the image that is or will be used for this cluster
                 type: string
+              migration:
+                description: Migration is the name of the last migration applied
+                type: string
               observedGeneration:
                 description: ObservedGeneration represents the .metadata.generation
                   that has been seen by the controller.
                 format: int64
                 minimum: 0
                 type: integer
+              phase:
+                description: Phase is the currently running phase (used for phased
+                  migrations)
+                type: string
               secretHash:
                 description: SecretHash is a digest of the last applied secret
                 type: string
