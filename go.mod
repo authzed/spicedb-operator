@@ -32,7 +32,7 @@ require (
 	k8s.io/klog/v2 v2.80.0
 	k8s.io/kubectl v0.25.0
 	k8s.io/utils v0.0.0-20220823124924-e9cbc92d1a73
-	mvdan.cc/gofumpt v0.3.1
+	mvdan.cc/gofumpt v0.4.0
 	sigs.k8s.io/controller-runtime v0.12.3
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20220322150744-c46b410039fd
 	sigs.k8s.io/controller-tools v0.9.2
@@ -135,7 +135,7 @@ require (
 	golang.org/x/net v0.0.0-20220909164309-bea034e7d591 // indirect
 	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1 // indirect
 	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde // indirect
-	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
+	golang.org/x/sys v0.0.0-20220829200755-d48e67d00261 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
