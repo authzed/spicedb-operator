@@ -378,7 +378,7 @@ func computeTargets(image, engine string, currentState *SpiceDBMigrationState, g
 	}
 
 	// look up the actual head migration name, if any
-	if currentState.Migration == "" || currentState.Migration == "head" {
+	if currentState != nil && (currentState.Migration == "" || currentState.Migration == "head") {
 		headMigrationName, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: tag, Datastore: engine}.String()]
 		if !ok {
 			headMigrationName = "head"
@@ -387,19 +387,26 @@ func computeTargets(image, engine string, currentState *SpiceDBMigrationState, g
 	}
 
 	// if there's a required edge, take it
+	if globalConfig.RequiredEdges == nil || globalConfig.Nodes == nil {
+		return
+	}
+
 	requiredEdge, ok := globalConfig.RequiredEdges[currentState.String()]
 	if !ok {
 		return
 	}
-	reguiredNode, ok := globalConfig.Nodes[requiredEdge]
+	requiredNode, ok := globalConfig.Nodes[requiredEdge]
 	if !ok {
 		err = fmt.Errorf("required edge defined but not found: %s -> %s", currentState.String(), requiredEdge)
 		return
 	}
+	targetImage = specBaseImage + ":" + requiredNode.Tag
+	targetMigration = requiredNode.Migration
+	targetPhase = requiredNode.Phase
 
-	targetImage = specBaseImage + ":" + reguiredNode.Tag
-	targetMigration = reguiredNode.Migration
-	targetPhase = reguiredNode.Phase
+	if targetMigration == "" {
+		targetMigration = "head"
+	}
 
 	return
 }

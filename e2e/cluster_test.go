@@ -374,7 +374,6 @@ var _ = Describe("SpiceDBClusters", func() {
 			}
 
 			// found a matching job
-
 			TailF(job)
 
 			// wait for job to succeed
@@ -898,193 +897,6 @@ var _ = Describe("SpiceDBClusters", func() {
 					})
 				})
 			})
-
-			When("a valid SpiceDBCluster with required upgrade edges", Ordered, func() {
-				var spiceCluster *v1alpha1.SpiceDBCluster
-				var migration string
-
-				BeforeAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
-					DeferCleanup(cancel)
-
-					switch dsDef.datastoreEngine {
-					case "spanner":
-						migration = "add-metadata-and-counters"
-					case "cockroachdb":
-						migration = "add-metadata-and-counters"
-					case "postgres":
-						migration = "drop-bigserial-ids"
-					case "mysql":
-						migration = "add_ns_config_id"
-					}
-
-					dev := config.SpiceDBMigrationState{Tag: "dev", Migration: "head"}
-					updated := config.SpiceDBMigrationState{Tag: "updated", Migration: migration}
-					newConfig := config.OperatorConfig{
-						AllowedTags:   []string{"dev", "updated", "next"},
-						AllowedImages: []string{"spicedb"},
-						RequiredEdges: map[string]string{
-							dev.String(): updated.String(),
-						},
-						Nodes: map[string]config.SpiceDBMigrationState{
-							dev.String():     dev,
-							updated.String(): updated,
-						},
-					}
-					WriteConfig(newConfig)
-
-					config := map[string]any{
-						"logLevel":                     "debug",
-						"datastoreEngine":              dsDef.datastoreEngine,
-						"envPrefix":                    spicedbEnvPrefix,
-						"cmd":                          spicedbCmd,
-						"tlsSecretName":                "spicedb-grpc-tls",
-						"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
-						"image":                        "spicedb:dev",
-					}
-					for k, v := range dsDef.passthroughConfig {
-						config[k] = v
-					}
-					jsonConfig, err := json.Marshal(config)
-					Expect(err).To(BeNil())
-					spiceCluster = &v1alpha1.SpiceDBCluster{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       v1alpha1.SpiceDBClusterKind,
-							APIVersion: v1alpha1.SchemeGroupVersion.String(),
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      fmt.Sprintf("test2-%s", dsDef.label),
-							Namespace: testNamespace,
-						},
-						Spec: v1alpha1.ClusterSpec{
-							Config:    jsonConfig,
-							SecretRef: "spicedb3",
-						},
-					}
-
-					tlsSecret := GenerateCertManagerCompliantTLSSecretForService(
-						ktypes.NamespacedName{Name: spiceCluster.Name, Namespace: spiceCluster.Namespace},
-						ktypes.NamespacedName{Name: "spicedb-grpc-tls", Namespace: spiceCluster.Namespace},
-					)
-					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
-					Expect(err).To(Succeed())
-					DeferCleanup(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete, ctx, tlsSecret.Name, metav1.DeleteOptions{})
-
-					secret := corev1.Secret{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "spicedb3",
-							Namespace: spiceCluster.Namespace,
-						},
-						StringData: map[string]string{
-							"datastore_uri":     dsDef.datastoreUri,
-							"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
-							"preshared_key":     "testtesttesttest",
-						},
-					}
-					_, err = kclient.CoreV1().Secrets(spiceCluster.Namespace).Create(ctx, &secret, metav1.CreateOptions{})
-					Expect(err).To(Succeed())
-					DeferCleanup(kclient.CoreV1().Secrets(spiceCluster.Namespace).Delete, ctx, secret.Name, metav1.DeleteOptions{})
-
-					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spiceCluster)
-					Expect(err).To(Succeed())
-					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
-					Expect(err).To(Succeed())
-
-					AssertMigrationsCompleted("spicedb:dev", "", "",
-						func() (string, string, string) {
-							return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
-						})
-				})
-
-				AfterAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
-
-					newConfig := config.OperatorConfig{
-						ImageName: "spicedb",
-						ImageTag:  "dev",
-					}
-					WriteConfig(newConfig)
-
-					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
-
-					AssertDependentResourceCleanup(spiceCluster.Namespace, spiceCluster.Name, "spicedb3")
-				})
-
-				Describe("with a migrated datastore", Ordered, func() {
-					BeforeAll(func() {
-						ctx, cancel := context.WithCancel(context.Background())
-						defer cancel()
-
-						AssertHealthySpiceDBCluster("spicedb:dev",
-							func() (string, string) {
-								return testNamespace, spiceCluster.Name
-							}, Not(ContainSubstring("ERROR: kuberesolver")))
-
-						Eventually(func(g Gomega) {
-							clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
-							g.Expect(err).To(Succeed())
-							cluster, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
-							g.Expect(err).To(Succeed())
-							GinkgoWriter.Println(cluster.Status.Conditions)
-							g.Expect(len(cluster.Status.Conditions)).To(BeZero())
-						}).Should(Succeed())
-					})
-
-					When("the image is updated but there is a required edge", func() {
-						BeforeEach(func() {
-							ctx, cancel := context.WithCancel(context.Background())
-							DeferCleanup(cancel)
-
-							Eventually(func(g Gomega) {
-								clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
-								g.Expect(err).To(Succeed())
-								cluster, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
-								g.Expect(err).To(Succeed())
-
-								config := map[string]any{
-									"datastoreEngine":              dsDef.datastoreEngine,
-									"envPrefix":                    spicedbEnvPrefix,
-									"cmd":                          spicedbCmd,
-									"tlsSecretName":                "spicedb-grpc-tls",
-									"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
-									"image":                        "spicedb:next",
-								}
-								for k, v := range dsDef.passthroughConfig {
-									config[k] = v
-								}
-								jsonConfig, err := json.Marshal(config)
-								g.Expect(err).To(Succeed())
-								cluster.Spec.Config = jsonConfig
-								u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
-								g.Expect(err).To(Succeed())
-								_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: u}, metav1.UpdateOptions{})
-								g.Expect(err).To(Succeed())
-							}).Should(Succeed())
-						})
-
-						It("migrates to the required edge", func() {
-							AssertMigrationsCompleted("spicedb:updated", migration, "",
-								func() (string, string, string) {
-									return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
-								})
-						})
-
-						It("migrates to the desired image", func() {
-							Eventually(func(g Gomega) {
-								ctx, cancel := context.WithCancel(context.Background())
-								DeferCleanup(cancel)
-								clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
-								g.Expect(err).To(Succeed())
-								cluster, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
-								g.Expect(err).To(Succeed())
-								GinkgoWriter.Println(cluster.Status)
-								g.Expect(cluster.Status.Image).To(Equal("spicedb:next"))
-							}).Should(Succeed())
-						})
-					})
-				})
-			})
 		})
 	}
 
@@ -1139,11 +951,6 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
-			init := config.SpiceDBMigrationState{Tag: "v1.13.0", Migration: "add-ns-config-id"}
-			phase1 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-columns", Phase: "write-both-read-old"}
-			phase2 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-constraints", Phase: "write-both-read-new"}
-			phase3 := config.SpiceDBMigrationState{Tag: "dev", Migration: "drop-id-constraints"}
-			phase4 := config.SpiceDBMigrationState{Tag: "updated"}
 
 			newConfig := config.OperatorConfig{
 				AllowedTags: []string{"v1.13.0", "dev", "updated"},
@@ -1151,35 +958,20 @@ var _ = Describe("SpiceDBClusters", func() {
 					"ghcr.io/authzed/spicedb",
 					"spicedb",
 				},
-				HeadMigrations: map[string]string{
-					config.SpiceDBDatastoreState{Tag: "v1.13.0", Datastore: "postgres"}.String(): "add-ns-config-id",
-				},
-				RequiredEdges: map[string]string{
-					init.String():   phase1.String(),
-					phase1.String(): phase2.String(),
-					phase2.String(): phase3.String(),
-					phase3.String(): phase4.String(),
-				},
-				Nodes: map[string]config.SpiceDBMigrationState{
-					init.String():   init,
-					phase1.String(): phase1,
-					phase2.String(): phase2,
-					phase3.String(): phase3,
-					phase4.String(): phase4,
-				},
+				UpdateGraph: config.NewUpdateGraph(),
 			}
 			WriteConfig(newConfig)
 
-			config := map[string]any{
+			classConfig := map[string]any{
 				"logLevel":                     "debug",
 				"datastoreEngine":              "postgres",
 				"envPrefix":                    spicedbEnvPrefix,
 				"cmd":                          spicedbCmd,
 				"tlsSecretName":                "spicedb4-grpc-tls",
 				"dispatchUpstreamCASecretName": "spicedb4-grpc-tls",
-				"image":                        "ghcr.io/authzed/spicedb:v1.13.0",
+				"image":                        "spicedb:v1.13.0",
 			}
-			jsonConfig, err := json.Marshal(config)
+			jsonConfig, err := json.Marshal(classConfig)
 			Expect(err).To(BeNil())
 			spiceCluster = &v1alpha1.SpiceDBCluster{
 				TypeMeta: metav1.TypeMeta{
@@ -1224,7 +1016,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 			Expect(err).To(Succeed())
 
-			AssertMigrationsCompleted("ghcr.io/authzed/spicedb:v1.13.0", "add-ns-config-id", "",
+			AssertMigrationsCompleted("spicedb:v1.13.0", "head", "",
 				func() (string, string, string) {
 					return spiceCluster.Namespace, spiceCluster.Name, "postgres"
 				})
@@ -1238,19 +1030,18 @@ var _ = Describe("SpiceDBClusters", func() {
 			}).Should(Succeed())
 
 			// once the cluster is running at the initial version,
-			// edit the target version to trigger the migration flow
-			clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
-			Expect(err).To(Succeed())
-			fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
-			Expect(err).To(Succeed())
-			config["image"] = "spicedb:updated"
-			jsonConfig, err = json.Marshal(config)
-			Expect(err).To(BeNil())
-			fetched.Spec.Config = jsonConfig
-			updated, err := runtime.DefaultUnstructuredConverter.ToUnstructured(fetched)
-			Expect(err).To(Succeed())
-			_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: updated}, metav1.UpdateOptions{})
-			Expect(err).To(Succeed())
+			init := config.SpiceDBMigrationState{Tag: "v1.13.0", Migration: "add-ns-config-id"}
+			phase1 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-columns", Phase: "write-both-read-old"}
+			phase2 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-constraints", Phase: "write-both-read-new"}
+			phase3 := config.SpiceDBMigrationState{Tag: "dev", Migration: "drop-id-constraints"}
+			phase4 := config.SpiceDBMigrationState{Tag: "updated"}
+
+			newConfig.AddHeadMigration(config.SpiceDBDatastoreState{Tag: "v1.13.0", Datastore: "postgres"}, "add-ns-config-id")
+			newConfig.AddEdge(init, phase1)
+			newConfig.AddEdge(phase1, phase2)
+			newConfig.AddEdge(phase2, phase3)
+			newConfig.AddEdge(phase3, phase4)
+			WriteConfig(newConfig)
 		})
 
 		AfterAll(func() {

@@ -59,7 +59,7 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "valid config, new target migrationhash",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
-				Image:                "image",
+				Image:                "image:tag",
 				CurrentMigrationHash: "old",
 			}},
 			rawConfig: json.RawMessage(`{

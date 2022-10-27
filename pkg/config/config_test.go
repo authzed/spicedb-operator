@@ -930,26 +930,15 @@ func TestNewConfig(t *testing.T) {
 					ImageName:     "image",
 					ImageTag:      "init",
 					AllowedImages: []string{"image"},
-					AllowedTags:   []string{"tag", "tag2"},
-					RequiredEdges: map[string]string{
-						SpiceDBMigrationState{
-							Tag: "init",
-						}.String(): SpiceDBMigrationState{
-							Tag: "tag",
-						}.String(),
-					},
-					Nodes: map[string]SpiceDBMigrationState{
-						SpiceDBMigrationState{
-							Tag: "init",
-						}.String(): {
-							Tag: "init",
-						},
-						SpiceDBMigrationState{
-							Tag: "tag",
-						}.String(): {
-							Tag: "tag",
-						},
-					},
+					AllowedTags:   []string{"init", "tag", "tag2"},
+					UpdateGraph: NewUpdateGraph().AddEdge(SpiceDBMigrationState{
+						Tag:       "init",
+						Migration: "head",
+					}, SpiceDBMigrationState{
+						Tag:       "tag",
+						Migration: "migration",
+						Phase:     "phase",
+					}),
 				},
 				currentState: &SpiceDBMigrationState{
 					Tag: "init",
@@ -957,7 +946,7 @@ func TestNewConfig(t *testing.T) {
 				rawConfig: json.RawMessage(`
 					{
 						"logLevel": "debug",
-						"image": "image:tag2",
+						"image": "image:init",
 						"migrationLogLevel": "info",
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": "true"	
@@ -979,7 +968,8 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
-					TargetMigration:        "",
+					TargetMigration:        "migration",
+					TargetPhase:            "phase",
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -992,8 +982,9 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:      "SPICEDB",
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
+						"datastoreEngine":         "cockroachdb",
+						"datastoreMigrationPhase": "phase",
+						"dispatchClusterEnabled":  "true",
 					},
 				},
 			},
