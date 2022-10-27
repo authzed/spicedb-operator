@@ -49,6 +49,7 @@ var (
 	spiceDBCmdKey                 = newKey("cmd", "spicedb")
 	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
 	targetMigrationKey            = newStringKey("targetMigration")
+	targetPhase                   = newStringKey("datastoreMigrationPhase")
 	logLevelKey                   = newKey("logLevel", "info")
 	migrationLogLevelKey          = newKey("migrationLogLevel", "debug")
 	spannerCredentialsKey         = newStringKey("spannerCredentials")
@@ -160,6 +161,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 		SpiceDBCmd:             spiceConfig.SpiceDBCmd,
 		DatastoreTLSSecretName: datastoreTLSSecretKey.pop(config),
 		TargetMigration:        targetMigrationKey.pop(config),
+		TargetPhase:            targetPhase.pop(config),
 	}
 
 	datastoreEngine := datastoreEngineKey.pop(config)
@@ -172,10 +174,14 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 	image := imageKey.pop(config)
 	image, imgWarnings := validateImage(image, globalConfig)
 
-	var err error
-	migrationConfig.TargetSpiceDBImage, migrationConfig.TargetMigration, migrationConfig.TargetPhase, err = computeTargets(image, datastoreEngine, currentState, globalConfig, rolling)
-	if err != nil {
-		imgWarnings = append(imgWarnings, err)
+	if len(migrationConfig.TargetMigration) == 0 && len(migrationConfig.TargetPhase) == 0 {
+		var err error
+		migrationConfig.TargetSpiceDBImage, migrationConfig.TargetMigration, migrationConfig.TargetPhase, err = computeTargets(image, datastoreEngine, currentState, globalConfig, rolling)
+		if err != nil {
+			imgWarnings = append(imgWarnings, err)
+		}
+	} else {
+		migrationConfig.TargetSpiceDBImage = image
 	}
 
 	if !globalConfig.DisableImageValidation {
@@ -361,19 +367,7 @@ func validateImage(image string, globalConfig *OperatorConfig) (string, []error)
 func computeTargets(image, engine string, currentState *SpiceDBMigrationState, globalConfig *OperatorConfig, rolling bool) (targetImage, targetMigration, targetPhase string, err error) {
 	specBaseImage, tag, _ := ExplodeImage(image)
 	targetImage = image
-
-	// if head migration, look up the actual migration name
-	if headMigration, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: tag, Datastore: engine}.String()]; ok {
-		targetMigration = headMigration
-	} else {
-		targetMigration = "head"
-	}
-
-	// don't look for required edges if the currently running image is
-	// the desired one (only check when the image is changed)
-	if currentState == nil || currentState.Tag == tag {
-		return
-	}
+	targetMigration = "head"
 
 	// if already migrating or rolling, use current state
 	if rolling {
@@ -383,11 +377,13 @@ func computeTargets(image, engine string, currentState *SpiceDBMigrationState, g
 		return
 	}
 
-	// if head migration, look up the actual migration name (if present)
+	// look up the actual head migration name, if any
 	if currentState.Migration == "" || currentState.Migration == "head" {
-		if headMigration, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: currentState.Tag, Datastore: engine}.String()]; ok {
-			currentState.Migration = headMigration
+		headMigrationName, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: tag, Datastore: engine}.String()]
+		if !ok {
+			headMigrationName = "head"
 		}
+		currentState.Migration = headMigrationName
 	}
 
 	// if there's a required edge, take it

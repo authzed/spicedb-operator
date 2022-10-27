@@ -34,13 +34,16 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	secret := CtxSecret.Value(ctx)
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
 	status := CtxClusterStatus.MustValue(ctx).Status
-	_, tag, _ := config.ExplodeImage(status.Image)
+	_, statusTag, _ := config.ExplodeImage(status.Image)
 	currentState := &config.SpiceDBMigrationState{
-		Tag:       tag,
+		Tag:       statusTag,
 		Phase:     status.Phase,
 		Migration: status.Migration,
 	}
-	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret, currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) || currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling))
+	rolloutInProgress := currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
+		currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) ||
+		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash
+	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret, rolloutInProgress)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
