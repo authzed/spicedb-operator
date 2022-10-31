@@ -35,7 +35,7 @@ spec:
     spec:
       containers:
         - name: spanner
-          image: gcr.io/cloud-spanner-emulator/emulator:1.4.2
+          image: gcr.io/cloud-spanner-emulator/emulator:1.4.6
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9010
