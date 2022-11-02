@@ -372,7 +372,10 @@ func computeTargets(image, engine string, currentState *SpiceDBMigrationState, g
 	// if already migrating or rolling, use current state
 	if rolling {
 		targetImage = specBaseImage + ":" + currentState.Tag
-		targetMigration = currentState.Migration
+		// if the migration is set, use that
+		if len(currentState.Migration) > 0 {
+			targetMigration = currentState.Migration
+		}
 		targetPhase = currentState.Phase
 		return
 	}
