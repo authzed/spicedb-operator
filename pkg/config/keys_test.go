@@ -103,7 +103,7 @@ func TestIntOrStringKey(t *testing.T) {
 	}
 }
 
-func TestLabelSetKey(t *testing.T) {
+func TestMetadataSetKey(t *testing.T) {
 	input := map[string]any{"k": "v", "k2": "v2"}
 	invalidInput := map[string]any{"k": 1, "k2": "v2"}
 	empty := map[string]string{}

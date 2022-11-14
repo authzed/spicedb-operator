@@ -63,6 +63,7 @@ var (
 	replicasKey                       = newIntOrStringKey("replicas", 2)
 	replicasKeyForMemory              = newIntOrStringKey("replicas", 1)
 	extraPodLabelsKey                 = metadataSetKey("extraPodLabels")
+	extraPodAnnotationsKey            = metadataSetKey("extraPodAnnotations")
 	extraServiceAccountAnnotationsKey = metadataSetKey("extraServiceAccountAnnotations")
 	serviceAccountNameKey             = newStringKey("serviceAccountName")
 	grpcTLSKeyPathKey                 = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
@@ -136,6 +137,7 @@ type SpiceConfig struct {
 	TelemetryTLSCASecretName       string
 	SecretName                     string
 	ExtraPodLabels                 map[string]string
+	ExtraPodAnnotations            map[string]string
 	ExtraServiceAccountAnnotations map[string]string
 	ServiceAccountName             string
 	Passthrough                    map[string]string
@@ -152,15 +154,18 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
 	spiceConfig := SpiceConfig{
-		Name:                         nn.Name,
-		Namespace:                    nn.Namespace,
-		UID:                          string(uid),
-		TLSSecretName:                tlsSecretNameKey.pop(config),
-		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
-		TelemetryTLSCASecretName:     telemetryCAKey.pop(config),
-		EnvPrefix:                    envPrefixKey.pop(config),
-		SpiceDBCmd:                   spiceDBCmdKey.pop(config),
-		LogLevel:                     logLevelKey.pop(config),
+		Name:                           nn.Name,
+		Namespace:                      nn.Namespace,
+		UID:                            string(uid),
+		TLSSecretName:                  tlsSecretNameKey.pop(config),
+		DispatchUpstreamCASecretName:   dispatchCAKey.pop(config),
+		TelemetryTLSCASecretName:       telemetryCAKey.pop(config),
+		EnvPrefix:                      envPrefixKey.pop(config),
+		SpiceDBCmd:                     spiceDBCmdKey.pop(config),
+		ExtraPodLabels:                 make(map[string]string, 0),
+		ExtraPodAnnotations:            make(map[string]string, 0),
+		ExtraServiceAccountAnnotations: make(map[string]string, 0),
+		LogLevel:                       logLevelKey.pop(config),
 	}
 	migrationConfig := MigrationConfig{
 		MigrationLogLevel:      migrationLogLevelKey.pop(config),
@@ -252,8 +257,18 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 		errs = append(errs, err)
 	}
 
-	if len(warnings) > 0 {
+	if len(labelWarnings) > 0 {
 		warnings = append(warnings, labelWarnings...)
+	}
+
+	var annotationWarnings []error
+	spiceConfig.ExtraPodAnnotations, annotationWarnings, err = extraPodAnnotationsKey.pop(config, "pod", "annotation")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(annotationWarnings) > 0 {
+		warnings = append(warnings, annotationWarnings...)
 	}
 
 	var saAnnotationWarnings []error
@@ -689,6 +704,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithLabels(c.ExtraPodLabels).
+				WithAnnotations(c.ExtraPodAnnotations).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
