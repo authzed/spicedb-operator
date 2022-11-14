@@ -26,13 +26,13 @@ type UpdateGraph struct {
 	Channels []Channel `json:"channels,omitempty"`
 }
 
-func (g *UpdateGraph) SourceForDatastore(datastore string) (Source, error) {
+func (g *UpdateGraph) ChannelForDatastore(datastore string) (string, error) {
 	for _, c := range g.Channels {
 		if c.Metadata["datastore"] == datastore {
-			return NewMemorySource(c.Nodes, c.Edges)
+			return c.Name, nil
 		}
 	}
-	return nil, fmt.Errorf("no channel found for datastore %q", datastore)
+	return "", fmt.Errorf("no channel found for datastore %q", datastore)
 }
 
 func (g *UpdateGraph) SourceForChannel(channel string) (Source, error) {

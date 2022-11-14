@@ -136,7 +136,6 @@ func StartOperator() {
 
 	opconfig := config.OperatorConfig{
 		ImageName: "spicedb",
-		ImageTag:  "dev",
 	}
 
 	testRestConfig := rest.CopyConfig(restConfig)

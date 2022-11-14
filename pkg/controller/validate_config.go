@@ -33,17 +33,14 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 	secret := CtxSecret.Value(ctx)
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
+
 	status := CtxClusterStatus.MustValue(ctx).Status
-	_, statusTag, _ := config.ExplodeImage(status.Image)
-	currentState := &config.SpiceDBMigrationState{
-		Tag:       statusTag,
-		Phase:     status.Phase,
-		Migration: status.Migration,
-	}
+
 	rolloutInProgress := currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
 		currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) ||
 		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash
-	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, currentState, operatorConfig, rawConfig, secret, rolloutInProgress)
+
+	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, cluster.Spec.Version, cluster.Spec.Channel, status.CurrentVersion, operatorConfig, rawConfig, secret, rolloutInProgress)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
@@ -81,8 +78,11 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeValidating) ||
 		currentStatus.Status.Image != validatedConfig.TargetSpiceDBImage ||
 		currentStatus.Status.TargetMigrationHash != migrationHash ||
-		currentStatus.IsStatusConditionChanged(v1alpha1.ConditionTypeConfigWarnings, warningCondition) {
+		currentStatus.IsStatusConditionChanged(v1alpha1.ConditionTypeConfigWarnings, warningCondition) ||
+		// TODO: this should deref and check the values if they're not nil
+		currentStatus.Status.CurrentVersion != validatedConfig.SpiceDBVersion {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionValidatingFailed)
+		currentStatus.Status.CurrentVersion = validatedConfig.SpiceDBVersion
 		currentStatus.Status.Image = validatedConfig.TargetSpiceDBImage
 		currentStatus.Status.TargetMigrationHash = migrationHash
 		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()

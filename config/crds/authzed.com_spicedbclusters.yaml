@@ -37,6 +37,14 @@ spec:
           spec:
             description: ClusterSpec holds the desired state of the cluster.
             properties:
+              channel:
+                description: Channel is the name of a series of updates that operator
+                  should follow. The operator is configured with a datasource that
+                  configures available channels and update paths. If `version` is
+                  not specified, then the operator will keep SpiceDB up-to-date with
+                  the current head of the channel. If `version` is specified, then
+                  the operator will write available updates in the status.
+                type: string
               config:
                 description: Config values to be passed to the cluster
                 type: object
@@ -46,10 +54,36 @@ spec:
                   that holds secret config for the cluster like passwords, credentials,
                   etc. If the secret is omitted, one will be generated
                 type: string
+              version:
+                description: Version is the name of the version of SpiceDB that will
+                  be run. The version is usually a simple version string like `v1.13.0`,
+                  but the operator is configured with a data source that tells it
+                  what versions are allowed, and they may have other names. If omitted,
+                  the newest version in the head of the channel will be used. Note
+                  that the `config.image` field will take precedence over version/channel,
+                  if it is specified
+                type: string
             type: object
           status:
             description: ClusterStatus communicates the observed state of the cluster.
             properties:
+              availableVersions:
+                description: AvailableVersions is a list of versions that the currently
+                  running version can be updated to. Only applies if using an update
+                  channel.
+                items:
+                  properties:
+                    channel:
+                      type: string
+                    description:
+                      type: string
+                    name:
+                      type: string
+                  required:
+                  - channel
+                  - name
+                  type: object
+                type: array
               conditions:
                 description: Conditions for the current state of the Stack.
                 items:
@@ -147,6 +181,20 @@ spec:
                 description: TargetMigrationHash is a hash of the desired migration
                   target and config
                 type: string
+              version:
+                description: CurrentVersion is a description of the currently selected
+                  version from the channel, if an update channel is being used.
+                properties:
+                  channel:
+                    type: string
+                  description:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - channel
+                - name
+                type: object
             type: object
         type: object
     served: true

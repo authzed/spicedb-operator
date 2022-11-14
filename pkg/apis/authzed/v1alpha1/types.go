@@ -47,6 +47,24 @@ func (c *SpiceDBCluster) WithAnnotations(entries map[string]string) *SpiceDBClus
 
 // ClusterSpec holds the desired state of the cluster.
 type ClusterSpec struct {
+	// Version is the name of the version of SpiceDB that will be run.
+	// The version is usually a simple version string like `v1.13.0`, but the
+	// operator is configured with a data source that tells it what versions
+	// are allowed, and they may have other names.
+	// If omitted, the newest version in the head of the channel will be used.
+	// Note that the `config.image` field will take precedence over
+	// version/channel, if it is specified
+	Version string `json:"version,omitempty"`
+
+	// Channel is the name of a series of updates that operator should follow.
+	// The operator is configured with a datasource that configures available
+	// channels and update paths.
+	// If `version` is not specified, then the operator will keep SpiceDB
+	// up-to-date with the current head of the channel.
+	// If `version` is specified, then the operator will write available updates
+	// in the status.
+	Channel string `json:"channel,omitempty"`
+
 	// Config values to be passed to the cluster
 	// +optional
 	// +kubebuilder:validation:Schemaless
@@ -89,9 +107,23 @@ type ClusterStatus struct {
 	// Phase is the currently running phase (used for phased migrations)
 	Phase string `json:"phase,omitempty"`
 
+	// CurrentVersion is a description of the currently selected version from
+	// the channel, if an update channel is being used.
+	CurrentVersion *SpiceDBVersion `json:"version,omitempty"`
+
+	// AvailableVersions is a list of versions that the currently running
+	// version can be updated to. Only applies if using an update channel.
+	AvailableVersions []SpiceDBVersion `json:"availableVersions,omitempty"`
+
 	// Conditions for the current state of the Stack.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+}
+
+type SpiceDBVersion struct {
+	Name        string `json:"name"`
+	Channel     string `json:"channel"`
+	Description string `json:"description,omitempty"`
 }
 
 // SpiceDBClusterList is a list of SpiceDBCluster resources

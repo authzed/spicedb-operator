@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/fatih/camelcase"
-	"golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
 const (
@@ -111,6 +111,7 @@ type MigrationConfig struct {
 	EnvPrefix              string
 	SpiceDBCmd             string
 	DatastoreTLSSecretName string
+	SpiceDBVersion         *v1alpha1.SpiceDBVersion
 }
 
 // SpiceConfig contains config relevant to running spicedb or determining
@@ -135,7 +136,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigrationState, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret, rolling bool) (*Config, Warning, error) {
+func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, currentVersion *v1alpha1.SpiceDBVersion, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret, rolling bool) (*Config, Warning, error) {
 	config := RawConfig(make(map[string]any))
 	if err := json.Unmarshal(rawConfig, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
@@ -175,20 +176,24 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 	// if there's a required edge from the current image, that edge is taken
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
-	image, imgWarnings := validateImage(image, globalConfig)
 
-	if len(migrationConfig.TargetMigration) == 0 && len(migrationConfig.TargetPhase) == 0 {
-		var err error
-		migrationConfig.TargetSpiceDBImage, migrationConfig.TargetMigration, migrationConfig.TargetPhase, err = computeTargets(image, datastoreEngine, currentState, globalConfig, rolling)
-		if err != nil {
-			imgWarnings = append(imgWarnings, err)
-		}
-	} else {
-		migrationConfig.TargetSpiceDBImage = image
+	baseImage, targetSpiceDBVersion, state, err := computeTargets(image, version, channel, datastoreEngine, currentVersion, globalConfig, rolling)
+	if err != nil {
+		errs = append(errs, err)
 	}
 
-	if !globalConfig.DisableImageValidation {
-		warnings = append(warnings, imgWarnings...)
+	migrationConfig.SpiceDBVersion = targetSpiceDBVersion
+	migrationConfig.TargetMigration = state.Migration
+	migrationConfig.TargetPhase = state.Phase
+	if len(state.Digest) > 0 {
+		migrationConfig.TargetSpiceDBImage = baseImage + "@" + state.Digest
+	} else if len(state.Tag) > 0 {
+		migrationConfig.TargetSpiceDBImage = baseImage + ":" + state.Tag
+	} else {
+		errs = append(errs, fmt.Errorf("no update found in channel"))
+	}
+	if len(migrationConfig.TargetMigration) == 0 {
+		migrationConfig.TargetMigration = "head"
 	}
 
 	migrationConfig.DatastoreEngine = datastoreEngine
@@ -322,108 +327,99 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 	}, warning, nil
 }
 
-func validateImage(image string, globalConfig *OperatorConfig) (string, []error) {
-	if len(image) == 0 && len(globalConfig.ImageName) == 0 {
-		return "", []error{fmt.Errorf("no defualt image configured for operator and no image provided in spec")}
-	}
-	if len(image) == 0 {
-		return globalConfig.DefaultImage(), nil
-	}
-
-	warnings := make([]error, 0)
-
+func computeTargets(image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, globalConfig *OperatorConfig, rolling bool) (baseImage string, targetSpiceDBVersion *v1alpha1.SpiceDBVersion, state updates.State, err error) {
 	baseImage, tag, digest := ExplodeImage(image)
-	if !slices.Contains(globalConfig.AllowedImages, baseImage) {
-		warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed images", image, baseImage))
+
+	// if digest or tag are set, we don't use an update graph
+	if len(digest) > 0 || len(tag) > 0 {
+		state = updates.State{Tag: tag, Digest: digest}
+		return
 	}
 
-	// check tag
-	if len(tag) > 0 {
-		allowedTag := false
-		for _, t := range globalConfig.AllowedTags {
-			tagInList, _, _ := strings.Cut(t, "@")
-			if tagInList == tag {
-				allowedTag = true
-				break
-			}
-		}
-		if !allowedTag {
-			warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed tags", image, tag))
-		}
+	// use the default base image from the global config if none is set
+	if len(baseImage) == 0 {
+		baseImage = globalConfig.ImageName
 	}
 
-	// check digest
-	if len(digest) > 0 {
-		allowedDigest := false
-		for _, t := range globalConfig.AllowedTags {
-			// plain digest
-			if strings.HasPrefix(t, "sha") && t == digest {
-				allowedDigest = true
-				break
-			}
+	// error if we can't figure out a base image
+	if len(baseImage) == 0 {
+		err = fmt.Errorf("no base image in operator config, and none specified in image")
+		return
+	}
 
-			// compound tag@digest
-			_, digestInList, _ := strings.Cut(t, "@")
-			if digestInList == digest {
-				allowedDigest = true
-				break
-			}
-		}
-		if !allowedDigest {
-			warnings = append(warnings, fmt.Errorf("%q invalid: %q is not in the configured list of allowed digests", image, digest))
+	// default to spec.channel, or if undefined, status.version.channel
+	var updateSource updates.Source
+	if len(channel) == 0 && currentVersion != nil {
+		channel = currentVersion.Channel
+	}
+	// if there's no spec.channel and no status.version.channel, pick a default
+	// based on the configured datastore
+	if len(channel) == 0 {
+		channel, err = globalConfig.ChannelForDatastore(engine)
+		if err != nil {
+			err = fmt.Errorf("couldn't find channel for datastore %q: %w", engine, err)
+			return
 		}
 	}
 
-	return image, warnings
-}
+	if len(channel) > 0 {
+		updateSource, err = globalConfig.SourceForChannel(channel)
+		if err != nil {
+			err = fmt.Errorf("error fetching update source: %w", err)
+			return
+		}
+	}
 
-func computeTargets(image, engine string, currentState *SpiceDBMigrationState, globalConfig *OperatorConfig, rolling bool) (targetImage, targetMigration, targetPhase string, err error) {
-	specBaseImage, tag, _ := ExplodeImage(image)
-	targetImage = image
-	targetMigration = "head"
+	// default to the version we're working toward
+	targetSpiceDBVersion = currentVersion
 
-	// if already migrating or rolling, use current state
+	var currentState updates.State
+	if currentVersion != nil {
+		currentState = updateSource.State(currentVersion.Name)
+	}
+
+	// if cluster is rolling, return the current state as reported by the status
+	// and update graph
+	// TODO: this can change if the update graph is modified - do we want to actually return status.image/etc?
 	if rolling {
-		targetImage = specBaseImage + ":" + currentState.Tag
-		// if the migration is set, use that
-		if len(currentState.Migration) > 0 {
-			targetMigration = currentState.Migration
+		if len(currentState.ID) == 0 {
+			err = fmt.Errorf("cluster is rolling out, but no current state is defined")
+			return
 		}
-		targetPhase = currentState.Phase
+		state = currentState
 		return
 	}
 
-	// look up the actual head migration name, if any
-	if currentState != nil && (currentState.Migration == "" || currentState.Migration == "head") {
-		headMigrationName, ok := globalConfig.HeadMigrations[SpiceDBDatastoreState{Tag: tag, Datastore: engine}.String()]
-		if !ok {
-			headMigrationName = "head"
+	// if spec.version is set, we only use the subset of the update graph that
+	// leads to that version
+	if len(version) > 0 {
+		updateSource, err = updateSource.Source(version)
+		if err != nil {
+			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
+			return
 		}
-		currentState.Migration = headMigrationName
 	}
 
-	// if there's a required edge, take it
-	if globalConfig.RequiredEdges == nil || globalConfig.Nodes == nil {
-		return
+	var targetVersion string
+	if currentVersion != nil && len(currentVersion.Name) > 0 {
+		targetVersion = updateSource.Next(currentVersion.Name)
+		if len(targetVersion) == 0 {
+			// no next version, use the current state
+			state = currentState
+			targetSpiceDBVersion = currentVersion
+			return
+		}
+	} else {
+		// no current version, install head
+		targetVersion = updateSource.Latest("")
 	}
 
-	requiredEdge, ok := globalConfig.RequiredEdges[currentState.String()]
-	if !ok {
-		return
+	// if we found the next step to take, return it
+	state = updateSource.State(targetVersion)
+	targetSpiceDBVersion = &v1alpha1.SpiceDBVersion{
+		Name:    state.ID,
+		Channel: channel,
 	}
-	requiredNode, ok := globalConfig.Nodes[requiredEdge]
-	if !ok {
-		err = fmt.Errorf("required edge defined but not found: %s -> %s", currentState.String(), requiredEdge)
-		return
-	}
-	targetImage = specBaseImage + ":" + requiredNode.Tag
-	targetMigration = requiredNode.Migration
-	targetPhase = requiredNode.Phase
-
-	if targetMigration == "" {
-		targetMigration = "head"
-	}
-
 	return
 }
 
