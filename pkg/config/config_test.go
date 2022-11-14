@@ -770,6 +770,113 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "set extra annotations as string",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodAnnotations": "app.kubernetes.io/name=test,app.kubernetes.io/managed-by=test-owner"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "image",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					ExtraPodAnnotations: map[string]string{
+						"app.kubernetes.io/name":       "test",
+						"app.kubernetes.io/managed-by": "test-owner",
+					},
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
+			name: "set extra annotations as map",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodAnnotations": {
+							"app.kubernetes.io/name": "test",
+							"app.kubernetes.io/managed-by": "test-owner"
+						}
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "image",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					ExtraPodAnnotations: map[string]string{
+						"app.kubernetes.io/name":       "test",
+						"app.kubernetes.io/managed-by": "test-owner",
+					},
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
 			name: "skip migrations bool",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
