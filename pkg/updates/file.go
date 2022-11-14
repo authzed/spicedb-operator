@@ -7,7 +7,7 @@ import (
 )
 
 type Channel struct {
-	Name     string
+	Name     string            `json:"name"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 	Edges    EdgeSet           `json:"edges,omitempty"`
 	Nodes    []State           `json:"nodes,omitempty"`
