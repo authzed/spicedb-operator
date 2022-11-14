@@ -102,38 +102,38 @@ func (k *boolOrStringKey) pop(config RawConfig) (out bool, err error) {
 	return
 }
 
-type labelSetKey string
+type metadataSetKey string
 
-func (k labelSetKey) pop(config RawConfig) (podLabels map[string]string, warnings []error, err error) {
+func (k metadataSetKey) pop(config RawConfig, metadataType string) (podMetadata map[string]string, warnings []error, err error) {
 	v, ok := config[string(k)]
 	delete(config, string(k))
 	if !ok {
 		return
 	}
 
-	podLabels = make(map[string]string)
+	podMetadata = make(map[string]string)
 
 	switch value := v.(type) {
 	case string:
 		if len(value) > 0 {
-			extraPodLabelPairs := strings.Split(value, ",")
-			for _, p := range extraPodLabelPairs {
+			extraPodMetadataPairs := strings.Split(value, ",")
+			for _, p := range extraPodMetadataPairs {
 				k, v, ok := strings.Cut(p, "=")
 				if !ok {
-					warnings = append(warnings, fmt.Errorf("couldn't parse extra pod label %q: labels should be of the form k=v,k2=v2", p))
+					warnings = append(warnings, fmt.Errorf("couldn't parse extra pod %s %q: values should be of the form k=v,k2=v2", metadataType, p))
 					continue
 				}
-				podLabels[k] = v
+				podMetadata[k] = v
 			}
 		}
 	case map[string]any:
 		for k, v := range value {
-			labelValue, ok := v.(string)
+			metadataValue, ok := v.(string)
 			if !ok {
-				warnings = append(warnings, fmt.Errorf("couldn't parse extra pod label %v", v))
+				warnings = append(warnings, fmt.Errorf("couldn't parse extra pod %s %v", metadataType, v))
 				continue
 			}
-			podLabels[k] = labelValue
+			podMetadata[k] = metadataValue
 		}
 	default:
 		err = fmt.Errorf("expected string or map for key %s", k)

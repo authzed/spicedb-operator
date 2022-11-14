@@ -77,11 +77,12 @@ func TestValidateConfigHandler(t *testing.T) {
 			expectNext:        nextKey,
 		},
 		{
-			name:          "valid config with warnings",
+			name:          "valid config with label warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image"}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",
-				"extraPodLabels":  "wrong:format"
+				"extraPodLabels":  "wrong:format",
+				"extraPodAnnotations":  "annotation:bad"
 			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
@@ -159,12 +160,13 @@ func TestValidateConfigHandler(t *testing.T) {
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Image: "image", Conditions: []metav1.Condition{{
 				Type:    "ConfigurationWarning",
 				Status:  metav1.ConditionTrue,
-				Message: "[couldn't parse extra pod label \"wrong:format\": labels should be of the form k=v,k2=v2, no TLS configured, consider setting \"tlsSecretName\"]",
+				Message: "[couldn't parse extra pod label \"wrong:format\": values should be of the form k=v,k2=v2, couldn't parse extra pod annotation \"annotation:bad\": values should be of the form k=v,k2=v2, no TLS configured, consider setting \"tlsSecretName\"]",
 			}}}},
 			rawConfig: json.RawMessage(`{
-				"datastoreEngine": "cockroachdb",
-				"tlsSecretName":   "secret",
-				"extraPodLabels":  "correct=format,good=value"
+				"datastoreEngine":     "cockroachdb",
+				"tlsSecretName":       "secret",
+				"extraPodLabels":      "correct=format,good=value",
+				"extraPodAnnotations": "annotation=works"
 			}`),
 			existingSecret: &corev1.Secret{
 				Data: map[string][]byte{
