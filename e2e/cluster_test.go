@@ -1005,6 +1005,8 @@ var _ = Describe("SpiceDBClusters", func() {
 				fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(fetched.Status.Conditions)).To(BeZero())
+				GinkgoWriter.Println(fetched.Status)
+				g.Expect(len(fetched.Status.AvailableVersions)).ToNot(BeZero(), "status should show available updates")
 			}).Should(Succeed())
 
 			// once the cluster is running at the initial version, update the target version

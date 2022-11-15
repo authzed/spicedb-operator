@@ -40,12 +40,14 @@ func TestValidateConfigHandler(t *testing.T) {
 			name: "valid config, no changes, no warnings",
 			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
 				Image:                "image:v1",
+				Migration:            "head",
 				TargetMigrationHash:  "ndchdch68dh69h566h56fhb9h5dq",
 				CurrentMigrationHash: "ndchdch68dh69h566h56fhb9h5dq",
 				CurrentVersion: &v1alpha1.SpiceDBVersion{
 					Name:    "v1",
 					Channel: "cockroachdb",
 				},
+				AvailableVersions: []v1alpha1.SpiceDBVersion{},
 			}},
 			rawConfig: json.RawMessage(`{
 				"datastoreEngine": "cockroachdb",

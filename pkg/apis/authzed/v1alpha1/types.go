@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	"encoding/json"
 
+	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -120,10 +121,54 @@ type ClusterStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
+func (s ClusterStatus) Equals(other ClusterStatus) bool {
+	if s.ObservedGeneration != other.ObservedGeneration {
+		return false
+	}
+	if s.TargetMigrationHash != other.TargetMigrationHash {
+		return false
+	}
+	if s.CurrentMigrationHash != other.CurrentMigrationHash {
+		return false
+	}
+	if s.SecretHash != other.SecretHash {
+		return false
+	}
+	if s.Image != other.Image {
+		return false
+	}
+	if s.Migration != other.Migration {
+		return false
+	}
+	if s.Phase != other.Phase {
+		return false
+	}
+	if !s.CurrentVersion.Equals(other.CurrentVersion) {
+		return false
+	}
+	if !slices.Equal(s.AvailableVersions, other.AvailableVersions) {
+		return false
+	}
+	if !slices.Equal(s.Conditions, other.Conditions) {
+		return false
+	}
+	return true
+}
+
 type SpiceDBVersion struct {
 	Name        string `json:"name"`
 	Channel     string `json:"channel"`
 	Description string `json:"description,omitempty"`
+}
+
+func (v *SpiceDBVersion) Equals(other *SpiceDBVersion) bool {
+	if v == other {
+		return true
+	}
+	if v != nil && other != nil && v.Name == other.Name && v.Channel == other.Channel {
+		return true
+	}
+	return false
 }
 
 // SpiceDBClusterList is a list of SpiceDBCluster resources
