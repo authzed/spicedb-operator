@@ -69,7 +69,6 @@ func (m *MemorySource) State(id string) State {
 	return m.OrderedNodes[index]
 }
 
-// TODO: consider *State instead of State
 func (m *MemorySource) Source(to string) (Source, error) {
 	// copy the ordered node list from `to` onward
 	var index int
@@ -106,17 +105,6 @@ func (m *MemorySource) Source(to string) (Source, error) {
 	return newMemorySourceFromValidatedNodes(nodeSet, edges, orderedNodes)
 }
 
-func (m *MemorySource) Matches(tag, digest, migration, phase string) []string {
-	matches := make([]string, 0)
-	for _, n := range m.OrderedNodes {
-		if n.Tag == tag && n.Digest == digest && n.Migration == migration && n.Phase == phase {
-			matches = append(matches, n.ID)
-			continue
-		}
-	}
-	return matches
-}
-
 func (m *MemorySource) validateAllNodesPathToHead() error {
 	head := m.OrderedNodes[0].ID
 	for _, n := range m.OrderedNodes {
@@ -124,15 +112,15 @@ func (m *MemorySource) validateAllNodesPathToHead() error {
 			continue
 		}
 		visited := make(map[string]struct{}, 0)
-		// chasing next should lead to head
-		for next := m.Next(n.ID); next != head; next = m.Next(next) {
-			if _, ok := visited[next]; ok {
-				return fmt.Errorf("channel cycle detected: %v", append(maps.Keys(visited), next))
+		// chasing current should lead to head
+		for current := m.Next(n.ID); current != head; current = m.Next(current) {
+			if _, ok := visited[current]; ok {
+				return fmt.Errorf("channel cycle detected: %v", append(maps.Keys(visited), current))
 			}
-			if next == "" {
+			if current == "" {
 				return fmt.Errorf("there is no path from %s to %s", n.ID, m.OrderedNodes[0].ID)
 			}
-			visited[next] = struct{}{}
+			visited[current] = struct{}{}
 		}
 	}
 	return nil

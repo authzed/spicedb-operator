@@ -25,6 +25,8 @@ import (
 )
 
 const (
+	Head = "head"
+
 	dbTLSVolume        = "db-tls"
 	spannerVolume      = "spanner"
 	tlsVolume          = "tls"
@@ -193,7 +195,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		errs = append(errs, fmt.Errorf("no update found in channel"))
 	}
 	if len(migrationConfig.TargetMigration) == 0 {
-		migrationConfig.TargetMigration = "head"
+		migrationConfig.TargetMigration = Head
 	}
 
 	migrationConfig.DatastoreEngine = datastoreEngine

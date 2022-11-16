@@ -57,7 +57,7 @@ type ClusterSpec struct {
 	// version/channel, if it is specified
 	Version string `json:"version,omitempty"`
 
-	// Channel is the name of a series of updates that operator should follow.
+	// Channel is a defined series of updates that operator should follow.
 	// The operator is configured with a datasource that configures available
 	// channels and update paths.
 	// If `version` is not specified, then the operator will keep SpiceDB

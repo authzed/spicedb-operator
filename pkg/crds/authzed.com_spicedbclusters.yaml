@@ -38,7 +38,7 @@ spec:
             description: ClusterSpec holds the desired state of the cluster.
             properties:
               channel:
-                description: Channel is the name of a series of updates that operator
+                description: Channel is a defined series of updates that operator
                   should follow. The operator is configured with a datasource that
                   configures available channels and update paths. If `version` is
                   not specified, then the operator will keep SpiceDB up-to-date with

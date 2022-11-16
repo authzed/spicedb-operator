@@ -1,7 +1,6 @@
 package updates
 
-const Head = ""
-
+// Source models a single stream of updates for an installed version.
 type Source interface {
 	// NextDirect returns the newest version that has an edge and has
 	// no required migrations
@@ -21,7 +20,4 @@ type Source interface {
 	// Source returns a new source that is a subgraph of the current source,
 	// but where `head` is set to `to`
 	Source(to string) (Source, error)
-
-	// Matches returns any ids that match the query
-	Matches(tag, digest, migration, phase string) []string
 }
