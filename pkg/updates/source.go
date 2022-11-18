@@ -24,5 +24,5 @@ type Source interface {
 
 	// Subgraph returns a new Source that is a subgraph of the current source,
 	// but where `head` is set to the provided node.
-	Subgraph(to string) (Source, error)
+	Subgraph(head string) (Source, error)
 }

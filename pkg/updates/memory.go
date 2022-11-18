@@ -65,11 +65,11 @@ func (m *MemorySource) State(id string) State {
 	return m.OrderedNodes[index]
 }
 
-func (m *MemorySource) Subgraph(to string) (Source, error) {
+func (m *MemorySource) Subgraph(head string) (Source, error) {
 	// copy the ordered node list from `to` onward
 	var index int
-	if len(to) > 0 {
-		index = m.Nodes[to]
+	if len(head) > 0 {
+		index = m.Nodes[head]
 	}
 	orderedNodes := make([]State, len(m.OrderedNodes)-index)
 	copy(orderedNodes, m.OrderedNodes[index:len(m.OrderedNodes)])
