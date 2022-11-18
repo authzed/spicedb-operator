@@ -9,10 +9,18 @@ import (
 // Channel is a named series of updates in which we expect to have a path
 // to the "head" of the channel from every node.
 type Channel struct {
-	Name     string            `json:"name"`
+	// Name is the user-facing identifier for a graph of updates.
+	Name string `json:"name"`
+
+	// Metadata contains any additional properties about the channel.
+	// For example, the applicable datastore is stored as metadata.
 	Metadata map[string]string `json:"metadata,omitempty"`
-	Edges    EdgeSet           `json:"edges,omitempty"`
-	Nodes    []State           `json:"nodes,omitempty"`
+
+	// Edges are the transitions between states in the update graph.
+	Edges EdgeSet `json:"edges,omitempty"`
+
+	// Nodes are the possible states in an update graph.
+	Nodes []State `json:"nodes,omitempty"`
 }
 
 // State is a "node" in the channel graph, indicating how to run at that
