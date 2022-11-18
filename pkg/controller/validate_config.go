@@ -120,9 +120,9 @@ func (c *ValidateConfigHandler) getAvailableVersions(ctx context.Context, graph 
 	}
 
 	availableVersions := make([]v1alpha1.SpiceDBVersion, 0)
-	nextDirect := source.NextDirect(version.Name)
-	next := source.Next(version.Name)
-	latest := source.Latest(version.Name)
+	nextDirect := source.NextVersionWithoutMigrations(version.Name)
+	next := source.NextVersion(version.Name)
+	latest := source.LatestVersion(version.Name)
 	if len(nextDirect) > 0 {
 		nextDirectVersion := v1alpha1.SpiceDBVersion{
 			Name:        nextDirect,
@@ -167,7 +167,7 @@ func (c *ValidateConfigHandler) getAvailableVersions(ctx context.Context, graph 
 			logger.V(4).Error(err, "no source found for channel %q, can't compute available versions", c.Name)
 			continue
 		}
-		if next := source.NextDirect(version.Name); len(next) > 0 {
+		if next := source.NextVersionWithoutMigrations(version.Name); len(next) > 0 {
 			availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 				Name:        next,
 				Channel:     c.Name,
@@ -175,7 +175,7 @@ func (c *ValidateConfigHandler) getAvailableVersions(ctx context.Context, graph 
 			})
 			continue
 		}
-		if next := source.Next(version.Name); len(next) > 0 {
+		if next := source.NextVersion(version.Name); len(next) > 0 {
 			availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 				Name:        next,
 				Channel:     c.Name,

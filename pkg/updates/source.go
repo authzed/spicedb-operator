@@ -2,22 +2,27 @@ package updates
 
 // Source models a single stream of updates for an installed version.
 type Source interface {
-	// NextDirect returns the newest version that has an edge and has
-	// no required migrations
-	NextDirect(from string) string
+	// NextVersionWithoutMigrations returns the newest version that has an edge that
+	// does not require any migrations.
+	NextVersionWithoutMigrations(from string) string
 
-	// Next returns the newest version that has an edge (but may include
-	// migrations)
-	Next(from string) string
+	// Next returns the newest version that has an edge.
+	// This version might include migrations.
+	NextVersion(from string) string
 
-	// Latest returns the newest version that has some path through the graph
-	Latest(from string) string
+	// Latest returns the newest version that has some path through the
+	// graph.
+	//
+	// If different from `NextVersion`, that means multiple steps are
+	// required (i.e. a multi-phase migration, or a required stopping point
+	// in a series of updates).
+	LatestVersion(from string) string
 
-	// State returns information about the node,
-	// i.e. what image and migration to run
+	// State returns the information that is required to update to the provided
+	// node.
 	State(id string) State
 
-	// Source returns a new source that is a subgraph of the current source,
-	// but where `head` is set to `to`
-	Source(to string) (Source, error)
+	// Subgraph returns a new Source that is a subgraph of the current source,
+	// but where `head` is set to the provided node.
+	Subgraph(to string) (Source, error)
 }

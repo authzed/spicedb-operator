@@ -23,17 +23,16 @@ type MemorySource struct {
 	Edges EdgeSet
 }
 
-// Next returns the newest version that can be installed in one step.
-func (m *MemorySource) Next(from string) string {
+var _ Source = (*MemorySource)(nil)
+
+func (m *MemorySource) NextVersion(from string) string {
 	if edges, ok := m.Edges[from]; ok && len(edges) > 0 {
 		return edges[len(edges)-1]
 	}
 	return ""
 }
 
-// NextDirect returns the newest version that can be directly installed without
-// running any migrations.
-func (m *MemorySource) NextDirect(from string) (found string) {
+func (m *MemorySource) NextVersionWithoutMigrations(from string) (found string) {
 	initial := m.OrderedNodes[m.Nodes[from]]
 	if to, ok := m.Edges[from]; ok && len(to) > 0 {
 		for _, n := range m.Edges[from] {
@@ -51,10 +50,7 @@ func (m *MemorySource) NextDirect(from string) (found string) {
 	return found
 }
 
-// Latest returns the newest version that can be installed. If different
-// from `Next`, that means multiple steps are required (i.e. a multi-phase
-// migration, or a required stopping point in a series of updates).
-func (m *MemorySource) Latest(id string) string {
+func (m *MemorySource) LatestVersion(id string) string {
 	if len(m.OrderedNodes) == 0 || id == m.OrderedNodes[0].ID {
 		return ""
 	}
@@ -69,7 +65,7 @@ func (m *MemorySource) State(id string) State {
 	return m.OrderedNodes[index]
 }
 
-func (m *MemorySource) Source(to string) (Source, error) {
+func (m *MemorySource) Subgraph(to string) (Source, error) {
 	// copy the ordered node list from `to` onward
 	var index int
 	if len(to) > 0 {
@@ -113,7 +109,7 @@ func (m *MemorySource) validateAllNodesPathToHead() error {
 		}
 		visited := make(map[string]struct{}, 0)
 		// chasing current should lead to head
-		for current := m.Next(n.ID); current != head; current = m.Next(current) {
+		for current := m.NextVersion(n.ID); current != head; current = m.NextVersion(current) {
 			if _, ok := visited[current]; ok {
 				return fmt.Errorf("channel cycle detected: %v", append(maps.Keys(visited), current))
 			}

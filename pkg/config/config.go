@@ -395,7 +395,7 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 	// if spec.version is set, we only use the subset of the update graph that
 	// leads to that version
 	if len(version) > 0 {
-		updateSource, err = updateSource.Source(version)
+		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
 			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
 			return
@@ -404,7 +404,7 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 
 	var targetVersion string
 	if currentVersion != nil && len(currentVersion.Name) > 0 {
-		targetVersion = updateSource.Next(currentVersion.Name)
+		targetVersion = updateSource.NextVersion(currentVersion.Name)
 		if len(targetVersion) == 0 {
 			// no next version, use the current state
 			state = currentState
@@ -413,7 +413,8 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 		}
 	} else {
 		// no current version, install head
-		targetVersion = updateSource.Latest("")
+		// todo(jzelinskie): should this use the constant Head instead?
+		targetVersion = updateSource.LatestVersion("")
 	}
 
 	// if we found the next step to take, return it

@@ -237,28 +237,28 @@ func TestMemorySource(t *testing.T) {
 				require.Contains(t, err.Error(), tt.newErr)
 			}
 			for id, want := range tt.expectedForID {
-				t.Run(fmt.Sprintf("Next(%s)", id), func(t *testing.T) {
-					require.Equal(t, want.next, m.Next(id))
+				t.Run(fmt.Sprintf("NextVersion(%s)", id), func(t *testing.T) {
+					require.Equal(t, want.next, m.NextVersion(id))
 				})
-				t.Run(fmt.Sprintf("NextDirect(%s)", id), func(t *testing.T) {
-					require.Equal(t, want.nextDirect, m.NextDirect(id))
+				t.Run(fmt.Sprintf("NextVersionWithoutMigrations(%s)", id), func(t *testing.T) {
+					require.Equal(t, want.nextDirect, m.NextVersionWithoutMigrations(id))
 				})
-				t.Run(fmt.Sprintf("Latest(%s)", id), func(t *testing.T) {
-					require.Equal(t, want.latest, m.Latest(id))
+				t.Run(fmt.Sprintf("LatestVersion(%s)", id), func(t *testing.T) {
+					require.Equal(t, want.latest, m.LatestVersion(id))
 				})
 			}
 			for newHead, expected := range tt.expectedForSubgraphWithHead {
-				s, err := m.Source(newHead)
+				s, err := m.Subgraph(newHead)
 				require.NoError(t, err)
 				for id, want := range expected {
-					t.Run(fmt.Sprintf("head=%s,Next(%s)", newHead, id), func(t *testing.T) {
-						require.Equal(t, want.next, s.Next(id))
+					t.Run(fmt.Sprintf("head=%s,NextVersion(%s)", newHead, id), func(t *testing.T) {
+						require.Equal(t, want.next, s.NextVersion(id))
 					})
-					t.Run(fmt.Sprintf("head=%s,NextDirect(%s)", newHead, id), func(t *testing.T) {
-						require.Equal(t, want.nextDirect, s.NextDirect(id))
+					t.Run(fmt.Sprintf("head=%s,NextVersionWithoutMigrations(%s)", newHead, id), func(t *testing.T) {
+						require.Equal(t, want.nextDirect, s.NextVersionWithoutMigrations(id))
 					})
-					t.Run(fmt.Sprintf("head=%s,Latest(%s)", newHead, id), func(t *testing.T) {
-						require.Equal(t, want.latest, s.Latest(id))
+					t.Run(fmt.Sprintf("head=%s,LatestVersion(%s)", newHead, id), func(t *testing.T) {
+						require.Equal(t, want.latest, s.LatestVersion(id))
 					})
 				}
 			}
