@@ -120,21 +120,22 @@ func (c *ValidateConfigHandler) getAvailableVersions(ctx context.Context, graph 
 	}
 
 	availableVersions := make([]v1alpha1.SpiceDBVersion, 0)
-	nextDirect := source.NextVersionWithoutMigrations(version.Name)
-	next := source.NextVersion(version.Name)
+	nextWithoutMigrations := source.NextVersionWithoutMigrations(version.Name)
 	latest := source.LatestVersion(version.Name)
-	if len(nextDirect) > 0 {
+	if len(nextWithoutMigrations) > 0 {
 		nextDirectVersion := v1alpha1.SpiceDBVersion{
-			Name:        nextDirect,
+			Name:        nextWithoutMigrations,
 			Channel:     version.Channel,
 			Description: "direct update with no migrations",
 		}
-		if nextDirect == latest {
+		if nextWithoutMigrations == latest {
 			nextDirectVersion.Description += ", head of channel"
 		}
 		availableVersions = append(availableVersions, nextDirectVersion)
 	}
-	if len(next) > 0 && next != nextDirect {
+
+	next := source.NextVersion(version.Name)
+	if len(next) > 0 && next != nextWithoutMigrations {
 		nextVersion := v1alpha1.SpiceDBVersion{
 			Name:        next,
 			Channel:     version.Channel,
@@ -145,7 +146,7 @@ func (c *ValidateConfigHandler) getAvailableVersions(ctx context.Context, graph 
 		}
 		availableVersions = append(availableVersions, nextVersion)
 	}
-	if len(latest) > 0 && next != latest && nextDirect != latest {
+	if len(latest) > 0 && next != latest && nextWithoutMigrations != latest {
 		availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 			Name:        latest,
 			Channel:     version.Channel,
