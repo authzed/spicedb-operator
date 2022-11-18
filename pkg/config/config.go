@@ -340,13 +340,11 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 
 	// use the default base image from the global config if none is set
 	if len(baseImage) == 0 {
+		if len(globalConfig.ImageName) == 0 {
+			err = fmt.Errorf("no base image in operator config, and none specified in image")
+			return
+		}
 		baseImage = globalConfig.ImageName
-	}
-
-	// error if we can't figure out a base image
-	if len(baseImage) == 0 {
-		err = fmt.Errorf("no base image in operator config, and none specified in image")
-		return
 	}
 
 	// default to spec.channel, or if undefined, status.version.channel
@@ -354,8 +352,9 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 	if len(channel) == 0 && currentVersion != nil {
 		channel = currentVersion.Channel
 	}
-	// if there's no spec.channel and no status.version.channel, pick a default
-	// based on the configured datastore
+
+	// If there's no spec.channel and no status.version.channel, pick a default
+	// based on the configured datastore.
 	if len(channel) == 0 {
 		channel, err = globalConfig.ChannelForDatastore(engine)
 		if err != nil {
@@ -413,7 +412,7 @@ func computeTargets(image, version, channel, engine string, currentVersion *v1al
 		}
 	} else {
 		// no current version, install head
-		// todo(jzelinskie): should this use the constant Head instead?
+		// TODO(jzelinskie): find a way to make this less "magical"
 		targetVersion = updateSource.LatestVersion("")
 	}
 
