@@ -122,37 +122,21 @@ type ClusterStatus struct {
 }
 
 func (s ClusterStatus) Equals(other ClusterStatus) bool {
-	if s.ObservedGeneration != other.ObservedGeneration {
+	switch {
+	case s.ObservedGeneration == other.ObservedGeneration &&
+		s.TargetMigrationHash == other.TargetMigrationHash &&
+		s.CurrentMigrationHash == other.TargetMigrationHash &&
+		s.SecretHash == other.SecretHash &&
+		s.Image == other.Image &&
+		s.Migration == other.Migration &&
+		s.Phase == other.Phase &&
+		s.CurrentVersion.Equals(other.CurrentVersion) &&
+		slices.Equal(s.AvailableVersions, other.AvailableVersions) &&
+		slices.Equal(s.Conditions, other.Conditions):
+		return true
+	default:
 		return false
 	}
-	if s.TargetMigrationHash != other.TargetMigrationHash {
-		return false
-	}
-	if s.CurrentMigrationHash != other.CurrentMigrationHash {
-		return false
-	}
-	if s.SecretHash != other.SecretHash {
-		return false
-	}
-	if s.Image != other.Image {
-		return false
-	}
-	if s.Migration != other.Migration {
-		return false
-	}
-	if s.Phase != other.Phase {
-		return false
-	}
-	if !s.CurrentVersion.Equals(other.CurrentVersion) {
-		return false
-	}
-	if !slices.Equal(s.AvailableVersions, other.AvailableVersions) {
-		return false
-	}
-	if !slices.Equal(s.Conditions, other.Conditions) {
-		return false
-	}
-	return true
 }
 
 type SpiceDBVersion struct {
