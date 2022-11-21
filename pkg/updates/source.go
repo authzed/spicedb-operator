@@ -13,6 +13,8 @@ type Source interface {
 	// Latest returns the newest version that has some path through the
 	// graph.
 	//
+	// If no path exists, returns the empty string.
+	//
 	// If different from `NextVersion`, that means multiple steps are
 	// required (i.e. a multi-phase migration, or a required stopping point
 	// in a series of updates).
