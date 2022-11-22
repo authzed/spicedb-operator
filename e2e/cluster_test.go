@@ -40,6 +40,7 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
 var (
@@ -306,6 +307,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			defer watchCancel()
 			Watch(watchCtx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: name, Namespace: namespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
 				condition = c.FindStatusCondition("Migrating")
+				GinkgoWriter.Println(c.Status)
 				return condition == nil
 			})
 			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, migration)))
@@ -440,7 +442,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				condition := c.FindStatusCondition("ValidatingFailed")
 				if condition != nil {
 					foundValidationFailed = true
-					Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, secret must be provided]"))))
+					Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, secret must be provided]"))))
 					break
 				}
 			}
@@ -642,6 +644,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					config := map[string]any{
 						"datastoreEngine": dsDef.datastoreEngine,
 						"envPrefix":       spicedbEnvPrefix,
+						"image":           "spicedb:dev",
 						"cmd":             spicedbCmd,
 					}
 					for k, v := range dsDef.passthroughConfig {
@@ -723,6 +726,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					config, err := json.Marshal(map[string]any{
 						"skipMigrations":  true,
 						"datastoreEngine": dsDef.datastoreEngine,
+						"image":           "spicedb:dev",
 						"envPrefix":       spicedbEnvPrefix,
 						"cmd":             spicedbCmd,
 					})
@@ -772,6 +776,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						"datastoreEngine":              dsDef.datastoreEngine,
 						"envPrefix":                    spicedbEnvPrefix,
 						"cmd":                          spicedbCmd,
+						"image":                        "spicedb:dev",
 						"tlsSecretName":                "spicedb-grpc-tls",
 						"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
 					}
@@ -853,47 +858,6 @@ var _ = Describe("SpiceDBClusters", func() {
 								return spiceCluster.Namespace, spiceCluster.Name
 							})
 						})
-
-						When("the image name/tag are updated", Ordered, func() {
-							var imageName string
-
-							BeforeAll(func() {
-								newConfig := config.OperatorConfig{
-									ImageTag:  "updated",
-									ImageName: "spicedb",
-								}
-								imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
-								WriteConfig(newConfig)
-							})
-
-							AfterAll(func() {
-								newConfig := config.OperatorConfig{
-									ImageName: "spicedb",
-									ImageTag:  "dev",
-								}
-								imageName = strings.Join([]string{newConfig.ImageName, newConfig.ImageTag}, ":")
-								WriteConfig(newConfig)
-							})
-
-							It("migrates to the latest version", func() {
-								AssertMigrationsCompleted(imageName, "", "",
-									func() (string, string, string) {
-										return spiceCluster.Namespace, spiceCluster.Name, dsDef.datastoreEngine
-									})
-							})
-
-							It("updates the deployment", func() {
-								AssertHealthySpiceDBCluster(imageName, func() (string, string) {
-									return spiceCluster.Namespace, spiceCluster.Name
-								}, Not(ContainSubstring("ERROR: kuberesolver")))
-							})
-
-							It("deletes the migration job", func() {
-								AssertMigrationJobCleanup(func() (string, string) {
-									return spiceCluster.Namespace, spiceCluster.Name
-								})
-							})
-						})
 					})
 				})
 			})
@@ -953,23 +917,36 @@ var _ = Describe("SpiceDBClusters", func() {
 			DeferCleanup(cancel)
 
 			newConfig := config.OperatorConfig{
-				AllowedTags: []string{"v1.13.0", "dev", "updated"},
-				AllowedImages: []string{
-					"ghcr.io/authzed/spicedb",
-					"spicedb",
+				ImageName: "ghcr.io/authzed/spicedb",
+				UpdateGraph: updates.UpdateGraph{
+					Channels: []updates.Channel{
+						{
+							Name:     "postgres",
+							Metadata: map[string]string{"datastore": "postgres"},
+							Nodes: []updates.State{
+								{ID: "v1.14.1", Tag: "v1.14.1", Migration: "drop-id-constraints"},
+								{ID: "v1.14.0", Tag: "v1.14.0", Migration: "drop-id-constraints"},
+								{ID: "v1.14.0-phase2", Tag: "v1.14.0", Migration: "add-xid-constraints", Phase: "write-both-read-new"},
+								{ID: "v1.14.0-phase1", Tag: "v1.14.0", Migration: "add-xid-columns", Phase: "write-both-read-old"},
+								{ID: "v1.13.0", Tag: "v1.13.0", Migration: "add-ns-config-id"},
+							},
+							Edges: map[string][]string{
+								"v1.13.0":        {"v1.14.0-phase1"},
+								"v1.14.0-phase1": {"v1.14.0-phase2"},
+								"v1.14.0-phase2": {"v1.14.0"},
+								"v1.14.0":        {"v1.14.1"},
+							},
+						},
+					},
 				},
-				UpdateGraph: config.NewUpdateGraph(),
 			}
 			WriteConfig(newConfig)
 
 			classConfig := map[string]any{
 				"logLevel":                     "debug",
 				"datastoreEngine":              "postgres",
-				"envPrefix":                    spicedbEnvPrefix,
-				"cmd":                          spicedbCmd,
 				"tlsSecretName":                "spicedb4-grpc-tls",
 				"dispatchUpstreamCASecretName": "spicedb4-grpc-tls",
-				"image":                        "spicedb:v1.13.0",
 			}
 			jsonConfig, err := json.Marshal(classConfig)
 			Expect(err).To(BeNil())
@@ -983,6 +960,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					Namespace: testNamespace,
 				},
 				Spec: v1alpha1.ClusterSpec{
+					Version:   "v1.13.0",
 					Config:    jsonConfig,
 					SecretRef: "spicedb4",
 				},
@@ -1016,7 +994,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
 			Expect(err).To(Succeed())
 
-			AssertMigrationsCompleted("spicedb:v1.13.0", "head", "",
+			AssertMigrationsCompleted("ghcr.io/authzed/spicedb:v1.13.0", "add-ns-config-id", "",
 				func() (string, string, string) {
 					return spiceCluster.Namespace, spiceCluster.Name, "postgres"
 				})
@@ -1027,21 +1005,24 @@ var _ = Describe("SpiceDBClusters", func() {
 				fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
 				g.Expect(err).To(Succeed())
 				g.Expect(len(fetched.Status.Conditions)).To(BeZero())
+				GinkgoWriter.Println(fetched.Status)
+				g.Expect(len(fetched.Status.AvailableVersions)).ToNot(BeZero(), "status should show available updates")
 			}).Should(Succeed())
 
-			// once the cluster is running at the initial version,
-			init := config.SpiceDBMigrationState{Tag: "v1.13.0", Migration: "add-ns-config-id"}
-			phase1 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-columns", Phase: "write-both-read-old"}
-			phase2 := config.SpiceDBMigrationState{Tag: "dev", Migration: "add-xid-constraints", Phase: "write-both-read-new"}
-			phase3 := config.SpiceDBMigrationState{Tag: "dev", Migration: "drop-id-constraints"}
-			phase4 := config.SpiceDBMigrationState{Tag: "updated"}
+			// once the cluster is running at the initial version, update the target version
+			Eventually(func(g Gomega) {
+				clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Get(ctx, spiceCluster.Name, metav1.GetOptions{})
+				g.Expect(err).To(Succeed())
+				fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(fetched.Status.Conditions)).To(BeZero())
 
-			newConfig.AddHeadMigration(config.SpiceDBDatastoreState{Tag: "v1.13.0", Datastore: "postgres"}, "add-ns-config-id")
-			newConfig.AddEdge(init, phase1)
-			newConfig.AddEdge(phase1, phase2)
-			newConfig.AddEdge(phase2, phase3)
-			newConfig.AddEdge(phase3, phase4)
-			WriteConfig(newConfig)
+				fetched.Spec.Version = "v1.14.1"
+				u, err = runtime.DefaultUnstructuredConverter.ToUnstructured(fetched)
+				Expect(err).To(Succeed())
+				_, err = client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: u}, metav1.UpdateOptions{})
+				Expect(err).To(Succeed())
+			}).Should(Succeed())
 		})
 
 		AfterAll(func() {
@@ -1050,7 +1031,6 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			newConfig := config.OperatorConfig{
 				ImageName: "spicedb",
-				ImageTag:  "dev",
 			}
 			WriteConfig(newConfig)
 
@@ -1061,31 +1041,31 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		When("there is a series of required migrations", Ordered, func() {
 			It("migrates to phase1", func() {
-				AssertMigrationsCompleted("spicedb:dev", "add-xid-columns", "write-both-read-old",
+				AssertMigrationsCompleted("ghcr.io/authzed/spicedb:v1.14.0", "add-xid-columns", "write-both-read-old",
 					func() (string, string, string) {
 						return spiceCluster.Namespace, spiceCluster.Name, "postgres"
 					})
 			})
 
 			It("migrates to phase2", func() {
-				AssertMigrationsCompleted("spicedb:dev", "add-xid-constraints", "write-both-read-new",
+				AssertMigrationsCompleted("ghcr.io/authzed/spicedb:v1.14.0", "add-xid-constraints", "write-both-read-new",
 					func() (string, string, string) {
 						return spiceCluster.Namespace, spiceCluster.Name, "postgres"
 					})
 			})
 
 			It("migrates to phase3", func() {
-				AssertMigrationsCompleted("spicedb:dev", "drop-id-constraints", "",
+				AssertMigrationsCompleted("ghcr.io/authzed/spicedb:v1.14.0", "drop-id-constraints", "",
 					func() (string, string, string) {
 						return spiceCluster.Namespace, spiceCluster.Name, "postgres"
 					})
 			})
 
-			It("migrates to phase4", func() {
-				AssertMigrationsCompleted("spicedb:updated", "", "",
-					func() (string, string, string) {
-						return spiceCluster.Namespace, spiceCluster.Name, "postgres"
-					})
+			It("updates to the next version", func() {
+				AssertHealthySpiceDBCluster("ghcr.io/authzed/spicedb:v1.14.1",
+					func() (string, string) {
+						return spiceCluster.Namespace, spiceCluster.Name
+					}, Not(ContainSubstring("ERROR: kuberesolver")))
 			})
 		})
 	})

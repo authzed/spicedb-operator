@@ -75,16 +75,11 @@ jobs:
           file: "spicedb/Dockerfile"
           tags: "spicedb:dev,spicedb:updated"
           outputs: "type=docker,dest=/tmp/image.tar"
-      - name: "Tag Test v1.13.0 image"
-        run: |
-          docker pull ghcr.io/authzed/spicedb:v1.13.0
-          docker tag ghcr.io/authzed/spicedb:v1.13.0 spicedb:v1.13.0
       - name: "Run Ginkgo Tests"
         run: "go run github.com/onsi/ginkgo/v2/ginkgo --skip-package ./spicedb --tags=e2e -r --procs=2 -v --randomize-all --randomize-suites --fail-on-pending --fail-fast --no-color --race --trace --json-report=report.json -- -v=4"
         env:
           PROVISION: "true"
           ARCHIVES: "/tmp/image.tar"
-          IMAGES: "spicedb:v1.13.0"
       - uses: "docker/build-push-action@v2"
         with:
           context: "./"

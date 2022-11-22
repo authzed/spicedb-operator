@@ -1,21 +1,653 @@
-allowedImages:
-- ghcr.io/authzed/spicedb
-- authzed/spicedb
-- quay.io/authzed/spicedb
-allowedTags:
-- v1.11.0
-- v1.10.0
-- v1.9.0
-- v1.8.0
-- v1.7.1
-- v1.7.0
-- v1.6.0
-- v1.5.0
-- v1.4.0
-- v1.3.0
-- v1.2.0
-- v1.1.0
-- v1.0.0
-disableImageValidation: false
+channels:
+- edges:
+    v1.0.0:
+    - v1.1.0
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.1.0:
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.2.0:
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.3.0:
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.4.0:
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.5.0:
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.6.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.7.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.7.1:
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.8.0:
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.9.0:
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.10.0:
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.11.0:
+    - v1.12.0
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.12.0:
+    - v1.13.0
+    - v1.14.0-phase1
+    v1.13.0:
+    - v1.14.0-phase1
+    v1.14.0:
+    - v1.14.1
+    v1.14.0-phase1:
+    - v1.14.0-phase2
+    v1.14.0-phase2:
+    - v1.14.0
+  metadata:
+    datastore: postgres
+  name: postgres
+  nodes:
+  - id: v1.14.1
+    migration: drop-id-constraints
+    tag: v1.14.1
+  - id: v1.14.0
+    migration: drop-id-constraints
+    tag: v1.14.0
+  - id: v1.14.0-phase2
+    migration: add-xid-constraints
+    phase: write-both-read-new
+    tag: v1.14.0
+  - id: v1.14.0-phase1
+    migration: add-xid-columns
+    phase: write-both-read-old
+    tag: v1.14.0
+  - id: v1.13.0
+    migration: add-ns-config-id
+    tag: v1.13.0
+  - id: v1.12.0
+    migration: add-ns-config-id
+    tag: v1.12.0
+  - id: v1.11.0
+    migration: add-ns-config-id
+    tag: v1.11.0
+  - id: v1.10.0
+    migration: add-ns-config-id
+    tag: v1.10.0
+  - id: v1.9.0
+    migration: add-unique-datastore-id
+    tag: v1.9.0
+  - id: v1.8.0
+    migration: add-unique-datastore-id
+    tag: v1.8.0
+  - id: v1.7.1
+    migration: add-unique-datastore-id
+    tag: v1.7.1
+  - id: v1.7.0
+    migration: add-unique-datastore-id
+    tag: v1.7.0
+  - id: v1.6.0
+    migration: add-unique-datastore-id
+    tag: v1.6.0
+  - id: v1.5.0
+    migration: add-transaction-timestamp-index
+    tag: v1.5.0
+  - id: v1.4.0
+    migration: add-transaction-timestamp-index
+    tag: v1.4.0
+  - id: v1.3.0
+    migration: add-transaction-timestamp-index
+    tag: v1.3.0
+  - id: v1.2.0
+    migration: add-transaction-timestamp-index
+    tag: v1.2.0
+  - id: v1.1.0
+    migration: add-transaction-timestamp-index
+    tag: v1.1.0
+  - id: v1.0.0
+    migration: add-unique-living-ns
+    tag: v1.0.0
+- edges:
+    v1.0.0:
+    - v1.1.0
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.1.0:
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.2.0:
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.3.0:
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.4.0:
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.5.0:
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.6.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.7.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.7.1:
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.8.0:
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.9.0:
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.10.0:
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.11.0:
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.12.0:
+    - v1.13.0
+    - v1.14.1
+    v1.13.0:
+    - v1.14.1
+    v1.14.0:
+    - v1.14.1
+  metadata:
+    datastore: cockroachdb
+  name: cockroachdb
+  nodes:
+  - id: v1.14.1
+    migration: add-caveats
+    tag: v1.14.1
+  - id: v1.14.0
+    migration: add-caveats
+    tag: v1.14.0
+  - id: v1.13.0
+    migration: add-metadata-and-counters
+    tag: v1.13.0
+  - id: v1.12.0
+    migration: add-metadata-and-counters
+    tag: v1.12.0
+  - id: v1.11.0
+    migration: add-metadata-and-counters
+    tag: v1.11.0
+  - id: v1.10.0
+    migration: add-metadata-and-counters
+    tag: v1.10.0
+  - id: v1.9.0
+    migration: add-metadata-and-counters
+    tag: v1.9.0
+  - id: v1.8.0
+    migration: add-metadata-and-counters
+    tag: v1.8.0
+  - id: v1.7.1
+    migration: add-metadata-and-counters
+    tag: v1.7.1
+  - id: v1.7.0
+    migration: add-metadata-and-counters
+    tag: v1.7.0
+  - id: v1.6.0
+    migration: add-metadata-and-counters
+    tag: v1.6.0
+  - id: v1.5.0
+    migration: add-transactions-table
+    tag: v1.5.0
+  - id: v1.4.0
+    migration: add-transactions-table
+    tag: v1.4.0
+  - id: v1.3.0
+    migration: add-transactions-table
+    tag: v1.3.0
+  - id: v1.2.0
+    migration: add-transactions-table
+    tag: v1.2.0
+  - id: v1.1.0
+    migration: add-transactions-table
+    tag: v1.1.0
+  - id: v1.0.0
+    migration: add-transactions-table
+    tag: v1.0.0
+- edges:
+    v1.7.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.7.1:
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.8.0:
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.9.0:
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.10.0:
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.11.0:
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.12.0:
+    - v1.13.0
+    - v1.14.1
+    v1.13.0:
+    - v1.14.1
+    v1.14.0:
+    - v1.14.1
+  metadata:
+    datastore: mysql
+  name: mysql
+  nodes:
+  - id: v1.14.1
+    migration: add-caveats
+    tag: v1.14.1
+  - id: v1.14.0
+    migration: add-caveats
+    tag: v1.14.0
+  - id: v1.13.0
+    migration: add_ns_config_id
+    tag: v1.13.0
+  - id: v1.12.0
+    migration: add_ns_config_id
+    tag: v1.12.0
+  - id: v1.11.0
+    migration: add_ns_config_id
+    tag: v1.11.0
+  - id: v1.10.0
+    migration: add_ns_config_id
+    tag: v1.10.0
+  - id: v1.9.0
+    migration: add_unique_datastore_id
+    tag: v1.9.0
+  - id: v1.8.0
+    migration: add_unique_datastore_id
+    tag: v1.8.0
+  - id: v1.7.1
+    migration: add_unique_datastore_id
+    tag: v1.7.1
+  - id: v1.7.0
+    migration: add_unique_datastore_id
+    tag: v1.7.0
+- edges:
+    v1.0.0:
+    - v1.1.0
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.1.0:
+    - v1.2.0
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.2.0:
+    - v1.3.0
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.3.0:
+    - v1.4.0
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.4.0:
+    - v1.5.0
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.5.0:
+    - v1.6.0
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.6.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.7.0:
+    - v1.7.1
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.7.1:
+    - v1.8.0
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.8.0:
+    - v1.9.0
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.9.0:
+    - v1.10.0
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.10.0:
+    - v1.11.0
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.11.0:
+    - v1.12.0
+    - v1.13.0
+    - v1.14.1
+    v1.12.0:
+    - v1.13.0
+    - v1.14.1
+    v1.13.0:
+    - v1.14.1
+    v1.14.0:
+    - v1.14.1
+  metadata:
+    datastore: spanner
+  name: spanner
+  nodes:
+  - id: v1.14.1
+    migration: add-caveats
+    tag: v1.14.1
+  - id: v1.14.0
+    migration: add-caveats
+    tag: v1.14.0
+  - id: v1.13.0
+    migration: add-metadata-and-counters
+    tag: v1.13.0
+  - id: v1.12.0
+    migration: add-metadata-and-counters
+    tag: v1.12.0
+  - id: v1.11.0
+    migration: add-metadata-and-counters
+    tag: v1.11.0
+  - id: v1.10.0
+    migration: add-metadata-and-counters
+    tag: v1.10.0
+  - id: v1.9.0
+    migration: add-metadata-and-counters
+    tag: v1.9.0
+  - id: v1.8.0
+    migration: add-metadata-and-counters
+    tag: v1.8.0
+  - id: v1.7.1
+    migration: add-metadata-and-counters
+    tag: v1.7.1
+  - id: v1.7.0
+    migration: add-metadata-and-counters
+    tag: v1.7.0
+  - id: v1.6.0
+    migration: add-metadata-and-counters
+    tag: v1.6.0
+  - id: v1.5.0
+    migration: initial
+    tag: v1.5.0
+  - id: v1.4.0
+    migration: initial
+    tag: v1.4.0
+  - id: v1.3.0
+    migration: initial
+    tag: v1.3.0
+  - id: v1.2.0
+    migration: initial
+    tag: v1.2.0
+  - id: v1.1.0
+    migration: initial
+    tag: v1.1.0
+  - id: v1.0.0
+    migration: initial
+    tag: v1.0.0
 imageName: ghcr.io/authzed/spicedb
-imageTag: v1.11.0

@@ -9,6 +9,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
+
+	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
 func TestToEnvVarName(t *testing.T) {
@@ -34,13 +37,14 @@ func TestToEnvVarName(t *testing.T) {
 
 func TestNewConfig(t *testing.T) {
 	type args struct {
-		nn           types.NamespacedName
-		uid          types.UID
-		currentState *SpiceDBMigrationState
-		globalConfig OperatorConfig
-		rawConfig    json.RawMessage
-		secret       *corev1.Secret
-		rolling      bool
+		nn               types.NamespacedName
+		uid              types.UID
+		version, channel string
+		currentVersion   *v1alpha1.SpiceDBVersion
+		globalConfig     OperatorConfig
+		rawConfig        json.RawMessage
+		secret           *corev1.Secret
+		rolling          bool
 	}
 	tests := []struct {
 		name         string
@@ -55,8 +59,7 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -66,6 +69,8 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantErrs: []error{
 				fmt.Errorf("datastoreEngine is a required field"),
+				fmt.Errorf("couldn't find channel for datastore \"\": %w", fmt.Errorf("no channel found for datastore \"\"")),
+				fmt.Errorf("no update found in channel"),
 				fmt.Errorf("secret must be provided"),
 			},
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
@@ -76,8 +81,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -95,10 +111,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -123,8 +143,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "memory",
+								Metadata: map[string]string{"datastore": "memory"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -141,10 +172,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "memory",
 					DatastoreURI:       "",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "memory",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -164,18 +199,17 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "set supported image",
+			name: "set image with tag explicitly",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image", "image2"},
+					ImageName: "image",
 				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
-						"image": "image2"
+						"image": "adifferentimage:tag"
 					}
 				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
@@ -189,7 +223,7 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image2",
+					TargetSpiceDBImage: "adifferentimage:tag",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
@@ -212,19 +246,17 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "set supported tag",
+			name: "set image with digest explicitly",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image", "other"},
-					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
+					ImageName: "image",
 				},
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
-						"image": "other:tag"
+						"image": "adifferentimage@sha256:abc"
 					}
 				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
@@ -238,313 +270,7 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "other:tag",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set supported digest",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image", "other"},
-					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "other@sha256:abc"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "other@sha256:abc",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set supported tagless digest",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image", "other"},
-					AllowedTags:   []string{"tag", "tag2", "tag3@sha256:abc", "sha256:abcd"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "other@sha256:abcd"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "other@sha256:abcd",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set an unsupported image",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
-					AllowedTags:   []string{"tag"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "otherImage:tag"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{
-				fmt.Errorf(`"otherImage:tag" invalid: "otherImage" is not in the configured list of allowed images`),
-				fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\""),
-			},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "otherImage:tag",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set an unsupported tag",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
-					AllowedTags:   []string{"taggood", "taggood@sha256:abcd"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "image:tagbad"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{
-				fmt.Errorf(`"image:tagbad" invalid: "tagbad" is not in the configured list of allowed tags`),
-				fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\""),
-			},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image:tagbad",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set an unsupported digest",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
-					AllowedTags:   []string{"taggood", "taggood@sha256:abcd"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "image@sha256:1234"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{
-				fmt.Errorf(`"image@sha256:1234" invalid: "sha256:1234" is not in the configured list of allowed digests`),
-				fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\""),
-			},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image@sha256:1234",
-					EnvPrefix:          "SPICEDB",
-					SpiceDBCmd:         "spicedb",
-					TargetMigration:    "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "set an unsupported image with validation disabled",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					DisableImageValidation: true,
-					ImageName:              "image",
-					AllowedImages:          []string{"image"},
-					AllowedTags:            []string{"tag"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"image": "otherImage:otherTag"
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{
-				fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\""),
-			},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:  "debug",
-					DatastoreEngine:    "cockroachdb",
-					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "otherImage:otherTag",
+					TargetSpiceDBImage: "adifferentimage@sha256:abc",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
@@ -572,8 +298,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -592,10 +329,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -620,8 +361,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -640,10 +392,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -668,8 +424,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -688,10 +455,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -720,8 +491,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -743,10 +525,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -770,13 +556,154 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "skip migrations bool",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": true	
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "debug",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:v1",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: true,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
+			name: "skip migrations string",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "debug",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:v1",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: true,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
+		{
 			name: "set extra annotations as string",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -795,10 +722,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -827,8 +758,19 @@ func TestNewConfig(t *testing.T) {
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -850,10 +792,14 @@ func TestNewConfig(t *testing.T) {
 					MigrationLogLevel:  "debug",
 					DatastoreEngine:    "cockroachdb",
 					DatastoreURI:       "uri",
-					TargetSpiceDBImage: "image",
+					TargetSpiceDBImage: "image:v1",
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "info",
@@ -877,113 +823,24 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "skip migrations bool",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": true	
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:      "debug",
-					DatastoreEngine:        "cockroachdb",
-					DatastoreURI:           "uri",
-					SpannerCredsSecretRef:  "",
-					TargetSpiceDBImage:     "image",
-					EnvPrefix:              "SPICEDB",
-					SpiceDBCmd:             "spicedb",
-					DatastoreTLSSecretName: "",
-					TargetMigration:        "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: true,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
-			name: "skip migrations string",
-			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
-					}
-				`),
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
-				}},
-			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
-			want: &Config{
-				MigrationConfig: MigrationConfig{
-					MigrationLogLevel:      "debug",
-					DatastoreEngine:        "cockroachdb",
-					DatastoreURI:           "uri",
-					SpannerCredsSecretRef:  "",
-					TargetSpiceDBImage:     "image",
-					EnvPrefix:              "SPICEDB",
-					SpiceDBCmd:             "spicedb",
-					DatastoreTLSSecretName: "",
-					TargetMigration:        "head",
-				},
-				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: true,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
-					Passthrough: map[string]string{
-						"datastoreEngine":        "cockroachdb",
-						"dispatchClusterEnabled": "true",
-					},
-				},
-			},
-		},
-		{
 			name: "set different migration and spicedb log level",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					AllowedImages: []string{"image"},
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
@@ -1005,11 +862,15 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:        "cockroachdb",
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
-					TargetSpiceDBImage:     "image",
+					TargetSpiceDBImage:     "image:v1",
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
 					TargetMigration:        "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
@@ -1029,34 +890,31 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "required edge different from input image",
+			name: "update graph pushes the current version forward",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
 				globalConfig: OperatorConfig{
-					ImageName:     "image",
-					ImageTag:      "init",
-					AllowedImages: []string{"image"},
-					AllowedTags:   []string{"init", "tag", "tag2"},
-					UpdateGraph: NewUpdateGraph().AddEdge(SpiceDBMigrationState{
-						Tag:       "init",
-						Migration: "head",
-					}, SpiceDBMigrationState{
-						Tag:       "tag",
-						Migration: "migration",
-						Phase:     "phase",
-					}),
-				},
-				currentState: &SpiceDBMigrationState{
-					Tag: "init",
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v2", Tag: "v2", Migration: "migration1", Phase: "phase1"},
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {"v2"}},
+							},
+						},
+					},
 				},
 				rawConfig: json.RawMessage(`
 					{
 						"logLevel": "debug",
-						"image": "image:init",
 						"migrationLogLevel": "info",
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"datastoreEngine": "cockroachdb"
 					}
 				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
@@ -1071,16 +929,20 @@ func TestNewConfig(t *testing.T) {
 					DatastoreEngine:        "cockroachdb",
 					DatastoreURI:           "uri",
 					SpannerCredsSecretRef:  "",
-					TargetSpiceDBImage:     "image:tag",
+					TargetSpiceDBImage:     "image:v2",
 					EnvPrefix:              "SPICEDB",
 					SpiceDBCmd:             "spicedb",
 					DatastoreTLSSecretName: "",
-					TargetMigration:        "migration",
-					TargetPhase:            "phase",
+					TargetMigration:        "migration1",
+					TargetPhase:            "phase1",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v2",
+						Channel: "cockroachdb",
+					},
 				},
 				SpiceConfig: SpiceConfig{
 					LogLevel:       "debug",
-					SkipMigrations: true,
+					SkipMigrations: false,
 					Name:           "test",
 					Namespace:      "test",
 					UID:            "1",
@@ -1090,7 +952,154 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:     "spicedb",
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
-						"datastoreMigrationPhase": "phase",
+						"datastoreMigrationPhase": "phase1",
+						"dispatchClusterEnabled":  "true",
+					},
+				},
+			},
+		},
+		{
+			name: "explicit channel and version, updates to the next in the channel",
+			args: args{
+				nn:      types.NamespacedName{Namespace: "test", Name: "test"},
+				uid:     types.UID("1"),
+				channel: "cockroachdb",
+				version: "v2",
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v2", Tag: "v2", Migration: "migration1", Phase: "phase1"},
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {"v2"}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "info",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:v2",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "migration1",
+					TargetPhase:            "phase1",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v2",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "debug",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":         "cockroachdb",
+						"datastoreMigrationPhase": "phase1",
+						"dispatchClusterEnabled":  "true",
+					},
+				},
+			},
+		},
+		{
+			name: "explicit channel and version, doesn't update past the explicit version",
+			args: args{
+				nn:      types.NamespacedName{Namespace: "test", Name: "test"},
+				uid:     types.UID("1"),
+				channel: "cockroachdb",
+				version: "v2",
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v3", Tag: "v3", Migration: "migration2", Phase: "phase2"},
+									{ID: "v2", Tag: "v2", Migration: "migration1", Phase: "phase1"},
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {"v2", "v3"}, "v2": {"v3"}},
+							},
+						},
+					},
+				},
+				currentVersion: &v1alpha1.SpiceDBVersion{
+					Name:    "v2",
+					Channel: "cockroachdb",
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "info",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:v2",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "migration1",
+					TargetPhase:            "phase1",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v2",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "debug",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":         "cockroachdb",
+						"datastoreMigrationPhase": "phase1",
 						"dispatchClusterEnabled":  "true",
 					},
 				},
@@ -1100,10 +1109,11 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.currentState, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
-			require.Equal(t, tt.want, got)
-			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
+
+			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.version, tt.args.channel, tt.args.currentVersion, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
+			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
