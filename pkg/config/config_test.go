@@ -3,12 +3,14 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
+	v1 "k8s.io/client-go/applyconfigurations/core/v1"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/updates"
@@ -50,6 +52,7 @@ func TestNewConfig(t *testing.T) {
 		name         string
 		args         args
 		want         *Config
+		wantEnvs     []string
 		wantWarnings []error
 		wantErrs     []error
 	}{
@@ -136,6 +139,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "memory",
@@ -197,6 +208,12 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_ENGINE=memory",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
+			},
 		},
 		{
 			name: "set image with tag explicitly",
@@ -244,6 +261,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "set image with digest explicitly",
@@ -290,6 +315,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -354,6 +387,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "set replicas as string",
@@ -416,6 +457,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -483,6 +532,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -554,6 +611,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "skip migrations bool",
@@ -619,6 +684,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "skip migrations string",
@@ -683,6 +756,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -750,6 +831,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -821,6 +910,14 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 		{
 			name: "set different migration and spicedb log level",
@@ -887,6 +984,14 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=debug",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -956,6 +1061,15 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled":  "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=debug",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -1027,6 +1141,15 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled":  "true",
 					},
 				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=debug",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 		},
 		{
@@ -1104,6 +1227,15 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=debug",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -1114,6 +1246,50 @@ func TestNewConfig(t *testing.T) {
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.Equal(t, tt.want, got)
+
+			if got != nil {
+				gotEnvs := got.ToEnvVarApplyConfiguration()
+				wantEnvs := envVarFromStrings(tt.wantEnvs)
+				require.Equal(t, wantEnvs, gotEnvs)
+			}
 		})
 	}
+}
+
+// envs that will be mapped back to ENV vars
+var secrets = map[string]struct{}{
+	"SPICEDB_GRPC_PRESHARED_KEY": {},
+	"SPICEDB_DATASTORE_CONN_URI": {},
+}
+
+func envVarFromStrings(envs []string) []*v1.EnvVarApplyConfiguration {
+	vars := make([]*v1.EnvVarApplyConfiguration, 0, len(envs))
+	for _, env := range envs {
+		name, value, _ := strings.Cut(env, "=")
+		var valueFrom *v1.EnvVarSourceApplyConfiguration
+		var valuePtr *string
+		if value != "" {
+			valuePtr = &value
+		}
+		// hack for the sake of simplifying test fixtures
+		// if it's lowercase key, we assume it's a secret
+		if _, ok := secrets[name]; ok {
+			localname := ""
+			valueFrom = &v1.EnvVarSourceApplyConfiguration{
+				SecretKeyRef: &v1.SecretKeySelectorApplyConfiguration{
+					LocalObjectReferenceApplyConfiguration: v1.LocalObjectReferenceApplyConfiguration{
+						Name: &localname,
+					},
+					Key: valuePtr,
+				},
+			}
+			valuePtr = nil
+		}
+		vars = append(vars, &v1.EnvVarApplyConfiguration{
+			Name:      &name,
+			Value:     valuePtr,
+			ValueFrom: valueFrom,
+		})
+	}
+	return vars
 }
