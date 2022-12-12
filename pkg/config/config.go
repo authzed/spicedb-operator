@@ -512,6 +512,16 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 }
 
 func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
+	return applycorev1.Service(c.Name, c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
+		WithOwnerReferences(c.OwnerRef()).
+		WithSpec(applycorev1.ServiceSpec().
+			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
+			WithPorts(c.servicePorts()...),
+		)
+}
+
+func (c *Config) servicePorts() []*applycorev1.ServicePortApplyConfiguration {
 	ports := []*applycorev1.ServicePortApplyConfiguration{
 		applycorev1.ServicePort().WithName("grpc").WithPort(50051),
 		applycorev1.ServicePort().WithName("gateway").WithPort(8443),
@@ -520,14 +530,7 @@ func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	if c.DatastoreEngine != "memory" {
 		ports = append(ports, applycorev1.ServicePort().WithName("dispatch").WithPort(50053))
 	}
-
-	return applycorev1.Service(c.Name, c.Namespace).
-		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
-		WithOwnerReferences(c.OwnerRef()).
-		WithSpec(applycorev1.ServiceSpec().
-			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
-			WithPorts(ports...),
-		)
+	return ports
 }
 
 func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
