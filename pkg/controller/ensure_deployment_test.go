@@ -58,7 +58,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "nch66fh557h68dh555h688h8dhd4q",
+				metadata.SpiceDBConfigKey: "n568h68fh5d4h66dh5c5hc4h5fbhbfq",
 			}}}},
 			expectNext: nextKey,
 		},
@@ -67,7 +67,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "nch66fh557h68dh555h688h8dhd4q",
+				metadata.SpiceDBConfigKey: "n568h68fh5d4h66dh5c5hc4h5fbhbfq",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
@@ -77,7 +77,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret1",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "nch66fh557h68dh555h688h8dhd4q",
+				metadata.SpiceDBConfigKey: "n568h68fh5d4h66dh5c5hc4h5fbhbfq",
 			}}}},
 			expectApply:        true,
 			expectRequeueAfter: true,
@@ -112,7 +112,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n696h689hfdh647h5fbh565h57dh5c5q",
+					metadata.SpiceDBConfigKey: "n55bhb7h595h647h688h667hd7h5d5q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -145,7 +145,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n696h689hfdh647h5fbh565h57dh5c5q",
+					metadata.SpiceDBConfigKey: "n55bhb7h595h647h688h667hd7h5d5q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,

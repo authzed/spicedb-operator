@@ -517,13 +517,20 @@ func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 		WithOwnerReferences(c.OwnerRef()).
 		WithSpec(applycorev1.ServiceSpec().
 			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
-			WithPorts(
-				applycorev1.ServicePort().WithName("grpc").WithPort(50051),
-				applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
-				applycorev1.ServicePort().WithName("gateway").WithPort(8443),
-				applycorev1.ServicePort().WithName("metrics").WithPort(9090),
-			),
+			WithPorts(c.servicePorts()...),
 		)
+}
+
+func (c *Config) servicePorts() []*applycorev1.ServicePortApplyConfiguration {
+	ports := []*applycorev1.ServicePortApplyConfiguration{
+		applycorev1.ServicePort().WithName("grpc").WithPort(50051),
+		applycorev1.ServicePort().WithName("gateway").WithPort(8443),
+		applycorev1.ServicePort().WithName("metrics").WithPort(9090),
+	}
+	if c.DatastoreEngine != "memory" {
+		ports = append(ports, applycorev1.ServicePort().WithName("dispatch").WithPort(50053))
+	}
+	return ports
 }
 
 func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
@@ -586,14 +593,21 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 						WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", c.MigrationConfig.TargetMigration).
 						WithEnv(envVars...).
 						WithVolumeMounts(c.jobVolumeMounts()...).
-						WithPorts(
-							applycorev1.ContainerPort().WithName("grpc").WithContainerPort(50051),
-							applycorev1.ContainerPort().WithName("dispatch").WithContainerPort(50053),
-							applycorev1.ContainerPort().WithName("gateway").WithContainerPort(8443),
-							applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
-						).
+						WithPorts(c.containerPorts()...).
 						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
 				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
+}
+
+func (c *Config) containerPorts() []*applycorev1.ContainerPortApplyConfiguration {
+	ports := []*applycorev1.ContainerPortApplyConfiguration{
+		applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+		applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
+		applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
+	}
+	if c.DatastoreEngine != "memory" {
+		ports = append(ports, applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"))
+	}
+	return ports
 }
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
@@ -664,15 +678,11 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
 						WithEnv(c.ToEnvVarApplyConfiguration()...).
-						WithPorts(
-							applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-							applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-							applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-							applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-						).WithLivenessProbe(
-						applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
-							WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-					).WithReadinessProbe(
+						WithPorts(c.containerPorts()...).
+						WithLivenessProbe(
+							applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
+								WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+						).WithReadinessProbe(
 						applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
 							WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
 					).WithVolumeMounts(c.deploymentVolumeMounts()...),

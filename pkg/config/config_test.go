@@ -49,12 +49,13 @@ func TestNewConfig(t *testing.T) {
 		rolling          bool
 	}
 	tests := []struct {
-		name         string
-		args         args
-		want         *Config
-		wantEnvs     []string
-		wantWarnings []error
-		wantErrs     []error
+		name          string
+		args          args
+		want          *Config
+		wantEnvs      []string
+		wantWarnings  []error
+		wantErrs      []error
+		wantPortCount int
 	}{
 		{
 			name: "missing required",
@@ -147,6 +148,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "memory",
@@ -214,6 +216,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=memory",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
 			},
+			wantPortCount: 3,
 		},
 		{
 			name: "set image with tag explicitly",
@@ -269,6 +272,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set image with digest explicitly",
@@ -324,6 +328,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set replicas as int",
@@ -395,6 +400,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set replicas as string",
@@ -466,6 +472,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set extra labels as string",
@@ -541,6 +548,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set extra labels as map",
@@ -619,6 +627,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "skip migrations bool",
@@ -692,6 +701,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "skip migrations string",
@@ -765,6 +775,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set extra annotations as string",
@@ -840,6 +851,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set extra annotations as map",
@@ -918,6 +930,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "set different migration and spicedb log level",
@@ -993,6 +1006,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "update graph pushes the current version forward",
@@ -1071,6 +1085,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "explicit channel and version, updates to the next in the channel",
@@ -1151,6 +1166,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 		{
 			name: "explicit channel and version, doesn't update past the explicit version",
@@ -1236,6 +1252,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
+			wantPortCount: 4,
 		},
 	}
 	for _, tt := range tests {
@@ -1251,6 +1268,11 @@ func TestNewConfig(t *testing.T) {
 				gotEnvs := got.ToEnvVarApplyConfiguration()
 				wantEnvs := envVarFromStrings(tt.wantEnvs)
 				require.Equal(t, wantEnvs, gotEnvs)
+
+				require.Equal(t, tt.wantPortCount, len(got.servicePorts()),
+					"expected service to have %d ports but had %d", tt.wantPortCount, len(got.servicePorts()))
+				require.Equal(t, tt.wantPortCount, len(got.containerPorts()),
+					"expected container to have %d ports but had %d", tt.wantPortCount, len(got.containerPorts()))
 			}
 		})
 	}
