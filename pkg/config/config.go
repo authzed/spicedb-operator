@@ -673,13 +673,13 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithAnnotations(c.ExtraPodAnnotations).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
-					WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
-					WithEnv(c.ToEnvVarApplyConfiguration()...).
-					WithPorts(c.containerPorts()...).
-					WithLivenessProbe(
-						applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
-							WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-					).WithReadinessProbe(
+						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
+						WithEnv(c.ToEnvVarApplyConfiguration()...).
+						WithPorts(c.containerPorts()...).
+						WithLivenessProbe(
+							applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
+								WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+						).WithReadinessProbe(
 						applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
 							WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
 					).WithVolumeMounts(c.deploymentVolumeMounts()...),
