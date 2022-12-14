@@ -21,7 +21,6 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
-	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
 const (
@@ -179,23 +178,25 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
 
-	baseImage, targetSpiceDBVersion, state, err := computeTargets(image, version, channel, datastoreEngine, currentVersion, globalConfig, rolling)
+	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, version, channel, datastoreEngine, currentVersion, rolling)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
 	migrationConfig.SpiceDBVersion = targetSpiceDBVersion
-	migrationConfig.TargetMigration = state.Migration
 	migrationConfig.TargetPhase = state.Phase
-	if len(state.Digest) > 0 {
-		migrationConfig.TargetSpiceDBImage = baseImage + "@" + state.Digest
-	} else if len(state.Tag) > 0 {
-		migrationConfig.TargetSpiceDBImage = baseImage + ":" + state.Tag
-	} else {
-		errs = append(errs, fmt.Errorf("no update found in channel"))
-	}
+	migrationConfig.TargetMigration = state.Migration
 	if len(migrationConfig.TargetMigration) == 0 {
 		migrationConfig.TargetMigration = Head
+	}
+
+	switch {
+	case len(state.Digest) > 0:
+		migrationConfig.TargetSpiceDBImage = baseImage + "@" + state.Digest
+	case len(state.Tag) > 0:
+		migrationConfig.TargetSpiceDBImage = baseImage + ":" + state.Tag
+	default:
+		errs = append(errs, fmt.Errorf("no update found in channel"))
 	}
 
 	migrationConfig.DatastoreEngine = datastoreEngine
@@ -327,114 +328,6 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
 	}, warning, nil
-}
-
-func computeTargets(image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, globalConfig *OperatorConfig, rolling bool) (baseImage string, targetSpiceDBVersion *v1alpha1.SpiceDBVersion, state updates.State, err error) {
-	baseImage, tag, digest := ExplodeImage(image)
-
-	// if digest or tag are set, we don't use an update graph
-	if len(digest) > 0 || len(tag) > 0 {
-		state = updates.State{Tag: tag, Digest: digest}
-		return
-	}
-
-	// use the default base image from the global config if none is set
-	if len(baseImage) == 0 {
-		if len(globalConfig.ImageName) == 0 {
-			err = fmt.Errorf("no base image in operator config, and none specified in image")
-			return
-		}
-		baseImage = globalConfig.ImageName
-	}
-
-	// default to spec.channel, or if undefined, status.version.channel
-	var updateSource updates.Source
-	if len(channel) == 0 && currentVersion != nil {
-		channel = currentVersion.Channel
-	}
-
-	// If there's no spec.channel and no status.version.channel, pick a default
-	// based on the configured datastore.
-	if len(channel) == 0 {
-		channel, err = globalConfig.ChannelForDatastore(engine)
-		if err != nil {
-			err = fmt.Errorf("couldn't find channel for datastore %q: %w", engine, err)
-			return
-		}
-	}
-
-	if len(channel) > 0 {
-		updateSource, err = globalConfig.SourceForChannel(channel)
-		if err != nil {
-			err = fmt.Errorf("error fetching update source: %w", err)
-			return
-		}
-	}
-
-	// default to the version we're working toward
-	targetSpiceDBVersion = currentVersion
-
-	var currentState updates.State
-	if currentVersion != nil {
-		currentState = updateSource.State(currentVersion.Name)
-	}
-
-	// if cluster is rolling, return the current state as reported by the status
-	// and update graph
-	// TODO: this can change if the update graph is modified - do we want to actually return status.image/etc?
-	if rolling {
-		if len(currentState.ID) == 0 {
-			err = fmt.Errorf("cluster is rolling out, but no current state is defined")
-			return
-		}
-		state = currentState
-		return
-	}
-
-	// if spec.version is set, we only use the subset of the update graph that
-	// leads to that version
-	if len(version) > 0 {
-		updateSource, err = updateSource.Subgraph(version)
-		if err != nil {
-			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
-			return
-		}
-	}
-
-	var targetVersion string
-	if currentVersion != nil && len(currentVersion.Name) > 0 {
-		targetVersion = updateSource.NextVersion(currentVersion.Name)
-		if len(targetVersion) == 0 {
-			// no next version, use the current state
-			state = currentState
-			targetSpiceDBVersion = currentVersion
-			return
-		}
-	} else {
-		// no current version, install head
-		// TODO(jzelinskie): find a way to make this less "magical"
-		targetVersion = updateSource.LatestVersion("")
-	}
-
-	// if we found the next step to take, return it
-	state = updateSource.State(targetVersion)
-	targetSpiceDBVersion = &v1alpha1.SpiceDBVersion{
-		Name:    state.ID,
-		Channel: channel,
-	}
-	return
-}
-
-func ExplodeImage(image string) (baseImage, tag, digest string) {
-	imageMaybeTag, digest, hasDigest := strings.Cut(image, "@")
-	if !hasDigest {
-		digest = ""
-	}
-	baseImage, tag, hasTag := strings.Cut(imageMaybeTag, ":")
-	if !hasTag {
-		tag = ""
-	}
-	return
 }
 
 // ToEnvVarApplyConfiguration returns a set of env variables to apply to a
