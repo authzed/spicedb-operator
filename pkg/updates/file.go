@@ -47,7 +47,7 @@ type UpdateGraph struct {
 // provided. In the future we may want to explicitly define default channels.
 func (g *UpdateGraph) ChannelForDatastore(datastore string) (string, error) {
 	for _, c := range g.Channels {
-		if c.Metadata["datastore"] == datastore {
+		if strings.EqualFold(c.Metadata["datastore"], datastore) {
 			return c.Name, nil
 		}
 	}
@@ -57,7 +57,7 @@ func (g *UpdateGraph) ChannelForDatastore(datastore string) (string, error) {
 // SourceForChannel returns a channel represented as a Source for querying
 func (g *UpdateGraph) SourceForChannel(channel string) (Source, error) {
 	for _, c := range g.Channels {
-		if c.Name == channel {
+		if strings.EqualFold(c.Name, channel) {
 			return NewMemorySource(c.Nodes, c.Edges)
 		}
 	}
