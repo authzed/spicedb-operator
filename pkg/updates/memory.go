@@ -123,8 +123,10 @@ func (m *MemorySource) validateAllNodesPathToHead() error {
 }
 
 func NewMemorySource(nodes []State, edges EdgeSet) (Source, error) {
-	if len(nodes) == 0 || len(edges) == 0 {
-		return nil, fmt.Errorf("no edges or no nodes")
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("missing nodes")
+	} else if len(edges) == 0 {
+		return nil, fmt.Errorf("missing edges")
 	}
 
 	nodeSet := make(map[string]int, len(nodes))

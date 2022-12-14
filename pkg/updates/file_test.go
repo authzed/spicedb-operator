@@ -78,7 +78,7 @@ func TestAvailableVersions(t *testing.T) {
 			engine:        "cockroachdb",
 			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			expectedNames: nil,
-			expectedErr:   "no edges or no nodes",
+			expectedErr:   "missing edges",
 		},
 		{
 			name: "graph without nodes",
@@ -90,7 +90,7 @@ func TestAvailableVersions(t *testing.T) {
 			engine:        "cockroachdb",
 			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			expectedNames: nil,
-			expectedErr:   "no edges or no nodes",
+			expectedErr:   "missing nodes",
 		},
 		{
 			name: "simple patch update",

@@ -285,7 +285,7 @@ func TestMemorySourceState(t *testing.T) {
 					"1": {"2"},
 				},
 			},
-			wantErr: "no edges or no nodes",
+			wantErr: "missing nodes",
 		},
 		{
 			name: "no edges",
@@ -294,7 +294,7 @@ func TestMemorySourceState(t *testing.T) {
 					{ID: "1"},
 				},
 			},
-			wantErr: "no edges or no nodes",
+			wantErr: "missing edges",
 		},
 		{
 			name: "edge not in list",
