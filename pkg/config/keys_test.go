@@ -125,12 +125,12 @@ func TestLabelSetKey(t *testing.T) {
 		{"recovers and warns on invalid map value", invalidInput, empty, map[string]string{"k2": "v2"}, true, false},
 	} {
 		t.Run(val.description, func(t *testing.T) {
-			k := labelSetKey("test")
+			k := metadataSetKey("test")
 			config := emptyConfig
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}
-			result, warns, err := k.pop(config)
+			result, warns, err := k.pop(config, "pod", "metadata")
 			if val.value != nil {
 				require.Empty(t, config)
 			}
