@@ -197,7 +197,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 		errs = append(errs, fmt.Errorf("secret must be provided"))
 	}
 
-	var datastoreURI, psk []byte
+	var datastoreURI, psk, spannerCredentials []byte
 	if secret != nil {
 		spiceConfig.SecretName = secret.GetName()
 
@@ -207,11 +207,17 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
 		migrationConfig.DatastoreURI = string(datastoreURI)
+
 		psk, ok = secret.Data["preshared_key"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
 		}
 		spiceConfig.PresharedKey = string(psk)
+
+		spannerCredentials, ok = secret.Data["spanner_credentials"]
+		if ok {
+			migrationConfig.SpannerCredsSecretRef = string(spannerCredentials)
+		}
 	}
 
 	selectedReplicaKey := replicasKey

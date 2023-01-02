@@ -1093,6 +1093,55 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "set the spanner credentials in the secret",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName:     "image",
+					AllowedImages: []string{"image"},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "spanner"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri":       []byte("uri"),
+					"preshared_key":       []byte("psk"),
+					"spanner_credentials": []byte("spanner-creds-secret-name"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:     "debug",
+					DatastoreEngine:       "spanner",
+					DatastoreURI:          "uri",
+					TargetSpiceDBImage:    "image",
+					EnvPrefix:             "SPICEDB",
+					SpiceDBCmd:            "spicedb",
+					TargetMigration:       "head",
+					SpannerCredsSecretRef: "spanner-creds-secret-name",
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":        "spanner",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
