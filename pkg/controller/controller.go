@@ -365,7 +365,7 @@ func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&JobCleanupHandler{
 		registry: c.Registry,
 		getJobs: func(ctx context.Context) []*batchv1.Job {
-			return component.NewIndexedComponent[*batchv1.Job](
+			return component.NewIndexedComponent(
 				typed.IndexerFor[*batchv1.Job](c.Registry, typed.NewRegistryKey(DependentFactoryKey, batchv1.SchemeGroupVersion.WithResource("jobs"))),
 				metadata.OwningClusterIndex,
 				func(ctx context.Context) labels.Selector {
@@ -373,7 +373,7 @@ func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {
 				}).List(ctx, CtxClusterNN.MustValue(ctx))
 		},
 		getJobPods: func(ctx context.Context) []*corev1.Pod {
-			return component.NewIndexedComponent[*corev1.Pod](
+			return component.NewIndexedComponent(
 				typed.IndexerFor[*corev1.Pod](c.Registry, typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("pods"))),
 				metadata.OwningClusterIndex,
 				func(ctx context.Context) labels.Selector {
