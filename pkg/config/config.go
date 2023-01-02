@@ -42,32 +42,33 @@ type key[V comparable] struct {
 }
 
 var (
-	imageKey                      = newStringKey("image")
-	tlsSecretNameKey              = newStringKey("tlsSecretName")
-	dispatchCAKey                 = newStringKey("dispatchUpstreamCASecretName")
-	telemetryCAKey                = newStringKey("telemetryCASecretName")
-	envPrefixKey                  = newKey("envPrefix", "SPICEDB")
-	spiceDBCmdKey                 = newKey("cmd", "spicedb")
-	skipMigrationsKey             = newBoolOrStringKey("skipMigrations", false)
-	targetMigrationKey            = newStringKey("targetMigration")
-	targetPhase                   = newStringKey("datastoreMigrationPhase")
-	logLevelKey                   = newKey("logLevel", "info")
-	migrationLogLevelKey          = newKey("migrationLogLevel", "debug")
-	spannerCredentialsKey         = newStringKey("spannerCredentials")
-	datastoreTLSSecretKey         = newStringKey("datastoreTLSSecretName")
-	datastoreEngineKey            = newStringKey("datastoreEngine")
-	replicasKey                   = newIntOrStringKey("replicas", 2)
-	replicasKeyForMemory          = newIntOrStringKey("replicas", 1)
-	extraPodLabelsKey             = metadataSetKey("extraPodLabels")
-	extraPodAnnotationsKey        = metadataSetKey("extraPodAnnotations")
-	grpcTLSKeyPathKey             = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
-	grpcTLSCertPathKey            = newKey("grpcTLSCertPath", DefaultTLSCrtFile)
-	dispatchClusterTLSKeyPathKey  = newKey("dispatchClusterTLSKeyPath", DefaultTLSKeyFile)
-	dispatchClusterTLSCertPathKey = newKey("dispatchClusterTLSCertPath", DefaultTLSCrtFile)
-	httpTLSKeyPathKey             = newKey("httpTLSKeyPath", DefaultTLSKeyFile)
-	httpTLSCertPathKey            = newKey("httpTLSCertPath", DefaultTLSCrtFile)
-	dashboardTLSKeyPathKey        = newKey("dashboardTLSKeyPath", DefaultTLSKeyFile)
-	dashboardTLSCertPathKey       = newKey("dashboardTLSCertPath", DefaultTLSCrtFile)
+	imageKey                          = newStringKey("image")
+	tlsSecretNameKey                  = newStringKey("tlsSecretName")
+	dispatchCAKey                     = newStringKey("dispatchUpstreamCASecretName")
+	telemetryCAKey                    = newStringKey("telemetryCASecretName")
+	envPrefixKey                      = newKey("envPrefix", "SPICEDB")
+	spiceDBCmdKey                     = newKey("cmd", "spicedb")
+	skipMigrationsKey                 = newBoolOrStringKey("skipMigrations", false)
+	targetMigrationKey                = newStringKey("targetMigration")
+	targetPhase                       = newStringKey("datastoreMigrationPhase")
+	logLevelKey                       = newKey("logLevel", "info")
+	migrationLogLevelKey              = newKey("migrationLogLevel", "debug")
+	spannerCredentialsKey             = newStringKey("spannerCredentials")
+	datastoreTLSSecretKey             = newStringKey("datastoreTLSSecretName")
+	datastoreEngineKey                = newStringKey("datastoreEngine")
+	replicasKey                       = newIntOrStringKey("replicas", 2)
+	replicasKeyForMemory              = newIntOrStringKey("replicas", 1)
+	extraPodLabelsKey                 = metadataSetKey("extraPodLabels")
+	extraPodAnnotationsKey            = metadataSetKey("extraPodAnnotations")
+	extraServiceAccountAnnotationsKey = metadataSetKey("extraServiceAccountAnnotations")
+	grpcTLSKeyPathKey                 = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
+	grpcTLSCertPathKey                = newKey("grpcTLSCertPath", DefaultTLSCrtFile)
+	dispatchClusterTLSKeyPathKey      = newKey("dispatchClusterTLSKeyPath", DefaultTLSKeyFile)
+	dispatchClusterTLSCertPathKey     = newKey("dispatchClusterTLSCertPath", DefaultTLSCrtFile)
+	httpTLSKeyPathKey                 = newKey("httpTLSKeyPath", DefaultTLSKeyFile)
+	httpTLSCertPathKey                = newKey("httpTLSCertPath", DefaultTLSCrtFile)
+	dashboardTLSKeyPathKey            = newKey("dashboardTLSKeyPath", DefaultTLSKeyFile)
+	dashboardTLSCertPathKey           = newKey("dashboardTLSCertPath", DefaultTLSCrtFile)
 )
 
 // Warning is an issue with configuration that we will report as undesirable
@@ -118,22 +119,23 @@ type MigrationConfig struct {
 // SpiceConfig contains config relevant to running spicedb or determining
 // if spicedb needs to be updated
 type SpiceConfig struct {
-	LogLevel                     string
-	SkipMigrations               bool
-	Name                         string
-	Namespace                    string
-	UID                          string
-	Replicas                     int32
-	PresharedKey                 string
-	EnvPrefix                    string
-	SpiceDBCmd                   string
-	TLSSecretName                string
-	DispatchUpstreamCASecretName string
-	TelemetryTLSCASecretName     string
-	SecretName                   string
-	ExtraPodLabels               map[string]string
-	ExtraPodAnnotations          map[string]string
-	Passthrough                  map[string]string
+	LogLevel                       string
+	SkipMigrations                 bool
+	Name                           string
+	Namespace                      string
+	UID                            string
+	Replicas                       int32
+	PresharedKey                   string
+	EnvPrefix                      string
+	SpiceDBCmd                     string
+	TLSSecretName                  string
+	DispatchUpstreamCASecretName   string
+	TelemetryTLSCASecretName       string
+	SecretName                     string
+	ExtraPodLabels                 map[string]string
+	ExtraPodAnnotations            map[string]string
+	ExtraServiceAccountAnnotations map[string]string
+	Passthrough                    map[string]string
 }
 
 // NewConfig checks that the values in the config + the secret are sane
@@ -155,8 +157,6 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		TelemetryTLSCASecretName:     telemetryCAKey.pop(config),
 		EnvPrefix:                    envPrefixKey.pop(config),
 		SpiceDBCmd:                   spiceDBCmdKey.pop(config),
-		ExtraPodLabels:               make(map[string]string, 0),
-		ExtraPodAnnotations:          make(map[string]string, 0),
 		LogLevel:                     logLevelKey.pop(config),
 	}
 	migrationConfig := MigrationConfig{
@@ -244,7 +244,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	}
 
 	var labelWarnings []error
-	spiceConfig.ExtraPodLabels, labelWarnings, err = extraPodLabelsKey.pop(config, "label")
+	spiceConfig.ExtraPodLabels, labelWarnings, err = extraPodLabelsKey.pop(config, "pod", "label")
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -254,13 +254,21 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	}
 
 	var annotationWarnings []error
-	spiceConfig.ExtraPodAnnotations, annotationWarnings, err = extraPodAnnotationsKey.pop(config, "annotation")
+	spiceConfig.ExtraPodAnnotations, annotationWarnings, err = extraPodAnnotationsKey.pop(config, "pod", "annotation")
 	if err != nil {
 		errs = append(errs, err)
 	}
-
 	if len(annotationWarnings) > 0 {
 		warnings = append(warnings, annotationWarnings...)
+	}
+
+	var saAnnotationWarnings []error
+	spiceConfig.ExtraServiceAccountAnnotations, saAnnotationWarnings, err = extraServiceAccountAnnotationsKey.pop(config, "service account", "annotation")
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if len(saAnnotationWarnings) > 0 {
+		warnings = append(warnings, saAnnotationWarnings...)
 	}
 
 	// generate secret refs for tls if specified
@@ -376,6 +384,7 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	return applycorev1.ServiceAccount(c.Name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
+		WithAnnotations(c.ExtraServiceAccountAnnotations).
 		WithOwnerReferences(c.OwnerRef())
 }
 

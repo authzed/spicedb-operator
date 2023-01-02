@@ -933,6 +933,158 @@ func TestNewConfig(t *testing.T) {
 			wantPortCount: 4,
 		},
 		{
+			name: "set extra service account annotations as string",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraServiceAccountAnnotations": "iam.gke.io/gcp-service-account=authzed-operator@account-12345.iam.gserviceaccount.com"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "image:v1",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					ExtraServiceAccountAnnotations: map[string]string{
+						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
+					},
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
+			wantPortCount: 4,
+		},
+		{
+			name: "set extra service account annotations as map",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraServiceAccountAnnotations": {
+							"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com"
+						}
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "image:v1",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					ExtraServiceAccountAnnotations: map[string]string{
+						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
+					},
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
+			wantPortCount: 4,
+		},
+		{
 			name: "set different migration and spicedb log level",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},

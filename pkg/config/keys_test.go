@@ -130,7 +130,7 @@ func TestMetadataSetKey(t *testing.T) {
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}
-			result, warns, err := k.pop(config, "metadata")
+			result, warns, err := k.pop(config, "pod", "metadata")
 			if val.value != nil {
 				require.Empty(t, config)
 			}
