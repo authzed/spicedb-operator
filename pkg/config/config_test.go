@@ -46,6 +46,7 @@ func TestNewConfig(t *testing.T) {
 		name         string
 		args         args
 		want         *Config
+		wantEnvVars  map[string]string
 		wantWarnings []error
 		wantErrs     []error
 	}{
@@ -1141,6 +1142,7 @@ func TestNewConfig(t *testing.T) {
 					},
 				},
 			},
+			wantEnvVars: map[string]string{"SPICEDB_DATASTORE_SPANNER_CREDENTIALS": "/spanner-credentials/credentials.json"},
 		},
 	}
 	for _, tt := range tests {
@@ -1150,6 +1152,21 @@ func TestNewConfig(t *testing.T) {
 			require.Equal(t, tt.want, got)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
+
+			if len(tt.wantEnvVars) > 0 {
+				gotApplys := got.ToEnvVarApplyConfiguration()
+				for wantName, wantVal := range tt.wantEnvVars {
+					var found bool
+					for _, gotApply := range gotApplys {
+						if *(gotApply.Name) == wantName && gotApply.Value != nil {
+							found = true
+							require.Equal(t, wantVal, *(gotApply.Value))
+							break
+						}
+					}
+					require.True(t, found, "expected env %s=%s", wantName, wantVal)
+				}
+			}
 		})
 	}
 }
