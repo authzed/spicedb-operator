@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fatih/camelcase"
+	"github.com/jzelinskie/stringz"
 	"golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -63,6 +64,7 @@ var (
 	replicasKeyForMemory              = newIntOrStringKey("replicas", 1)
 	extraPodLabelsKey                 = metadataSetKey("extraPodLabels")
 	extraServiceAccountAnnotationsKey = metadataSetKey("extraServiceAccountAnnotations")
+	serviceAccountNameKey             = newStringKey("serviceAccountName")
 	grpcTLSKeyPathKey                 = newKey("grpcTLSKeyPath", DefaultTLSKeyFile)
 	grpcTLSCertPathKey                = newKey("grpcTLSCertPath", DefaultTLSCrtFile)
 	dispatchClusterTLSKeyPathKey      = newKey("dispatchClusterTLSKeyPath", DefaultTLSKeyFile)
@@ -135,6 +137,7 @@ type SpiceConfig struct {
 	SecretName                     string
 	ExtraPodLabels                 map[string]string
 	ExtraServiceAccountAnnotations map[string]string
+	ServiceAccountName             string
 	Passthrough                    map[string]string
 }
 
@@ -261,6 +264,8 @@ func NewConfig(nn types.NamespacedName, uid types.UID, currentState *SpiceDBMigr
 	if len(saAnnotationWarnings) > 0 {
 		warnings = append(warnings, saAnnotationWarnings...)
 	}
+
+	spiceConfig.ServiceAccountName = serviceAccountNameKey.pop(config)
 
 	// generate secret refs for tls if specified
 	if len(spiceConfig.TLSSecretName) > 0 {
@@ -497,7 +502,8 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 }
 
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
-	return applycorev1.ServiceAccount(c.Name, c.Namespace).
+	name := stringz.DefaultEmpty(c.ServiceAccountName, c.Name)
+	return applycorev1.ServiceAccount(name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
 		WithAnnotations(c.ExtraServiceAccountAnnotations).
 		WithOwnerReferences(c.OwnerRef())
