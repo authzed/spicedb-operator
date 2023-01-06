@@ -156,6 +156,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		Namespace:                    nn.Namespace,
 		UID:                          string(uid),
 		TLSSecretName:                tlsSecretNameKey.pop(config),
+		ServiceAccountName:           serviceAccountNameKey.pop(config),
 		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
 		TelemetryTLSCASecretName:     telemetryCAKey.pop(config),
 		EnvPrefix:                    envPrefixKey.pop(config),
@@ -274,8 +275,6 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		warnings = append(warnings, saAnnotationWarnings...)
 	}
 
-	spiceConfig.ServiceAccountName = serviceAccountNameKey.pop(config)
-
 	// generate secret refs for tls if specified
 	if len(spiceConfig.TLSSecretName) > 0 {
 		passthroughKeys := []*key[string]{
@@ -386,9 +385,12 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
+func (c *Config) GetServiceAccountName() string {
+	return stringz.DefaultEmpty(c.ServiceAccountName, c.Name)
+}
+
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
-	name := stringz.DefaultEmpty(c.ServiceAccountName, c.Name)
-	return applycorev1.ServiceAccount(name, c.Namespace).
+	return applycorev1.ServiceAccount(c.GetServiceAccountName(), c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
 		WithAnnotations(c.ExtraServiceAccountAnnotations).
 		WithOwnerReferences(c.OwnerRef())
@@ -415,7 +417,7 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 			WithName(c.Name),
 		).WithSubjects(applyrbacv1.Subject().
 		WithNamespace(c.Namespace).
-		WithKind("ServiceAccount").WithName(c.Name),
+		WithKind("ServiceAccount").WithName(c.GetServiceAccountName()),
 	)
 }
 
@@ -493,7 +495,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).
 				WithContainers(
 					applycorev1.Container().
 						WithName(name).
@@ -582,7 +584,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithLabels(c.ExtraPodLabels).
 				WithAnnotations(c.ExtraPodAnnotations).
-				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.Name).WithContainers(
+				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
 						WithEnv(c.ToEnvVarApplyConfiguration()...).
