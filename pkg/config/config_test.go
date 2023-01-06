@@ -939,7 +939,7 @@ func TestNewConfig(t *testing.T) {
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"skipMigrations": "true"
 					}
 				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
@@ -978,7 +978,7 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "set extra service account annotations as string",
+			name: "set extra service account with annotations as string",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
@@ -989,6 +989,7 @@ func TestNewConfig(t *testing.T) {
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
+						"serviceAccountName": "spicedb-non-default",
 						"extraServiceAccountAnnotations": "iam.gke.io/gcp-service-account=authzed-operator@account-12345.iam.gserviceaccount.com"
 					}
 				`),
@@ -1009,15 +1010,16 @@ func TestNewConfig(t *testing.T) {
 					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
+					LogLevel:           "info",
+					SkipMigrations:     false,
+					Name:               "test",
+					Namespace:          "test",
+					UID:                "1",
+					Replicas:           2,
+					PresharedKey:       "psk",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					ServiceAccountName: "spicedb-non-default",
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},
@@ -1029,7 +1031,7 @@ func TestNewConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "set extra service account annotations as map",
+			name: "set extra service account with annotations as map",
 			args: args{
 				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
 				uid: types.UID("1"),
@@ -1040,6 +1042,7 @@ func TestNewConfig(t *testing.T) {
 				rawConfig: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
+						"serviceAccountName": "spicedb-non-default",
 						"extraServiceAccountAnnotations": {
 							"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com"
 						}
@@ -1062,15 +1065,16 @@ func TestNewConfig(t *testing.T) {
 					TargetMigration:    "head",
 				},
 				SpiceConfig: SpiceConfig{
-					LogLevel:       "info",
-					SkipMigrations: false,
-					Name:           "test",
-					Namespace:      "test",
-					UID:            "1",
-					Replicas:       2,
-					PresharedKey:   "psk",
-					EnvPrefix:      "SPICEDB",
-					SpiceDBCmd:     "spicedb",
+					LogLevel:           "info",
+					SkipMigrations:     false,
+					Name:               "test",
+					Namespace:          "test",
+					UID:                "1",
+					Replicas:           2,
+					PresharedKey:       "psk",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					ServiceAccountName: "spicedb-non-default",
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},

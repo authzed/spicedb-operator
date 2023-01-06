@@ -213,6 +213,26 @@ var _ = Describe("SpiceDBClusters", func() {
 		}).Should(Succeed())
 	}
 
+	AssertServiceAccount := func(name string, annotations map[string]string, args func() (string, string)) {
+		namespace, owner := args()
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+
+		var serviceAccounts *corev1.ServiceAccountList
+		Eventually(func(g Gomega) {
+			var err error
+			serviceAccounts, err = kclient.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentServiceAccountLabel, metadata.OwnerLabelKey, owner),
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(serviceAccounts.Items)).To(Equal(1))
+			g.Expect(serviceAccounts.Items[0].GetName()).To(Equal(name))
+			for k, v := range annotations {
+				g.Expect(serviceAccounts.Items[0].GetAnnotations()).To(HaveKeyWithValue(k, v))
+			}
+		}).Should(Succeed())
+	}
+
 	AssertHealthySpiceDBCluster := func(image string, args func() (string, string), logMatcher types.GomegaMatcher) {
 		namespace, owner := args()
 		ctx, cancel := context.WithCancel(context.Background())
@@ -761,7 +781,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				})
 			})
 
-			When("a valid SpiceDBCluster is created (with TLS)", Ordered, func() {
+			When("a valid SpiceDBCluster is created (with TLS and non-default Service Account)", Ordered, func() {
 				var spiceCluster *v1alpha1.SpiceDBCluster
 
 				BeforeAll(func() {
@@ -769,11 +789,13 @@ var _ = Describe("SpiceDBClusters", func() {
 					DeferCleanup(cancel)
 
 					config := map[string]any{
-						"datastoreEngine":              dsDef.datastoreEngine,
-						"envPrefix":                    spicedbEnvPrefix,
-						"cmd":                          spicedbCmd,
-						"tlsSecretName":                "spicedb-grpc-tls",
-						"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
+						"datastoreEngine":                dsDef.datastoreEngine,
+						"envPrefix":                      spicedbEnvPrefix,
+						"cmd":                            spicedbCmd,
+						"tlsSecretName":                  "spicedb-grpc-tls",
+						"dispatchUpstreamCASecretName":   "spicedb-grpc-tls",
+						"serviceAccountName":             "spicedb-non-default",
+						"extraServiceAccountAnnotations": "authzed.com/e2e=true",
 					}
 					for k, v := range dsDef.passthroughConfig {
 						config[k] = v
@@ -845,6 +867,13 @@ var _ = Describe("SpiceDBClusters", func() {
 							func() (string, string) {
 								return testNamespace, spiceCluster.Name
 							}, Not(ContainSubstring("ERROR: kuberesolver")))
+					})
+
+					It("creates the service account", func() {
+						annotations := map[string]string{"authzed.com/e2e": "true"}
+						AssertServiceAccount("spicedb-non-default", annotations, func() (string, string) {
+							return testNamespace, spiceCluster.Name
+						})
 					})
 
 					When("the spicedb cluster is running", func() {
