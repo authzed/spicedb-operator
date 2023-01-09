@@ -1410,11 +1410,85 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantPortCount: 4,
 		},
+		{
+			name: "set spanner credentials",
+			args: args{
+				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
+				uid: types.UID("1"),
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "spanner",
+								Metadata: map[string]string{"datastore": "spanner"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				rawConfig: json.RawMessage(`
+					{
+						"datastoreEngine": "spanner",
+						"spannerCredentials": "spanner-creds-secret-name"
+					}
+				`),
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:     "debug",
+					DatastoreEngine:       "spanner",
+					DatastoreURI:          "uri",
+					TargetSpiceDBImage:    "image:v1",
+					EnvPrefix:             "SPICEDB",
+					SpiceDBCmd:            "spicedb",
+					TargetMigration:       "head",
+					SpannerCredsSecretRef: "spanner-creds-secret-name",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "spanner",
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:       "info",
+					SkipMigrations: false,
+					Name:           "test",
+					Namespace:      "test",
+					UID:            "1",
+					Replicas:       2,
+					PresharedKey:   "psk",
+					EnvPrefix:      "SPICEDB",
+					SpiceDBCmd:     "spicedb",
+					Passthrough: map[string]string{
+						"datastoreEngine":             "spanner",
+						"dispatchClusterEnabled":      "true",
+						"datastoreSpannerCredentials": "/spanner-credentials/credentials.json",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=spanner",
+				"SPICEDB_DATASTORE_SPANNER_CREDENTIALS=/spanner-credentials/credentials.json",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+			},
+			wantPortCount: 4,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-
 			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.version, tt.args.channel, tt.args.currentVersion, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)

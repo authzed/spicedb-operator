@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,8 +38,8 @@ const (
 	DefaultTLSCrtFile = "/tls/tls.crt"
 
 	// nolint:gosec // Creds in the naming causes a false positive here.
-	spannerCredsPath = "/spanner-credentials"
-	spannerCredsFile = "/credentials.json"
+	spannerCredsPath     = "/spanner-credentials"
+	spannerCredsFileName = "credentials.json"
 )
 
 type key[V comparable] struct {
@@ -232,6 +233,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		spiceConfig.PresharedKey = string(psk)
 	}
 
+	if len(migrationConfig.SpannerCredsSecretRef) > 0 {
+		passthroughConfig["datastoreSpannerCredentials"] = filepath.Join(spannerCredsPath, spannerCredsFileName)
+	}
+
 	selectedReplicaKey := replicasKey
 	if datastoreEngine == "memory" {
 		selectedReplicaKey = replicasKeyForMemory
@@ -366,13 +371,6 @@ func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 				WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", c.Name, c.Namespace)))
 	}
 
-	if len(c.SpannerCredsSecretRef) > 0 {
-		envVars = append(envVars, applycorev1.
-			EnvVar().
-			WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_SPANNER_CREDENTIALS").
-			WithValue(spannerCredsPath+spannerCredsFile))
-	}
-
 	// Passthrough config is user-provided and only affects spicedb runtime.
 	keys := make([]string, 0, len(c.Passthrough))
 	for k := range c.Passthrough {
@@ -461,7 +459,7 @@ func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName(spannerVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.SpannerCredsSecretRef).WithItems(
-			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
+			applycorev1.KeyToPath().WithKey(spannerCredsFileName).WithPath(spannerCredsFileName),
 		)))
 	}
 	return volumes
@@ -495,13 +493,6 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
 			WithName(ToEnvVarName(envPrefix, k)).WithValue(c.Passthrough[k]))
-	}
-
-	if len(c.SpannerCredsSecretRef) > 0 {
-		envVars = append(envVars, applycorev1.
-			EnvVar().
-			WithName(envPrefix+"_DATASTORE_SPANNER_CREDENTIALS").
-			WithValue(spannerCredsPath+spannerCredsFile))
 	}
 
 	return applybatchv1.Job(name, c.Namespace).
