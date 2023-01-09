@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/fatih/camelcase"
-	"github.com/jzelinskie/stringz"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -197,6 +196,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	migrationConfig.TargetMigration = state.Migration
 	if len(migrationConfig.TargetMigration) == 0 {
 		migrationConfig.TargetMigration = Head
+	}
+
+	if len(spiceConfig.ServiceAccountName) == 0 {
+		spiceConfig.ServiceAccountName = nn.Name
 	}
 
 	switch {
@@ -394,12 +397,8 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
-func (c *Config) GetServiceAccountName() string {
-	return stringz.DefaultEmpty(c.ServiceAccountName, c.Name)
-}
-
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
-	return applycorev1.ServiceAccount(c.GetServiceAccountName(), c.Namespace).
+	return applycorev1.ServiceAccount(c.ServiceAccountName, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
 		WithAnnotations(c.ExtraServiceAccountAnnotations).
 		WithOwnerReferences(c.OwnerRef())
@@ -426,7 +425,7 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 			WithName(c.Name),
 		).WithSubjects(applyrbacv1.Subject().
 		WithNamespace(c.Namespace).
-		WithKind("ServiceAccount").WithName(c.GetServiceAccountName()),
+		WithKind("ServiceAccount").WithName(c.ServiceAccountName),
 	)
 }
 
@@ -504,7 +503,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).
 				WithContainers(
 					applycorev1.Container().
 						WithName(name).
@@ -593,7 +592,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithLabels(c.ExtraPodLabels).
 				WithAnnotations(c.ExtraPodAnnotations).
-				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).WithContainers(
+				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
 						WithEnv(c.ToEnvVarApplyConfiguration()...).
