@@ -35,6 +35,10 @@ const (
 
 	DefaultTLSKeyFile = "/tls/tls.key"
 	DefaultTLSCrtFile = "/tls/tls.crt"
+
+	// nolint:gosec // Creds in the naming causes a false positive here.
+	spannerCredsPath = "/spanner-credentials"
+	spannerCredsFile = "/credentials.json"
 )
 
 type key[V comparable] struct {
@@ -362,6 +366,13 @@ func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 				WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", c.Name, c.Namespace)))
 	}
 
+	if len(c.SpannerCredsSecretRef) > 0 {
+		envVars = append(envVars, applycorev1.
+			EnvVar().
+			WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_SPANNER_CREDENTIALS").
+			WithValue(spannerCredsPath+spannerCredsFile))
+	}
+
 	// Passthrough config is user-provided and only affects spicedb runtime.
 	keys := make([]string, 0, len(c.Passthrough))
 	for k := range c.Passthrough {
@@ -462,7 +473,7 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(dbTLSVolume).WithMountPath("/spicedb-db-tls").WithReadOnly(true))
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath("/spanner-credentials").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath(spannerCredsPath).WithReadOnly(true))
 	}
 	return volumeMounts
 }
@@ -484,6 +495,13 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
 			WithName(ToEnvVarName(envPrefix, k)).WithValue(c.Passthrough[k]))
+	}
+
+	if len(c.SpannerCredsSecretRef) > 0 {
+		envVars = append(envVars, applycorev1.
+			EnvVar().
+			WithName(envPrefix+"_DATASTORE_SPANNER_CREDENTIALS").
+			WithValue(spannerCredsPath+spannerCredsFile))
 	}
 
 	return applybatchv1.Job(name, c.Namespace).
