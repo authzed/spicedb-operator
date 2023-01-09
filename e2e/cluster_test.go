@@ -49,8 +49,7 @@ var (
 	spicedbEnvPrefix = stringz.DefaultEmpty(os.Getenv("SPICEDB_ENV_PREFIX"), "SPICEDB")
 	spicedbCmd       = stringz.DefaultEmpty(os.Getenv("SPICEDB_CMD"), "spicedb")
 
-	noop        = func(namespace string) error { return nil }
-	clusterNoop = func(kclient kubernetes.Interface, namespace string) error { return nil }
+	noop = func(namespace string) error { return nil }
 
 	//go:embed cockroach.yaml
 	cockroachyaml []byte
@@ -73,7 +72,6 @@ type datastoreDef struct {
 	datastoreUri      string
 	datastoreEngine   string
 	datastoreSetup    func(namespace string) error
-	clusterSetup      func(kclient kubernetes.Interface, namespace string) error
 	passthroughConfig map[string]string
 }
 
@@ -139,23 +137,8 @@ var datastoreDefs = []datastoreDef{
 			Expect(err).To(Succeed())
 			return err
 		},
-		clusterSetup: func(kclient kubernetes.Interface, namespace string) error {
-			secret := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "spanner-credentials",
-					Namespace: namespace,
-				},
-				StringData: map[string]string{
-					"credentials.json": "{}",
-				},
-			}
-			_, err := kclient.CoreV1().Secrets(namespace).Create(context.Background(), &secret, metav1.CreateOptions{})
-			Expect(err).To(Succeed())
-			return err
-		},
 		passthroughConfig: map[string]string{
 			"datastoreSpannerEmulatorHost": "spanner-service:9010",
-			"spannerCredentials":           "spanner-credentials",
 		},
 	},
 	{
@@ -166,7 +149,6 @@ var datastoreDefs = []datastoreDef{
 		datastoreUri:    "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
 		datastoreEngine: "cockroachdb",
 		datastoreSetup:  noop,
-		clusterSetup:    clusterNoop,
 	},
 	{
 		description:     "With Postgresql",
@@ -176,7 +158,6 @@ var datastoreDefs = []datastoreDef{
 		datastoreUri:    "postgresql://postgres:testpassword@postgresql-db-public:5432/postgres?sslmode=disable",
 		datastoreEngine: "postgres",
 		datastoreSetup:  noop,
-		clusterSetup:    clusterNoop,
 	},
 	{
 		description:     "With MySQL",
@@ -186,7 +167,6 @@ var datastoreDefs = []datastoreDef{
 		datastoreUri:    "root:password@tcp(mysql-public:3306)/mysql?parseTime=true",
 		datastoreEngine: "mysql",
 		datastoreSetup:  noop,
-		clusterSetup:    clusterNoop,
 	},
 }
 
@@ -367,30 +347,6 @@ var _ = Describe("SpiceDBClusters", func() {
 				}
 				if !foundPhase {
 					GinkgoWriter.Println("expected job phase doesn't match")
-					continue
-				}
-			}
-
-			if datastoreEngine == "spanner" {
-				var spannerVolume *corev1.Volume
-				for _, v := range job.Spec.Template.Spec.Volumes {
-					if v.Name == "spanner" {
-						spannerVolume = &v
-						break
-					}
-				}
-				if spannerVolume == nil {
-					continue
-				}
-
-				var volMount *corev1.VolumeMount
-				for _, mount := range job.Spec.Template.Spec.Containers[0].VolumeMounts {
-					if mount.Name == "spanner" {
-						volMount = &mount
-						break
-					}
-				}
-				if volMount == nil {
 					continue
 				}
 			}
@@ -631,12 +587,6 @@ var _ = Describe("SpiceDBClusters", func() {
 					Expect(err).To(Succeed())
 				}).Should(Succeed())
 				By(fmt.Sprintf("%s setup complete.", dsDef.label))
-
-				Eventually(func(g Gomega) {
-					err = dsDef.clusterSetup(kclient, testNamespace)
-					Expect(err).To(Succeed())
-				}).Should(Succeed())
-				By(fmt.Sprintf("%s cluster setup complete.", dsDef.label))
 			})
 
 			When("a valid SpiceDBCluster is created (no TLS)", Ordered, func() {
