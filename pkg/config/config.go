@@ -3,12 +3,12 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/fatih/camelcase"
-	"github.com/jzelinskie/stringz"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,6 +35,10 @@ const (
 
 	DefaultTLSKeyFile = "/tls/tls.key"
 	DefaultTLSCrtFile = "/tls/tls.crt"
+
+	// nolint:gosec // Creds in the naming causes a false positive here.
+	spannerCredsPath     = "/spanner-credentials"
+	spannerCredsFileName = "credentials.json"
 )
 
 type key[V comparable] struct {
@@ -194,6 +198,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		migrationConfig.TargetMigration = Head
 	}
 
+	if len(spiceConfig.ServiceAccountName) == 0 {
+		spiceConfig.ServiceAccountName = nn.Name
+	}
+
 	switch {
 	case len(state.Digest) > 0:
 		migrationConfig.TargetSpiceDBImage = baseImage + "@" + state.Digest
@@ -226,6 +234,10 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
 		}
 		spiceConfig.PresharedKey = string(psk)
+	}
+
+	if len(migrationConfig.SpannerCredsSecretRef) > 0 {
+		passthroughConfig["datastoreSpannerCredentials"] = filepath.Join(spannerCredsPath, spannerCredsFileName)
 	}
 
 	selectedReplicaKey := replicasKey
@@ -385,12 +397,8 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
-func (c *Config) GetServiceAccountName() string {
-	return stringz.DefaultEmpty(c.ServiceAccountName, c.Name)
-}
-
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
-	return applycorev1.ServiceAccount(c.GetServiceAccountName(), c.Namespace).
+	return applycorev1.ServiceAccount(c.ServiceAccountName, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
 		WithAnnotations(c.ExtraServiceAccountAnnotations).
 		WithOwnerReferences(c.OwnerRef())
@@ -417,7 +425,7 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 			WithName(c.Name),
 		).WithSubjects(applyrbacv1.Subject().
 		WithNamespace(c.Namespace).
-		WithKind("ServiceAccount").WithName(c.GetServiceAccountName()),
+		WithKind("ServiceAccount").WithName(c.ServiceAccountName),
 	)
 }
 
@@ -450,7 +458,7 @@ func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName(spannerVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.SpannerCredsSecretRef).WithItems(
-			applycorev1.KeyToPath().WithKey("credentials.json").WithPath("credentials.json"),
+			applycorev1.KeyToPath().WithKey(spannerCredsFileName).WithPath(spannerCredsFileName),
 		)))
 	}
 	return volumes
@@ -462,7 +470,7 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(dbTLSVolume).WithMountPath("/spicedb-db-tls").WithReadOnly(true))
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
-		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath("/spanner-credentials").WithReadOnly(true))
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath(spannerCredsPath).WithReadOnly(true))
 	}
 	return volumeMounts
 }
@@ -495,7 +503,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).
 				WithContainers(
 					applycorev1.Container().
 						WithName(name).
@@ -584,7 +592,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 				WithLabels(c.ExtraPodLabels).
 				WithAnnotations(c.ExtraPodAnnotations).
-				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.GetServiceAccountName()).WithContainers(
+				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
 						WithEnv(c.ToEnvVarApplyConfiguration()...).
