@@ -16,6 +16,8 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
+const noTLSWarning = `no TLS configured, consider setting "tlsSecretName"`
+
 func TestToEnvVarName(t *testing.T) {
 	tests := []struct {
 		prefix string
@@ -48,6 +50,7 @@ func TestNewConfig(t *testing.T) {
 		secret           *corev1.Secret
 		rolling          bool
 	}
+
 	tests := []struct {
 		name          string
 		args          args
@@ -77,7 +80,7 @@ func TestNewConfig(t *testing.T) {
 				fmt.Errorf("no update found in channel"),
 				fmt.Errorf("secret must be provided"),
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 		},
 		{
 			name: "simple",
@@ -91,10 +94,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -109,7 +110,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -163,10 +164,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "memory",
 								Metadata: map[string]string{"datastore": "memory"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -180,7 +179,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -239,7 +238,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -296,7 +295,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -346,10 +345,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -365,7 +362,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -419,10 +416,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -438,7 +433,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -492,10 +487,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -511,7 +504,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -569,10 +562,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -591,7 +582,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -649,10 +640,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -668,7 +657,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "debug",
@@ -724,10 +713,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -743,7 +730,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "debug",
@@ -799,10 +786,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -818,7 +803,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -876,10 +861,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -898,7 +881,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -956,10 +939,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -976,7 +957,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -1033,10 +1014,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -1055,7 +1034,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:  "debug",
@@ -1112,10 +1091,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "cockroachdb",
 								Metadata: map[string]string{"datastore": "cockroachdb"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -1133,7 +1110,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "info",
@@ -1210,7 +1187,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "info",
@@ -1292,7 +1269,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "info",
@@ -1379,7 +1356,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:      "info",
@@ -1438,10 +1415,8 @@ func TestNewConfig(t *testing.T) {
 							{
 								Name:     "spanner",
 								Metadata: map[string]string{"datastore": "spanner"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
+								Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+								Edges:    map[string][]string{"v1": {}},
 							},
 						},
 					},
@@ -1457,7 +1432,7 @@ func TestNewConfig(t *testing.T) {
 					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			wantWarnings: []error{fmt.Errorf(noTLSWarning)},
 			want: &Config{
 				MigrationConfig: MigrationConfig{
 					MigrationLogLevel:     "debug",
