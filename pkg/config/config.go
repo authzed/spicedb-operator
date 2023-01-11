@@ -640,7 +640,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 							applycorev1.ContainerPort().WithName("prometheus").WithContainerPort(9090),
 						).
 						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
+				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
 }
 
 func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
