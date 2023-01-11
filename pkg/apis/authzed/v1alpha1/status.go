@@ -10,8 +10,8 @@ import (
 // the pause handler for an example.
 
 // GetStatusConditions returns all status conditions.
-func (c *SpiceDBCluster) GetStatusConditions() []metav1.Condition {
-	return c.Status.Conditions
+func (c *SpiceDBCluster) GetStatusConditions() *[]metav1.Condition {
+	return &c.Status.Conditions
 }
 
 // FindStatusCondition finds the conditionType in conditions.

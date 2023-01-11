@@ -83,7 +83,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		Migration:            validatedConfig.TargetMigration,
 		Phase:                validatedConfig.TargetPhase,
 		CurrentVersion:       validatedConfig.SpiceDBVersion,
-		Conditions:           currentStatus.GetStatusConditions(),
+		Conditions:           *currentStatus.GetStatusConditions(),
 	}
 	if version := validatedConfig.SpiceDBVersion; version != nil {
 		computedStatus.AvailableVersions, err = operatorConfig.UpdateGraph.AvailableVersions(validatedConfig.DatastoreEngine, *version)
