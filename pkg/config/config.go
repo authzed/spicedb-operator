@@ -513,7 +513,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 						WithVolumeMounts(c.jobVolumeMounts()...).
 						WithPorts(c.containerPorts()...).
 						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyNever))))
+				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
 }
 
 func (c *Config) containerPorts() []*applycorev1.ContainerPortApplyConfiguration {
