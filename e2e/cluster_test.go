@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	database "cloud.google.com/go/spanner/admin/database/apiv1"
 	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
 	"github.com/authzed/controller-idioms/typed"
+	"github.com/go-logr/logr"
 	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -88,7 +88,7 @@ var datastoreDefs = []datastoreDef{
 			PortForward(namespace, "spanner-0", []string{"9010"}, ctx.Done())
 			defer cancel()
 
-			os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")
+			Expect(os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")).To(Succeed())
 
 			var instancesClient *instances.InstanceAdminClient
 			Eventually(func() *instances.InstanceAdminClient {
@@ -101,7 +101,7 @@ var datastoreDefs = []datastoreDef{
 				return client
 			}).Should(Not(BeNil()))
 
-			defer func() { instancesClient.Close() }()
+			defer func() { Expect(instancesClient.Close()).To(Succeed()) }()
 
 			var createInstanceOp *instances.CreateInstanceOperation
 			Eventually(func(g Gomega) {
@@ -124,7 +124,9 @@ var datastoreDefs = []datastoreDef{
 			// Create db
 			adminClient, err := database.NewDatabaseAdminClient(ctx)
 			Expect(err).To(Succeed())
-			defer adminClient.Close()
+			defer func() {
+				Expect(adminClient.Close()).To(Succeed())
+			}()
 
 			dbID := "fake-database-id"
 			op, err := adminClient.CreateDatabase(ctx, &adminpb.CreateDatabaseRequest{
@@ -178,11 +180,12 @@ var _ = Describe("SpiceDBClusters", func() {
 	var (
 		client  dynamic.Interface
 		kclient kubernetes.Interface
+		ctx     = logr.NewContext(context.Background(), GinkgoLogr)
 	)
 
 	AssertMigrationJobCleanup := func(args func() (string, string)) {
 		namespace, owner := args()
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		DeferCleanup(cancel)
 
 		Eventually(func(g Gomega) {
@@ -196,7 +199,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 	AssertServiceAccount := func(name string, annotations map[string]string, args func() (string, string)) {
 		namespace, owner := args()
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		DeferCleanup(cancel)
 
 		var serviceAccounts *corev1.ServiceAccountList
@@ -216,7 +219,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 	AssertHealthySpiceDBCluster := func(image string, args func() (string, string), logMatcher types.GomegaMatcher) {
 		namespace, owner := args()
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		DeferCleanup(cancel)
 
 		var deps *appsv1.DeploymentList
@@ -244,7 +247,7 @@ var _ = Describe("SpiceDBClusters", func() {
 	}
 
 	AssertDependentResourceCleanup := func(namespace, owner, secretName string) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		// the secret should remain despite deleting the cluster
@@ -293,7 +296,7 @@ var _ = Describe("SpiceDBClusters", func() {
 	}
 
 	AssertMigrationsCompleted := func(image, migration, phase string, args func() (string, string, string)) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		if migration == "" {
@@ -307,7 +310,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			defer watchCancel()
 			Watch(watchCtx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: name, Namespace: namespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
 				condition = c.FindStatusCondition("Migrating")
-				GinkgoWriter.Println(c.Status)
+				logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
 				return condition == nil
 			})
 			g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, migration)))
@@ -326,27 +329,27 @@ var _ = Describe("SpiceDBClusters", func() {
 		matchingJob := false
 		for event := range watcher.ResultChan() {
 			job = event.Object.(*batchv1.Job)
-			GinkgoWriter.Println(job)
+			logr.FromContextOrDiscard(ctx).Info("watch event", "job", job)
 
 			if job.Spec.Template.Spec.Containers[0].Image != image {
-				GinkgoWriter.Println("expected job image doesn't match")
+				logr.FromContextOrDiscard(ctx).Info("expected job image doesn't match")
 				continue
 			}
 
 			if !strings.Contains(strings.Join(job.Spec.Template.Spec.Containers[0].Command, " "), migration) {
-				GinkgoWriter.Println("expected job migration doesn't match")
+				logr.FromContextOrDiscard(ctx).Info("expected job migration doesn't match")
 				continue
 			}
 			if phase != "" {
 				foundPhase := false
 				for _, e := range job.Spec.Template.Spec.Containers[0].Env {
-					GinkgoWriter.Println(e)
+					logr.FromContextOrDiscard(ctx).Info("env var", "value", e)
 					if e.Value == phase {
 						foundPhase = true
 					}
 				}
 				if !foundPhase {
-					GinkgoWriter.Println("expected job phase doesn't match")
+					logr.FromContextOrDiscard(ctx).Info("expected job phase doesn't match")
 					continue
 				}
 			}
@@ -356,7 +359,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			// wait for job to succeed
 			if job.Status.Succeeded == 0 {
-				GinkgoWriter.Println("job hasn't succeeded")
+				logr.FromContextOrDiscard(ctx).Info("job hasn't succeeded")
 				continue
 			}
 			matchingJob = true
@@ -379,7 +382,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		testNamespace := "test"
 
 		It("Reports invalid config on the status", func() {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(ctx)
 			DeferCleanup(cancel)
 			aec := &v1alpha1.SpiceDBCluster{
 				TypeMeta: metav1.TypeMeta{
@@ -414,7 +417,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				if c.Name != "test" {
 					continue
 				}
-				GinkgoWriter.Println(c)
+				logr.FromContextOrDiscard(ctx).Info("watch event", "cluster", c)
 				condition := c.FindStatusCondition("ValidatingFailed")
 				if condition != nil {
 					foundValidationFailed = true
@@ -432,7 +435,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		rv := "0"
 
 		BeforeEach(func() {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(ctx)
 			DeferCleanup(cancel)
 
 			_ = kclient.CoreV1().Secrets(testNamespace).Delete(ctx, "nonexistent", metav1.DeleteOptions{})
@@ -459,7 +462,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		})
 
 		It("Reports missing secret on the status", func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 			DeferCleanup(cancel)
 
 			var c *v1alpha1.SpiceDBCluster
@@ -474,7 +477,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				if c.Name != "test" {
 					continue
 				}
-				GinkgoWriter.Println(c)
+				logr.FromContextOrDiscard(ctx).Info("watch event", "cluster", c)
 				condition := c.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
 				if condition != nil {
 					foundMissingSecret = true
@@ -490,7 +493,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		Describe("when the secret is created", func() {
 			BeforeEach(func() {
-				ctx, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithCancel(ctx)
 				DeferCleanup(cancel)
 				secret := corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
@@ -508,7 +511,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			It("removes the missing secret condition", func() {
 				var c *v1alpha1.SpiceDBCluster
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+				ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 				DeferCleanup(cancel)
 				watcher, err := client.Resource(v1alpha1ClusterGVR).Namespace(testNamespace).Watch(ctx, metav1.ListOptions{
 					Watch:           true,
@@ -522,7 +525,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					if c.Name != "test" {
 						continue
 					}
-					GinkgoWriter.Println(c)
+					logr.FromContextOrDiscard(ctx).Info("watch event", "cluster", c)
 					condition := c.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
 					if condition == nil {
 						foundMissingSecret = false
@@ -545,7 +548,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
 				Expect(err).To(Succeed())
 				mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-				decoder := yaml.NewYAMLToJSONDecoder(ioutil.NopCloser(bytes.NewReader(dsDef.definition)))
+				decoder := yaml.NewYAMLToJSONDecoder(io.NopCloser(bytes.NewReader(dsDef.definition)))
 				objs := make([]*unstructured.Unstructured, 0, 5)
 				var db *appsv1.StatefulSet
 				for {
@@ -563,20 +566,20 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 					mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 					Expect(err).To(Succeed())
-					_, err = client.Resource(mapping.Resource).Namespace(testNamespace).Create(context.Background(), &u, metav1.CreateOptions{})
+					_, err = client.Resource(mapping.Resource).Namespace(testNamespace).Create(ctx, &u, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
-					DeferCleanup(client.Resource(mapping.Resource).Namespace(testNamespace).Delete, context.Background(), u.GetName(), metav1.DeleteOptions{})
+					DeferCleanup(client.Resource(mapping.Resource).Namespace(testNamespace).Delete, ctx, u.GetName(), metav1.DeleteOptions{})
 				}
 				Expect(len(objs)).To(Equal(dsDef.definedObjs))
 
-				By(fmt.Sprintf("waiting for %s to start...", dsDef.label))
+				By(fmt.Sprintf("waiting for %s to start..", dsDef.label))
 				Eventually(func(g Gomega) {
-					out, err := kclient.AppsV1().StatefulSets(testNamespace).Get(context.Background(), db.GetName(), metav1.GetOptions{})
+					out, err := kclient.AppsV1().StatefulSets(testNamespace).Get(ctx, db.GetName(), metav1.GetOptions{})
 					g.Expect(err).To(Succeed())
 					g.Expect(out.Status.ReadyReplicas).To(Equal(*out.Spec.Replicas))
 				}).Should(Succeed())
 				Eventually(func(g Gomega) {
-					out, err := kclient.CoreV1().Pods(testNamespace).Get(context.Background(), db.GetName()+"-0", metav1.GetOptions{})
+					out, err := kclient.CoreV1().Pods(testNamespace).Get(ctx, db.GetName()+"-0", metav1.GetOptions{})
 					g.Expect(err).To(Succeed())
 					g.Expect(out.Status.Phase).To(Equal(corev1.PodRunning))
 				}).Should(Succeed())
@@ -593,7 +596,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				var cluster *v1alpha1.SpiceDBCluster
 
 				BeforeAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
+					ctx, cancel := context.WithCancel(ctx)
 					DeferCleanup(cancel)
 
 					secret := corev1.Secret{
@@ -645,7 +648,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				})
 
 				AfterAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
+					ctx, cancel := context.WithCancel(ctx)
 					defer cancel()
 
 					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Delete(ctx, cluster.Name, metav1.DeleteOptions{})).To(Succeed())
@@ -675,7 +678,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				var spiceCluster *v1alpha1.SpiceDBCluster
 
 				It("Starts SpiceDB without migrating", func() {
-					ctx, cancel := context.WithCancel(context.Background())
+					ctx, cancel := context.WithCancel(ctx)
 					DeferCleanup(cancel)
 
 					secret := corev1.Secret{
@@ -729,7 +732,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						})
 						g.Expect(err).To(Succeed())
 						g.Expect(len(deps.Items)).To(Equal(1))
-						GinkgoWriter.Println(deps.Items[0].Name)
+						logr.FromContextOrDiscard(ctx).Info("deployment", "name", deps.Items[0].Name)
 						fmt.Println(deps)
 					}).Should(Succeed())
 				})
@@ -739,7 +742,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				var spiceCluster *v1alpha1.SpiceDBCluster
 
 				BeforeAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
+					ctx, cancel := context.WithCancel(ctx)
 					DeferCleanup(cancel)
 
 					config := map[string]any{
@@ -806,7 +809,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				})
 
 				AfterAll(func() {
-					ctx, cancel := context.WithCancel(context.Background())
+					ctx, cancel := context.WithCancel(ctx)
 					defer cancel()
 
 					Expect(client.Resource(v1alpha1ClusterGVR).Namespace(spiceCluster.Namespace).Delete(ctx, spiceCluster.Name, metav1.DeleteOptions{})).To(Succeed())
@@ -873,26 +876,26 @@ var _ = Describe("SpiceDBClusters", func() {
 				}
 				mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 				Expect(err).To(Succeed())
-				_, err = client.Resource(mapping.Resource).Namespace(testNamespace).Create(context.Background(), &u, metav1.CreateOptions{})
+				_, err = client.Resource(mapping.Resource).Namespace(testNamespace).Create(ctx, &u, metav1.CreateOptions{})
 				Expect(err).To(Succeed())
-				DeferCleanup(client.Resource(mapping.Resource).Namespace(testNamespace).Delete, context.Background(), u.GetName(), metav1.DeleteOptions{})
+				DeferCleanup(client.Resource(mapping.Resource).Namespace(testNamespace).Delete, ctx, u.GetName(), metav1.DeleteOptions{})
 			}
 			Expect(len(objs)).To(Equal(2))
 
-			By("waiting for pg to start...")
+			By("waiting for pg to start..")
 			Eventually(func(g Gomega) {
-				out, err := kclient.AppsV1().StatefulSets(testNamespace).Get(context.Background(), db.GetName(), metav1.GetOptions{})
+				out, err := kclient.AppsV1().StatefulSets(testNamespace).Get(ctx, db.GetName(), metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
 				g.Expect(out.Status.ReadyReplicas).To(Equal(*out.Spec.Replicas))
 			}).Should(Succeed())
 			Eventually(func(g Gomega) {
-				out, err := kclient.CoreV1().Pods(testNamespace).Get(context.Background(), db.GetName()+"-0", metav1.GetOptions{})
+				out, err := kclient.CoreV1().Pods(testNamespace).Get(ctx, db.GetName()+"-0", metav1.GetOptions{})
 				g.Expect(err).To(Succeed())
 				g.Expect(out.Status.Phase).To(Equal(corev1.PodRunning))
 			}).Should(Succeed())
 			By("pg running.")
 
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(ctx)
 			DeferCleanup(cancel)
 
 			newConfig := config.OperatorConfig{
@@ -920,6 +923,8 @@ var _ = Describe("SpiceDBClusters", func() {
 				},
 			}
 			WriteConfig(newConfig)
+
+			// wait for new config to be ready
 
 			classConfig := map[string]any{
 				"logLevel":                     "debug",
@@ -983,8 +988,8 @@ var _ = Describe("SpiceDBClusters", func() {
 				g.Expect(err).To(Succeed())
 				fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
 				g.Expect(err).To(Succeed())
+				logr.FromContextOrDiscard(ctx).Info("fetched cluster", "status", fetched.Status)
 				g.Expect(len(fetched.Status.Conditions)).To(BeZero())
-				GinkgoWriter.Println(fetched.Status)
 				g.Expect(len(fetched.Status.AvailableVersions)).ToNot(BeZero(), "status should show available updates")
 			}).Should(Succeed())
 
@@ -1005,7 +1010,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		})
 
 		AfterAll(func() {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
 			newConfig := config.OperatorConfig{

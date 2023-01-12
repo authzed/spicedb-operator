@@ -241,21 +241,23 @@ func (c *Controller) loadConfig(path string) {
 	if err != nil {
 		panic(err)
 	}
+
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
-	var config config.OperatorConfig
-	if err := decoder.Decode(&config); err != nil {
+	var cfg config.OperatorConfig
+	if err := decoder.Decode(&cfg); err != nil {
 		panic(err)
 	}
 
-	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {
+	if h := xxhash.Sum64(contents); h != c.lastConfigHash.Load() {
 		func() {
 			c.configLock.Lock()
 			defer c.configLock.Unlock()
-			c.config = config
+			c.config = cfg
 		}()
-		c.lastConfigHash.Store(hash)
+		c.lastConfigHash.Store(h)
 	} else {
 		// config hasn't changed
+		logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
 		return
 	}
 
@@ -307,8 +309,8 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	})
 
 	c.configLock.RLock()
-	config := c.config.Copy()
-	ctx = CtxOperatorConfig.WithValue(ctx, &config)
+	cfg := c.config.Copy()
+	ctx = CtxOperatorConfig.WithValue(ctx, &cfg)
 	c.configLock.RUnlock()
 
 	logger.V(4).Info("syncing owned object", "gvr", gvr)
