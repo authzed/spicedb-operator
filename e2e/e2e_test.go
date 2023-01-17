@@ -145,7 +145,7 @@ func StartOperator() {
 		options.DebugAddress = ":"
 		options.BootstrapCRDs = true
 		options.OperatorConfigPath = WriteConfig(opconfig)
-		options.Run(ctx, cmdutil.NewFactory(ClientGetter{}))
+		_ = options.Run(ctx, cmdutil.NewFactory(ClientGetter{}))
 	}()
 
 	Eventually(func(g Gomega) {
@@ -176,7 +176,7 @@ func WriteConfig(operatorConfig config.OperatorConfig) string {
 	_, err = file.Write(out)
 	Expect(err).To(Succeed())
 	GinkgoWriter.Println("wrote new config to", ConfigFileName)
-	fmt.Println(ConfigFileName)
+
 	return ConfigFileName
 }
 

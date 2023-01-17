@@ -43,7 +43,6 @@ import (
 	"github.com/authzed/controller-idioms/hash"
 	"github.com/authzed/controller-idioms/manager"
 	"github.com/authzed/controller-idioms/middleware"
-	"github.com/authzed/controller-idioms/pause"
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -111,11 +110,13 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 
 	if len(configFilePath) > 0 {
 		inf := fileInformerFactory.ForResource(fileinformer.FileGroupVersion.WithResource(configFilePath)).Informer()
-		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
 			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
 			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
-		})
+		}); err != nil {
+			return nil, err
+		}
 	} else {
 		logr.FromContextOrDiscard(ctx).V(3).Info("no operator configuration provided", "path", configFilePath)
 	}
@@ -127,11 +128,13 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		metav1.NamespaceAll,
 		nil,
 	)
-	ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
 		UpdateFunc: func(_, obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
 		// Delete is not used right now, we rely on ownerrefs to clean up
-	})
+	}); err != nil {
+		return nil, err
+	}
 
 	externalInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
 		DependentFactoryKey,
@@ -157,11 +160,13 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
 			return nil, err
 		}
-		inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    func(obj interface{}) { c.syncExternalResource(obj) },
 			UpdateFunc: func(_, obj interface{}) { c.syncExternalResource(obj) },
 			DeleteFunc: func(obj interface{}) { c.syncExternalResource(obj) },
-		})
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	// start informers
@@ -236,21 +241,23 @@ func (c *Controller) loadConfig(path string) {
 	if err != nil {
 		panic(err)
 	}
+
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(contents), 100)
-	var config config.OperatorConfig
-	if err := decoder.Decode(&config); err != nil {
+	var cfg config.OperatorConfig
+	if err := decoder.Decode(&cfg); err != nil {
 		panic(err)
 	}
 
-	if hash := xxhash.Sum64(contents); hash != c.lastConfigHash.Load() {
+	if h := xxhash.Sum64(contents); h != c.lastConfigHash.Load() {
 		func() {
 			c.configLock.Lock()
 			defer c.configLock.Unlock()
-			c.config = config
+			c.config = cfg
 		}()
-		c.lastConfigHash.Store(hash)
+		c.lastConfigHash.Store(h)
 	} else {
 		// config hasn't changed
+		logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
 		return
 	}
 
@@ -302,8 +309,8 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	})
 
 	c.configLock.RLock()
-	config := c.config.Copy()
-	ctx = CtxOperatorConfig.WithValue(ctx, &config)
+	cfg := c.config.Copy()
+	ctx = CtxOperatorConfig.WithValue(ctx, &cfg)
 	c.configLock.RUnlock()
 
 	logger.V(4).Info("syncing owned object", "gvr", gvr)
@@ -401,23 +408,11 @@ func (c *Controller) waitForMigrationsHandler(next ...handler.Handler) handler.H
 }
 
 func (c *Controller) pauseCluster(next ...handler.Handler) handler.Handler {
-	return handler.NewHandler(pause.NewPauseContextHandler(
-		QueueOps.Key,
-		metadata.PausedControllerSelectorKey,
-		CtxClusterStatus,
-		c.PatchStatus,
-		handler.Handlers(next).MustOne(),
-	), "pauseCluster")
+	return NewPauseHandler(c.PatchStatus, handler.Handlers(next).MustOne())
 }
 
 func (c *Controller) selfPauseCluster(...handler.Handler) handler.Handler {
-	return handler.NewHandler(pause.NewSelfPauseHandler(
-		QueueOps.Key,
-		metadata.PausedControllerSelectorKey,
-		CtxSelfPauseObject,
-		c.Patch,
-		c.PatchStatus,
-	), HandlerSelfPauseKey)
+	return NewSelfPauseHandler(c.Patch, c.PatchStatus)
 }
 
 func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
