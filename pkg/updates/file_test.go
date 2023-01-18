@@ -41,20 +41,19 @@ func TestChannelForDatastore(t *testing.T) {
 
 func TestAvailableVersions(t *testing.T) {
 	table := []struct {
-		name          string
-		graph         *UpdateGraph
-		engine        string
-		version       v1alpha1.SpiceDBVersion
-		expectedNames []string
-		expectedErr   string
+		name           string
+		graph          *UpdateGraph
+		engine         string
+		currentVersion v1alpha1.SpiceDBVersion
+		expected       []v1alpha1.SpiceDBVersion
+		expectedErr    string
 	}{
 		{
-			name:          "empty graph",
-			graph:         &UpdateGraph{},
-			engine:        "postgres",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "postgres"},
-			expectedNames: nil,
-			expectedErr:   `no source found for channel "postgres"`,
+			name:           "empty graph",
+			graph:          &UpdateGraph{},
+			engine:         "postgres",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "postgres"},
+			expectedErr:    `no source found for channel "postgres"`,
 		},
 		{
 			name: "graph without matching channel",
@@ -63,10 +62,9 @@ func TestAvailableVersions(t *testing.T) {
 				Metadata: map[string]string{"datastore": "cockroachdb"},
 				Nodes:    []State{{ID: "v1.0.0"}},
 			}}},
-			engine:        "postgres",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "postgres"},
-			expectedNames: nil,
-			expectedErr:   `no source found for channel "postgres"`,
+			engine:         "postgres",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "postgres"},
+			expectedErr:    `no source found for channel "postgres"`,
 		},
 		{
 			name: "graph without edges",
@@ -75,10 +73,9 @@ func TestAvailableVersions(t *testing.T) {
 				Metadata: map[string]string{"datastore": "cockroachdb"},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
-			engine:        "cockroachdb",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedNames: nil,
-			expectedErr:   "missing edges",
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedErr:    "missing edges",
 		},
 		{
 			name: "graph without nodes",
@@ -87,10 +84,9 @@ func TestAvailableVersions(t *testing.T) {
 				Metadata: map[string]string{"datastore": "cockroachdb"},
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 			}}},
-			engine:        "cockroachdb",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedNames: nil,
-			expectedErr:   "missing nodes",
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedErr:    "missing nodes",
 		},
 		{
 			name: "simple patch update",
@@ -100,9 +96,34 @@ func TestAvailableVersions(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
-			engine:        "cockroachdb",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedNames: []string{"v1.0.1"},
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expected:       []v1alpha1.SpiceDBVersion{{Name: "v1.0.1", Channel: "cockroachdb", Attributes: []v1alpha1.SpiceDBVersionAttributes{"next", "latest"}, Description: "direct update with no migrations, head of channel"}},
+		},
+		{
+			name: "a next safe update, a next update with a migration, and a latest update with many steps are all available",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges: EdgeSet{
+					"v1.0.0": {"v1.0.1", "v1.0.2"},
+					"v1.0.1": {"v1.0.2"},
+					"v1.0.2": {"v1.0.3"},
+				},
+				Nodes: []State{
+					{ID: "v1.0.3", Migration: "b"},
+					{ID: "v1.0.2", Migration: "a"},
+					{ID: "v1.0.1"},
+					{ID: "v1.0.0"},
+				},
+			}}},
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expected: []v1alpha1.SpiceDBVersion{
+				{Name: "v1.0.1", Channel: "cockroachdb", Attributes: []v1alpha1.SpiceDBVersionAttributes{"next"}, Description: "direct update with no migrations"},
+				{Name: "v1.0.2", Channel: "cockroachdb", Attributes: []v1alpha1.SpiceDBVersionAttributes{"next", "migration"}, Description: "update will run a migration"},
+				{Name: "v1.0.3", Channel: "cockroachdb", Attributes: []v1alpha1.SpiceDBVersionAttributes{"latest", "migration"}, Description: "head of the channel, multiple updates will run in sequence"},
+			},
 		},
 		{
 			name: "head returns nothing",
@@ -112,9 +133,9 @@ func TestAvailableVersions(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
-			engine:        "cockroachdb",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
-			expectedNames: []string{},
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
+			expected:       []v1alpha1.SpiceDBVersion{},
 		},
 		{
 			name: "ignores old versions",
@@ -127,15 +148,15 @@ func TestAvailableVersions(t *testing.T) {
 				},
 				Nodes: []State{{ID: "v1.1.0"}, {ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
-			engine:        "cockroachdb",
-			version:       v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
-			expectedNames: []string{"v1.1.0"},
+			engine:         "cockroachdb",
+			currentVersion: v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
+			expected:       []v1alpha1.SpiceDBVersion{{Name: "v1.1.0", Channel: "cockroachdb", Attributes: []v1alpha1.SpiceDBVersionAttributes{"next", "latest"}, Description: "direct update with no migrations, head of channel"}},
 		},
 	}
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
-			versions, err := tt.graph.AvailableVersions(tt.engine, tt.version)
+			versions, err := tt.graph.AvailableVersions(tt.engine, tt.currentVersion)
 
 			switch tt.expectedErr {
 			case "":
@@ -145,13 +166,7 @@ func TestAvailableVersions(t *testing.T) {
 				require.Contains(t, err.Error(), tt.expectedErr)
 			}
 
-			if tt.expectedNames != nil {
-				names := make([]string, 0)
-				for _, v := range versions {
-					names = append(names, v.Name)
-				}
-				require.Equal(t, tt.expectedNames, names)
-			}
+			require.EqualValues(t, tt.expected, versions)
 		})
 	}
 }
@@ -207,7 +222,7 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.1"},
 		},
 		{
-			name: "fallback to current version channel",
+			name: "fallback to current currentVersion channel",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
 				Metadata: map[string]string{"datastore": "cockroachdb"},
@@ -264,7 +279,7 @@ func TestComputeTarget(t *testing.T) {
 			expectedErr:       "no current state",
 		},
 		{
-			name: "rolling uses current version",
+			name: "rolling uses current currentVersion",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
 				Metadata: map[string]string{"datastore": "cockroachdb"},
@@ -280,7 +295,7 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.0"},
 		},
 		{
-			name: "head returns same version",
+			name: "head returns same currentVersion",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
 				Metadata: map[string]string{"datastore": "cockroachdb"},
@@ -295,7 +310,7 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.1"},
 		},
 		{
-			name: "no version returns head",
+			name: "no currentVersion returns head",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
 				Metadata: map[string]string{"datastore": "cockroachdb"},

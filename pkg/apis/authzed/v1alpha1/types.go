@@ -131,7 +131,9 @@ func (s ClusterStatus) Equals(other ClusterStatus) bool {
 		s.Migration == other.Migration &&
 		s.Phase == other.Phase &&
 		s.CurrentVersion.Equals(other.CurrentVersion) &&
-		slices.Equal(s.AvailableVersions, other.AvailableVersions) &&
+		slices.EqualFunc(s.AvailableVersions, other.AvailableVersions, func(a, b SpiceDBVersion) bool {
+			return a.Equals(&b)
+		}) &&
 		slices.Equal(s.Conditions, other.Conditions):
 		return true
 	default:
@@ -139,9 +141,30 @@ func (s ClusterStatus) Equals(other ClusterStatus) bool {
 	}
 }
 
+type SpiceDBVersionAttributes string
+
+var (
+	SpiceDBVersionAttributesNext                 SpiceDBVersionAttributes = "next"
+	SpiceDBVersionAttributesMigration            SpiceDBVersionAttributes = "migration"
+	SpiceDBVersionAttributesIncompatibleDispatch SpiceDBVersionAttributes = "incompatibleDispatch"
+	SpiceDBVersionAttributesLatest               SpiceDBVersionAttributes = "latest"
+)
+
 type SpiceDBVersion struct {
-	Name        string `json:"name"`
-	Channel     string `json:"channel"`
+	// Name is the identifier for this version
+	Name string `json:"name"`
+
+	// Channel is the name of the channel this version is in
+	Channel string `json:"channel"`
+
+	// Attributes is an optional set of descriptors for the update, which
+	// carry additional information like whether there will be a migration
+	// if this version is selected.
+	// +optional
+	Attributes []SpiceDBVersionAttributes `json:"attributes,omitempty"`
+
+	// Description a human-readable description of the update.
+	// +optional
 	Description string `json:"description,omitempty"`
 }
 
@@ -149,7 +172,7 @@ func (v *SpiceDBVersion) Equals(other *SpiceDBVersion) bool {
 	if v == other {
 		return true
 	}
-	if v != nil && other != nil && v.Name == other.Name && v.Channel == other.Channel {
+	if v != nil && other != nil && v.Name == other.Name && v.Channel == other.Channel && slices.Equal(v.Attributes, other.Attributes) {
 		return true
 	}
 	return false

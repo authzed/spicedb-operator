@@ -13,9 +13,9 @@ type EdgeSet map[string][]string
 type NodeSet map[string]int
 
 // MemorySource is an in-memory implementation of Source.
-// It's an oracle to answer update questions for an installed version.
+// It's an oracle to answer update questions for an installed currentVersion.
 type MemorySource struct {
-	// OrderedNodes is an ordered list of all nodes. Lower index == newer version.
+	// OrderedNodes is an ordered list of all nodes. Lower index == newer currentVersion.
 	OrderedNodes []State
 	// Nodes is a helper to lookup a node by id
 	Nodes NodeSet
