@@ -68,9 +68,7 @@ var (
 
 func init() {
 	klog.InitFlags(nil)
-}
 
-func TestEndToEnd(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	// Default operator logs to --v=4 and write to GinkgoWriter
@@ -84,7 +82,9 @@ func TestEndToEnd(t *testing.T) {
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
+}
 
+func TestEndToEnd(t *testing.T) {
 	RunSpecs(t, "operator tests")
 }
 

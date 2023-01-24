@@ -37,26 +37,25 @@ jobs:
       - uses: "stefanprodan/kube-tools@v1"
         with:
           command: "kustomize build ./config"
-       # Disabled due to issues with Kustomize, see:
-       # - https://github.com/instrumenta/kubeval-action/pull/3
-       # - https://github.com/instrumenta/kubeval/issues/232
-       # - uses: "instrumenta/kubeval-action@5915e4adba5adccac07cb156b82e54c3fed74921"
-       #   with:
-       #     files: "config"
+      # Disabled due to issues with Kustomize, see:
+      # - https://github.com/instrumenta/kubeval-action/pull/3
+      # - https://github.com/instrumenta/kubeval/issues/232
+      # - uses: "instrumenta/kubeval-action@5915e4adba5adccac07cb156b82e54c3fed74921"
+      #   with:
+      #     files: "config"
       - uses: "authzed/actions/markdown-lint@main"
 
-#  TODO: enable when public
-#  codeql:
-#    name: "Analyze with CodeQL"
-#    runs-on: "ubuntu-latest"
-#    permissions:
-#      actions: "read"
-#      contents: "read"
-#      security-events: "write"
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        language: ["go"]
-#    steps:
-#      - uses: "actions/checkout@v3"
-#      - uses: "authzed/actions/codeql@main"
+  codeql:
+    name: "Analyze with CodeQL"
+    runs-on: "ubuntu-latest"
+    permissions:
+      actions: "read"
+      contents: "read"
+      security-events: "write"
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["go"]
+    steps:
+      - uses: "actions/checkout@v3"
+      - uses: "authzed/actions/codeql@main"

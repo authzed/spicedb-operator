@@ -67,5 +67,18 @@ changelog:
 release:
   prerelease: "auto"
   footer: |
+    ## Release Kustomize Manifests
+    Release manifests can be found at `oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }}` and can be installed or inspected with [kustomizer](https://kustomizer.dev/):
+
+    Install directly into a cluster:
+    ```sh
+    kustomizer apply inventory spicedb-operator --artifact oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }}
+    ```
+
+    Dump kube manifests for inspection or management with other tools:
+    ```sh
+    kustomizer pull artifact oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }} > spicedb-operator-v{{ .Version }}.yaml
+    ```
+
     ## Docker Images
-    This release is available at `authzed/spicedb-operator:v{{ .Version }}`, `quay.io/authzed/spicedb-operator:v{{ .Version }}`, `ghcr.io/authzed/spicedb-operator:v{{ .Version }}`
+    This release image is available at `authzed/spicedb-operator:v{{ .Version }}`, `quay.io/authzed/spicedb-operator:v{{ .Version }}`, `ghcr.io/authzed/spicedb-operator:v{{ .Version }}`

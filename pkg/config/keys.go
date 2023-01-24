@@ -36,36 +36,45 @@ func (k *key[V]) pop(config RawConfig) V {
 	return tv
 }
 
-type intOrStringKey struct {
+type intOrStringKey[I int64 | int32 | int16 | int8] struct {
 	key          string
-	defaultValue int64
+	defaultValue I
 }
 
-func newIntOrStringKey(key string, defaultValue int64) *intOrStringKey {
-	return &intOrStringKey{
+func newIntOrStringKey[I int64 | int32 | int16 | int8](key string, defaultValue I) *intOrStringKey[I] {
+	return &intOrStringKey[I]{
 		key:          key,
 		defaultValue: defaultValue,
 	}
 }
 
-func (k *intOrStringKey) pop(config RawConfig) (out int64, err error) {
+func (k *intOrStringKey[I]) pop(config RawConfig) (out I, err error) {
 	v, ok := config[k.key]
 	delete(config, k.key)
 	if !ok {
 		return k.defaultValue, nil
 	}
 
-	switch value := v.(type) {
-	case string:
-		out, err = strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return
-		}
-	case float64:
-		out = int64(value)
+	var bits int
+	switch any(out).(type) {
+	case int8:
+		bits = 8
+	case int16:
+		bits = 16
+	case int32:
+		bits = 32
+	case int64:
+		bits = 64
 	default:
-		err = fmt.Errorf("expected int or string for key %s", k.key)
+		panic("invalid int type")
 	}
+
+	var parsed int64
+	parsed, err = strconv.ParseInt(fmt.Sprint(v), 10, bits)
+	if err != nil {
+		return
+	}
+	out = I(parsed)
 	return
 }
 

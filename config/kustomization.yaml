@@ -4,3 +4,6 @@ resources:
   - crds
   - rbac
   - operator.yaml
+images:
+  - name: ghcr.io/authzed/spicedb-operator
+    newTag: latest
