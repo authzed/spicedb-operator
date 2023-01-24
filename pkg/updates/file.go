@@ -71,7 +71,7 @@ func (g *UpdateGraph) Copy() UpdateGraph {
 }
 
 // AvailableVersions traverses an UpdateGraph and collects a list of the
-// safe versions for updating from the provided version.
+// safe versions for updating from the provided currentVersion.
 func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion) ([]v1alpha1.SpiceDBVersion, error) {
 	source, err := g.SourceForChannel(v.Channel)
 	if err != nil {
@@ -82,13 +82,16 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 	nextWithoutMigrations := source.NextVersionWithoutMigrations(v.Name)
 	latest := source.LatestVersion(v.Name)
 	if len(nextWithoutMigrations) > 0 {
+		// TODO: should also account for downtime, i.e. dispatch api changes
 		nextDirectVersion := v1alpha1.SpiceDBVersion{
 			Name:        nextWithoutMigrations,
 			Channel:     v.Channel,
+			Attributes:  []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesNext},
 			Description: "direct update with no migrations",
 		}
 		if nextWithoutMigrations == latest {
 			nextDirectVersion.Description += ", head of channel"
+			nextDirectVersion.Attributes = append(nextDirectVersion.Attributes, v1alpha1.SpiceDBVersionAttributesLatest)
 		}
 		availableVersions = append(availableVersions, nextDirectVersion)
 	}
@@ -98,10 +101,12 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 		nextVersion := v1alpha1.SpiceDBVersion{
 			Name:        next,
 			Channel:     v.Channel,
+			Attributes:  []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesNext, v1alpha1.SpiceDBVersionAttributesMigration},
 			Description: "update will run a migration",
 		}
 		if next == latest {
 			nextVersion.Description += ", head of channel"
+			nextVersion.Attributes = append(nextVersion.Attributes, v1alpha1.SpiceDBVersionAttributesLatest)
 		}
 		availableVersions = append(availableVersions, nextVersion)
 	}
@@ -109,6 +114,7 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 		availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 			Name:        latest,
 			Channel:     v.Channel,
+			Attributes:  []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesLatest, v1alpha1.SpiceDBVersionAttributesMigration},
 			Description: "head of the channel, multiple updates will run in sequence",
 		})
 	}
@@ -130,6 +136,7 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 			availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 				Name:        next,
 				Channel:     c.Name,
+				Attributes:  []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesNext},
 				Description: "direct update with no migrations, different channel",
 			})
 			continue
@@ -138,6 +145,7 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 			availableVersions = append(availableVersions, v1alpha1.SpiceDBVersion{
 				Name:        next,
 				Channel:     c.Name,
+				Attributes:  []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesNext, v1alpha1.SpiceDBVersionAttributesMigration},
 				Description: "update will run a migration, different channel",
 			})
 		}
@@ -158,7 +166,7 @@ func explodeImage(image string) (baseImage, tag, digest string) {
 	return
 }
 
-// ComputeTarget determines the target update version and state given an update
+// ComputeTarget determines the target update currentVersion and state given an update
 // graph and the proper context.
 func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, rolling bool) (baseImage string, target *v1alpha1.SpiceDBVersion, state State, err error) {
 	baseImage, tag, digest := explodeImage(image)
@@ -176,7 +184,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		return
 	}
 
-	// Fallback to the channel from the current version.
+	// Fallback to the channel from the current currentVersion.
 	if channel == "" && currentVersion != nil {
 		channel = currentVersion.Channel
 	}
@@ -199,7 +207,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		}
 	}
 
-	// Default to the version we're working toward.
+	// Default to the currentVersion we're working toward.
 	target = currentVersion
 
 	var currentState State
@@ -221,8 +229,8 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		return
 	}
 
-	// If version is set, we only use the subset of the update graph that leads
-	// to that version.
+	// If currentVersion is set, we only use the subset of the update graph that leads
+	// to that currentVersion.
 	if len(version) > 0 {
 		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
@@ -235,13 +243,13 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 	if currentVersion != nil && len(currentVersion.Name) > 0 {
 		targetVersion = updateSource.NextVersion(currentVersion.Name)
 		if len(targetVersion) == 0 {
-			// There's no next version, so use the current state.
+			// There's no next currentVersion, so use the current state.
 			state = currentState
 			target = currentVersion
 			return
 		}
 	} else {
-		// There's no current version, so install head.
+		// There's no current currentVersion, so install head.
 		// TODO(jzelinskie): find a way to make this less "magical"
 		targetVersion = updateSource.LatestVersion("")
 	}

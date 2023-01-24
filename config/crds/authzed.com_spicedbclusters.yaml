@@ -73,11 +73,23 @@ spec:
                   channel.
                 items:
                   properties:
+                    attributes:
+                      description: Attributes is an optional set of descriptors for
+                        the update, which carry additional information like whether
+                        there will be a migration if this version is selected.
+                      items:
+                        type: string
+                      type: array
                     channel:
+                      description: Channel is the name of the channel this version
+                        is in
                       type: string
                     description:
+                      description: Description a human-readable description of the
+                        update.
                       type: string
                     name:
+                      description: Name is the identifier for this version
                       type: string
                   required:
                   - channel
@@ -185,11 +197,22 @@ spec:
                 description: CurrentVersion is a description of the currently selected
                   version from the channel, if an update channel is being used.
                 properties:
+                  attributes:
+                    description: Attributes is an optional set of descriptors for
+                      the update, which carry additional information like whether
+                      there will be a migration if this version is selected.
+                    items:
+                      type: string
+                    type: array
                   channel:
+                    description: Channel is the name of the channel this version is
+                      in
                     type: string
                   description:
+                    description: Description a human-readable description of the update.
                     type: string
                   name:
+                    description: Name is the identifier for this version
                     type: string
                 required:
                 - channel

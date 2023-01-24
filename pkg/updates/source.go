@@ -1,16 +1,16 @@
 package updates
 
-// Source models a single stream of updates for an installed version.
+// Source models a single stream of updates for an installed currentVersion.
 type Source interface {
-	// NextVersionWithoutMigrations returns the newest version that has an edge that
+	// NextVersionWithoutMigrations returns the newest currentVersion that has an edge that
 	// does not require any migrations.
 	NextVersionWithoutMigrations(from string) string
 
-	// Next returns the newest version that has an edge.
-	// This version might include migrations.
+	// NextVersion returns the newest currentVersion that has an edge.
+	// This currentVersion might include migrations.
 	NextVersion(from string) string
 
-	// Latest returns the newest version that has some path through the
+	// LatestVersion returns the newest currentVersion that has some path through the
 	// graph.
 	//
 	// If no path exists, returns the empty string.
