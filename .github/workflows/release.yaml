@@ -10,6 +10,8 @@ permissions:
 jobs:
   goreleaser:
     runs-on: "ubuntu-latest"
+    env:
+      KUSTOMIZER_ARTIFACT: "oci://ghcr.io/${{github.repository_owner}}/${{github.event.repository.name}}-manifests"
     steps:
       - uses: "actions/checkout@v3"
         with:
@@ -24,6 +26,16 @@ jobs:
           dockerhub_token: "${{ secrets.DOCKERHUB_ACCESS_TOKEN }}"
       - uses: "docker/setup-qemu-action@v1"
       - uses: "docker/setup-buildx-action@v1"
+      - name: "Set operator image in release manifests"
+        uses: "mikefarah/yq@master"
+        with:
+          cmd: |
+            yq eval '.images[0].newTag="${{ github.ref_name }}"' -i ./config/kustomization.yaml
+      - name: "Build release bundle.yaml"
+        uses: "karancode/kustomize-github-action@master"
+        with:
+          kustomize_build_dir: "config"
+          kustomize_output_file: "bundle.yaml"
       - uses: "goreleaser/goreleaser-action@v2"
         with:
           distribution: "goreleaser"
@@ -32,31 +44,11 @@ jobs:
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           GORELEASER_KEY: "${{ secrets.GORELEASER_KEY }}"
-
-  kustomizer:
-    runs-on: "ubuntu-latest"
-    env:
-      ARTIFACT: "oci://ghcr.io/${{github.repository_owner}}/${{github.event.repository.name}}-manifests"
-    steps:
-      - uses: "actions/checkout@v3"
-      - name: "Login to GitHub Container Registry"
-        uses: "docker/login-action@v2"
-        with:
-          registry: "ghcr.io"
-          username: "${{ github.actor }}"
-          password: "${{ secrets.GITHUB_TOKEN }}"
-      - name: "Setup kustomizer"
-        uses: "stefanprodan/kustomizer/action@main"
-      - name: "Set operator image in release manifests"
-        uses: "mikefarah/yq@master"
-        with:
-          cmd: |
-            yq eval '.images[0].newTag="${{ github.ref_name }}"' -i ./config/kustomization.yaml
       - name: "Push release manifests"
         run: |
-          kustomizer push artifact ${ARTIFACT}:${{ github.ref_name }} -k ./config \
+          kustomizer push artifact ${KUSTOMIZER_ARTIFACT}:${{ github.ref_name }} -k ./config \
             --source=${{ github.repositoryUrl }} \
             --revision="${{ github.ref_name }}/${{ github.sha }}"
       - name: "Tag latest release manifests"
         run: |
-          kustomizer tag artifact ${ARTIFACT}:${GITHUB_REF_NAME} latest
+          kustomizer tag artifact ${KUSTOMIZER_ARTIFACT}:${GITHUB_REF_NAME} latest

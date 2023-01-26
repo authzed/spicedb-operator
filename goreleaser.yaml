@@ -64,21 +64,36 @@ snapshot:
 changelog:
   use: "github-native"
   sort: "asc"
+includes:
+- from_file:
+    path: "bundle.yaml"
 release:
   prerelease: "auto"
   footer: |
-    ## Release Kustomize Manifests
+    ## Install with `kubectl`
+    kubectl apply --server-side -k https://github.com/authzed/spicedb-operator/releases/download/v{{ .Version }}/bundle.yaml
+    
+    ## Include or modify this release in your own `kustomize` bundle
+    
+    ```yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    resources:
+      - https://github.com/authzed/spicedb-operator/config?ref=v{{ .Version }}
+    images:
+      - name: ghcr.io/authzed/spicedb-operator
+        newTag: v{{ .Version }}
+    ```
+    
+    ## Install with `kustomizer` 
     Release manifests can be found at `oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }}` and can be installed or inspected with [kustomizer](https://kustomizer.dev/):
 
-    Install directly into a cluster:
     ```sh
     kustomizer apply inventory spicedb-operator --artifact oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }}
     ```
 
-    Dump kube manifests for inspection or management with other tools:
-    ```sh
-    kustomizer pull artifact oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }} > spicedb-operator-v{{ .Version }}.yaml
-    ```
-
     ## Docker Images
-    This release image is available at `authzed/spicedb-operator:v{{ .Version }}`, `quay.io/authzed/spicedb-operator:v{{ .Version }}`, `ghcr.io/authzed/spicedb-operator:v{{ .Version }}`
+    This release's image is available at:
+    - `authzed/spicedb-operator:v{{ .Version }}`
+    - `quay.io/authzed/spicedb-operator:v{{ .Version }}`
+    - `ghcr.io/authzed/spicedb-operator:v{{ .Version }}`
