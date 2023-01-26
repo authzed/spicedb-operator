@@ -88,9 +88,12 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "add-unique-living-ns"},
 	}
 	return updates.Channel{
-		Name:     "postgres",
-		Metadata: map[string]string{"datastore": "postgres"},
-		Nodes:    releases,
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "postgres",
+			"default":   "true",
+		},
+		Nodes: releases,
 		Edges: map[string][]string{
 			"v1.16.0":        {"v1.16.1"},
 			"v1.15.0":        {"v1.16.0", "v1.16.1"},
@@ -141,9 +144,12 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "add-transactions-table"},
 	}
 	return updates.Channel{
-		Name:     "cockroachdb",
-		Metadata: map[string]string{"datastore": "cockroachdb"},
-		Nodes:    releases,
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "cockroachdb",
+			"default":   "true",
+		},
+		Nodes: releases,
 		Edges: map[string][]string{
 			"v1.16.0": {"v1.16.1"},
 			"v1.15.0": {"v1.16.0", "v1.16.1"},
@@ -185,9 +191,12 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id"},
 	}
 	return updates.Channel{
-		Name:     "mysql",
-		Metadata: map[string]string{"datastore": "mysql"},
-		Nodes:    releases,
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "mysql",
+			"default":   "true",
+		},
+		Nodes: releases,
 		Edges: map[string][]string{
 			"v1.16.0": {"v1.16.1"},
 			"v1.15.0": {"v1.16.0", "v1.16.1"},
@@ -229,9 +238,12 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "initial"},
 	}
 	return updates.Channel{
-		Name:     "spanner",
-		Metadata: map[string]string{"datastore": "spanner"},
-		Nodes:    releases,
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "spanner",
+			"default":   "true",
+		},
+		Nodes: releases,
 		Edges: map[string][]string{
 			"v1.16.0": {"v1.16.1"},
 			"v1.15.0": {"v1.16.0", "v1.16.1"},

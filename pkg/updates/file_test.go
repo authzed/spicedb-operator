@@ -8,32 +8,32 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
 
-func TestChannelForDatastore(t *testing.T) {
+func TestDefaultChannelForDatastore(t *testing.T) {
 	graph := UpdateGraph{Channels: []Channel{
 		{
 			Name:     "postgres",
-			Metadata: map[string]string{"datastore": "postgres"},
+			Metadata: map[string]string{"datastore": "postgres", "default": "true"},
 			Nodes:    []State{{ID: "v1.0.0"}},
 		},
 		{
 			Name:     "cockroachdb",
-			Metadata: map[string]string{"datastore": "cockroachdb"},
+			Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 			Nodes:    []State{{ID: "v1.0.0"}},
 		},
 	}}
 
 	t.Run("common case", func(t *testing.T) {
-		channel, err := graph.ChannelForDatastore("cockroachdb")
+		channel, err := graph.DefaultChannelForDatastore("cockroachdb")
 		require.Nil(t, err)
 		require.Equal(t, "cockroachdb", channel)
 
-		channel, err = graph.ChannelForDatastore("postgres")
+		channel, err = graph.DefaultChannelForDatastore("postgres")
 		require.Nil(t, err)
 		require.Equal(t, "postgres", channel)
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
-		channel, err := graph.ChannelForDatastore("POSTGRES")
+		channel, err := graph.DefaultChannelForDatastore("POSTGRES")
 		require.Nil(t, err)
 		require.Equal(t, "postgres", channel)
 	})
@@ -229,6 +229,7 @@ func TestComputeTarget(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
+			engine:            "cockroachdb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
@@ -236,10 +237,10 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.1"},
 		},
 		{
-			name: "fallback to engine as channel",
+			name: "fallback to default channel",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
-				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
@@ -254,7 +255,7 @@ func TestComputeTarget(t *testing.T) {
 			name: "fail missing channel",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
-				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
@@ -262,7 +263,7 @@ func TestComputeTarget(t *testing.T) {
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0"},
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			expectedErr:       "no channel found",
+			expectedErr:       "no channel",
 		},
 		{
 			name: "rolling without current state fails",
@@ -272,6 +273,7 @@ func TestComputeTarget(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
+			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
@@ -286,6 +288,7 @@ func TestComputeTarget(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
+			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
@@ -302,6 +305,7 @@ func TestComputeTarget(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
+			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
@@ -317,6 +321,7 @@ func TestComputeTarget(t *testing.T) {
 				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
+			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",

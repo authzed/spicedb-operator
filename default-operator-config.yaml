@@ -148,7 +148,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: postgres
-  name: postgres
+  name: stable
   nodes:
   - id: v1.16.1
     migration: drop-id-constraints
@@ -408,7 +408,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: cockroachdb
-  name: cockroachdb
+  name: stable
   nodes:
   - id: v1.16.1
     migration: add-caveats
@@ -555,7 +555,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: mysql
-  name: mysql
+  name: stable
   nodes:
   - id: v1.16.1
     migration: add-caveats
@@ -786,7 +786,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: spanner
-  name: spanner
+  name: stable
   nodes:
   - id: v1.16.1
     migration: add-caveats

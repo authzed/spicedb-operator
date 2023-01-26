@@ -65,16 +65,16 @@ changelog:
   use: "github-native"
   sort: "asc"
 includes:
-- from_file:
-    path: "bundle.yaml"
+  - from_file:
+      path: "bundle.yaml"
 release:
   prerelease: "auto"
   footer: |
     ## Install with `kubectl`
-    kubectl apply --server-side -k https://github.com/authzed/spicedb-operator/releases/download/v{{ .Version }}/bundle.yaml
-    
+    kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/download/v{{ .Version }}/bundle.yaml
+
     ## Include or modify this release in your own `kustomize` bundle
-    
+
     ```yaml
     apiVersion: kustomize.config.k8s.io/v1beta1
     kind: Kustomization
@@ -84,8 +84,8 @@ release:
       - name: ghcr.io/authzed/spicedb-operator
         newTag: v{{ .Version }}
     ```
-    
-    ## Install with `kustomizer` 
+
+    ## Install with `kustomizer`
     Release manifests can be found at `oci://ghcr.io/authzed/spicedb-operator-manifests:v{{ .Version }}` and can be installed or inspected with [kustomizer](https://kustomizer.dev/):
 
     ```sh

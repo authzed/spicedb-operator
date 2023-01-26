@@ -42,12 +42,12 @@ type UpdateGraph struct {
 	Channels []Channel `json:"channels,omitempty"`
 }
 
-// ChannelForDatastore returns the first channel for a specific datastore.
+// DefaultChannelForDatastore returns the first channel for a specific datastore.
 // This makes it possible to pick a channel even if a channel name is not
 // provided. In the future we may want to explicitly define default channels.
-func (g *UpdateGraph) ChannelForDatastore(datastore string) (string, error) {
+func (g *UpdateGraph) DefaultChannelForDatastore(datastore string) (string, error) {
 	for _, c := range g.Channels {
-		if strings.EqualFold(c.Metadata["datastore"], datastore) {
+		if strings.EqualFold(c.Metadata["datastore"], datastore) && strings.EqualFold(c.Metadata["default"], "true") {
 			return c.Name, nil
 		}
 	}
@@ -55,13 +55,13 @@ func (g *UpdateGraph) ChannelForDatastore(datastore string) (string, error) {
 }
 
 // SourceForChannel returns a channel represented as a Source for querying
-func (g *UpdateGraph) SourceForChannel(channel string) (Source, error) {
+func (g *UpdateGraph) SourceForChannel(engine, channel string) (Source, error) {
 	for _, c := range g.Channels {
-		if strings.EqualFold(c.Name, channel) {
+		if strings.EqualFold(c.Name, channel) && strings.EqualFold(c.Metadata["datastore"], engine) {
 			return NewMemorySource(c.Nodes, c.Edges)
 		}
 	}
-	return nil, fmt.Errorf("no channel found with name %q", channel)
+	return nil, fmt.Errorf("no channel for %q found with name %q", engine, channel)
 }
 
 // Copy returns a copy of the graph. The controller gets a copy so that
@@ -73,7 +73,7 @@ func (g *UpdateGraph) Copy() UpdateGraph {
 // AvailableVersions traverses an UpdateGraph and collects a list of the
 // safe versions for updating from the provided currentVersion.
 func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion) ([]v1alpha1.SpiceDBVersion, error) {
-	source, err := g.SourceForChannel(v.Channel)
+	source, err := g.SourceForChannel(engine, v.Channel)
 	if err != nil {
 		return nil, fmt.Errorf("no source found for channel %q, can't compute available versions: %w", v.Channel, err)
 	}
@@ -128,7 +128,7 @@ func (g *UpdateGraph) AvailableVersions(engine string, v v1alpha1.SpiceDBVersion
 		if c.Metadata["datastore"] != engine {
 			continue
 		}
-		source, err := g.SourceForChannel(c.Name)
+		source, err := g.SourceForChannel(engine, c.Name)
 		if err != nil {
 			continue
 		}
@@ -191,7 +191,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 
 	// If there's no still no channel, pick a default based on the engine.
 	if channel == "" {
-		channel, err = g.ChannelForDatastore(engine)
+		channel, err = g.DefaultChannelForDatastore(engine)
 		if err != nil {
 			err = fmt.Errorf("couldn't find channel for datastore %q: %w", engine, err)
 			return
@@ -200,7 +200,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 
 	var updateSource Source
 	if len(channel) > 0 {
-		updateSource, err = g.SourceForChannel(channel)
+		updateSource, err = g.SourceForChannel(engine, channel)
 		if err != nil {
 			err = fmt.Errorf("error fetching update source: %w", err)
 			return

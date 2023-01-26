@@ -217,7 +217,7 @@ func TestValidateConfigHandler(t *testing.T) {
 					Channels: []updates.Channel{
 						{
 							Name:     "cockroachdb",
-							Metadata: map[string]string{"datastore": "cockroachdb"},
+							Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 							Nodes: []updates.State{
 								{ID: "v1", Tag: "v1"},
 							},

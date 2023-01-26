@@ -903,8 +903,8 @@ var _ = Describe("SpiceDBClusters", func() {
 				UpdateGraph: updates.UpdateGraph{
 					Channels: []updates.Channel{
 						{
-							Name:     "postgres",
-							Metadata: map[string]string{"datastore": "postgres"},
+							Name:     "stable",
+							Metadata: map[string]string{"datastore": "postgres", "default": "true"},
 							Nodes: []updates.State{
 								{ID: "v1.14.1", Tag: "v1.14.1", Migration: "drop-id-constraints"},
 								{ID: "v1.14.0", Tag: "v1.14.0", Migration: "drop-id-constraints"},
@@ -918,6 +918,12 @@ var _ = Describe("SpiceDBClusters", func() {
 								"v1.14.0-phase2": {"v1.14.0"},
 								"v1.14.0":        {"v1.14.1"},
 							},
+						},
+						{
+							// define an extra channel for another datastore to make sure
+							// channel selection is correct
+							Name:     "stable",
+							Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 						},
 					},
 				},

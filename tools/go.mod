@@ -9,7 +9,7 @@ require (
 )
 
 require (
-	github.com/authzed/controller-idioms v0.6.0 // indirect
+	github.com/authzed/controller-idioms v0.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
 	github.com/fatih/camelcase v1.0.0 // indirect
