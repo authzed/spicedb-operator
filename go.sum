@@ -92,8 +92,8 @@ github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da/go.mod h1:Q73ZrmV
 github.com/armon/go-radix v0.0.0-20180808171621-7fddfc383310/go.mod h1:ufUuZ+zHj4x4TnLV4JWEpy2hxWSpsRywHrMgIH9cCH8=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
 github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a/go.mod h1:lB+ZfQJz7igIIfQNfa7Ml4HSf2uFQQRzpGGRXenZAgY=
-github.com/authzed/controller-idioms v0.6.0 h1:KlWiAU+Al9M4K68W91bsHyigXOmp+QQCgodlL+AYEMI=
-github.com/authzed/controller-idioms v0.6.0/go.mod h1:0B/PmqCguKv8b3azSMF+HdyKpKr2o3UAZ5eo12Ze8Fo=
+github.com/authzed/controller-idioms v0.7.0 h1:HhNMUBb8hJzYqY3mhen3B2AC5nsIem3fBe0tC/AAOHo=
+github.com/authzed/controller-idioms v0.7.0/go.mod h1:0B/PmqCguKv8b3azSMF+HdyKpKr2o3UAZ5eo12Ze8Fo=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/benbjohnson/clock v1.3.0 h1:ip6w0uFQkncKQ979AypyG0ER7mqUSBdKLOgAle/AT8A=
 github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=

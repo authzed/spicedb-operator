@@ -67,11 +67,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		warningCondition = &cond
 	}
 
-	migrationHash, err := hash.SecureObject(validatedConfig.MigrationConfig)
-	if err != nil {
-		QueueOps.RequeueErr(ctx, err)
-		return
-	}
+	migrationHash := hash.SecureObject(validatedConfig.MigrationConfig)
 	ctx = CtxMigrationHash.WithValue(ctx, migrationHash)
 
 	computedStatus := v1alpha1.ClusterStatus{
