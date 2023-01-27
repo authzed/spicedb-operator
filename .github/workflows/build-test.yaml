@@ -4,29 +4,33 @@ on:  # yamllint disable-line rule:truthy
   push:
     branches:
       - "main"
-    paths:
-      - ".github/workflows/build-test.yaml"
-      - "Dockerfile"
-      - "go.mod"
-      - "go.sum"
-      - "cmd/**"
-      - "pkg/**"
-      - "e2e/**"
-      - "internal/**"
   pull_request:
     branches:
       - "*"
-    paths:
-      - ".github/workflows/build-test.yaml"
-      - "Dockerfile"
-      - "go.mod"
-      - "go.sum"
-      - "cmd/**"
-      - "pkg/**"
-      - "e2e/**"
-      - "internal/**"
 jobs:
+  paths-filter:
+    runs-on: "ubuntu-latest"
+    outputs:
+      codechange: "${{ steps.filter.outputs.codechange }}"
+    steps:
+      - uses: "actions/checkout@v2"
+      - uses: "dorny/paths-filter@v2"
+        id: "filter"
+        with:
+          filters: |
+            codechange:
+              - ".github/workflows/build-test.yaml"
+              - "Dockerfile"
+              - "go.mod"
+              - "go.sum"
+              - "cmd/**"
+              - "pkg/**"
+              - "e2e/**"
+              - "internal/**"
   build:
+    needs: "paths-filter"
+    if: |
+      needs.paths-filter.outputs.codechange == 'true'
     name: "Build Binary"
     runs-on: "ubuntu-latest"
     steps:
@@ -37,6 +41,9 @@ jobs:
       - uses: "authzed/actions/go-build@main"
 
   image-build:
+    needs: "paths-filter"
+    if: |
+      needs.paths-filter.outputs.codechange == 'true'
     name: "Build Container Image"
     runs-on: "ubuntu-latest"
     steps:
@@ -52,6 +59,9 @@ jobs:
           qemu: false
 
   test:
+    needs: "paths-filter"
+    if: |
+      needs.paths-filter.outputs.codechange == 'true'
     name: "Test"
     runs-on: "ubuntu-latest"
     steps:
