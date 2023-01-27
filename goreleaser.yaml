@@ -70,7 +70,10 @@ release:
     - glob: "release/bundle.yaml"
   footer: |
     ## Install with `kubectl`
+
+    ```yaml
     kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/download/v{{ .Version }}/bundle.yaml
+    ```
 
     ## Include or modify this release in your own `kustomize` bundle
 
