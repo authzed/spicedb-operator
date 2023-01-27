@@ -67,7 +67,7 @@ changelog:
 release:
   prerelease: "auto"
   extra_files:
-    - glob: "bundle.yaml"
+    - glob: "release/bundle.yaml"
   footer: |
     ## Install with `kubectl`
     kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/download/v{{ .Version }}/bundle.yaml
