@@ -26,16 +26,22 @@ jobs:
           dockerhub_token: "${{ secrets.DOCKERHUB_ACCESS_TOKEN }}"
       - uses: "docker/setup-qemu-action@v1"
       - uses: "docker/setup-buildx-action@v1"
+      # the release directory is gitignored, which keeps goreleaser from
+      # complaining about a dirty tree
+      - name: "Copy manifests to release directory"
+        run: |
+          mkdir release
+          cp -R config release
       - name: "Set operator image in release manifests"
         uses: "mikefarah/yq@master"
         with:
           cmd: |
-            yq eval '.images[0].newTag="${{ github.ref_name }}"' -i ./config/kustomization.yaml
+            yq eval '.images[0].newTag="${{ github.ref_name }}"' -i ./release/config/kustomization.yaml
       - name: "Build release bundle.yaml"
         uses: "karancode/kustomize-github-action@master"
         with:
-          kustomize_build_dir: "config"
-          kustomize_output_file: "bundle.yaml"
+          kustomize_build_dir: "release/config"
+          kustomize_output_file: "release/bundle.yaml"
       - uses: "goreleaser/goreleaser-action@v2"
         with:
           distribution: "goreleaser-pro"
@@ -46,7 +52,7 @@ jobs:
           GORELEASER_KEY: "${{ secrets.GORELEASER_KEY }}"
       - name: "Push release manifests"
         run: |
-          kustomizer push artifact ${KUSTOMIZER_ARTIFACT}:${{ github.ref_name }} -k ./config \
+          kustomizer push artifact ${KUSTOMIZER_ARTIFACT}:${{ github.ref_name }} -k ./release/config \
             --source=${{ github.repositoryUrl }} \
             --revision="${{ github.ref_name }}/${{ github.sha }}"
       - name: "Tag latest release manifests"
