@@ -68,10 +68,6 @@ var (
 
 func init() {
 	klog.InitFlags(nil)
-}
-
-func TestEndToEnd(t *testing.T) {
-	RegisterFailHandler(Fail)
 
 	// Default operator logs to --v=4 and write to GinkgoWriter
 	if verbosity := flag.CommandLine.Lookup("v"); verbosity.Value.String() == "" {
@@ -79,12 +75,16 @@ func TestEndToEnd(t *testing.T) {
 	}
 	klog.SetOutput(GinkgoWriter)
 
+	RegisterFailHandler(SnapshotFailHandler)
+
 	// Test Defaults
 	SetDefaultEventuallyTimeout(5 * time.Minute)
 	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
 	SetDefaultConsistentlyDuration(30 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
+}
 
+func TestEndToEnd(t *testing.T) {
 	RunSpecs(t, "operator tests")
 }
 
@@ -342,4 +342,86 @@ func Provision() (string, func(), error) {
 	}
 
 	return kubeconfig, deprovision, nil
+}
+
+// SnapshotFailHandler dumps cluster state when a test fails
+// It prints SpiceDBClusters, Pods, and Jobs from all namespaces with the prefix
+// "test".
+// TODO: turn into generic, re-usable library
+func SnapshotFailHandler(message string, callerSkip ...int) {
+	defer Fail(message, callerSkip...)
+
+	c, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		GinkgoWriter.Println("could not create client to report cluster state on error", err)
+		return
+	}
+
+	k, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		GinkgoWriter.Println("could not create client to report cluster state on error", err)
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	namespaces, err := k.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		GinkgoWriter.Println("error fetching namespaces", err)
+	}
+	for _, n := range namespaces.Items {
+		if !strings.HasPrefix(n.Name, "test") {
+			continue
+		}
+		GinkgoWriter.Println("dumping namespace", n.Name)
+
+		// dump spicedbclusters
+		GinkgoWriter.Println("dumping SpiceDBClusters")
+		clusters, err := c.Resource(v1alpha1ClusterGVR).Namespace(n.Name).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			GinkgoWriter.Println("error fetching clusters from namespace", n.Name, err)
+		}
+		for _, item := range clusters.Items {
+			cluster, err := yaml.Marshal(item)
+			if err != nil {
+				GinkgoWriter.Println("error fetching cluster", item.GetName(), item.GetNamespace(), err)
+				continue
+			}
+			GinkgoWriter.Println(string(cluster))
+			GinkgoWriter.Println("---")
+		}
+
+		// dump pods
+		GinkgoWriter.Println("dumping pods")
+		pods, err := k.CoreV1().Pods(n.Name).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			GinkgoWriter.Println("error fetching pods from namespace", n.Name, err)
+		}
+		for _, item := range pods.Items {
+			pod, err := yaml.Marshal(item)
+			if err != nil {
+				GinkgoWriter.Println("error fetching pod", item.GetName(), item.GetNamespace(), err)
+				continue
+			}
+			GinkgoWriter.Println(string(pod))
+			GinkgoWriter.Println("---")
+		}
+
+		// dump jobs
+		GinkgoWriter.Println("dumping jobs")
+		jobs, err := k.BatchV1().Jobs(n.Name).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			GinkgoWriter.Println("error fetching jobs from namespace", n.Name, err)
+		}
+		for _, item := range jobs.Items {
+			job, err := yaml.Marshal(item)
+			if err != nil {
+				GinkgoWriter.Println("error fetching job", item.GetName(), item.GetNamespace(), err)
+				continue
+			}
+			GinkgoWriter.Println(string(job))
+			GinkgoWriter.Println("---")
+		}
+	}
 }

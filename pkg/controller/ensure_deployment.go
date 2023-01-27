@@ -43,11 +43,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	secretHash := CtxSecretHash.MustValue(ctx)
 	config := CtxConfig.MustValue(ctx)
 	newDeployment := config.Deployment(migrationHash, secretHash)
-	deploymentHash, err := hash.Object(newDeployment)
-	if err != nil {
-		QueueOps.RequeueErr(ctx, err)
-		return
-	}
+	deploymentHash := hash.Object(newDeployment)
 
 	matchingObjs := make([]*appsv1.Deployment, 0)
 	extraObjs := make([]*appsv1.Deployment, 0)

@@ -34,10 +34,10 @@ We recommend one of the following:
 - [kind](https://kind.sigs.k8s.io)
 - [minikube](https://minikube.sigs.k8s.io)
 
-Next, you'll install the operator:
+Next, you'll install a [release](https://github.com/authzed/spicedb-operator/releases/) of the operator:
 
 ```console
-kubectl apply --server-side -k github.com/authzed/spicedb-operator/config
+kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/download/v1.1.0/bundle.yaml
 ```
 
 Finally you can create your first cluster:

@@ -90,7 +90,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -162,7 +162,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "memory",
-								Metadata: map[string]string{"datastore": "memory"},
+								Metadata: map[string]string{"datastore": "memory", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -345,7 +345,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -418,7 +418,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -491,7 +491,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -568,7 +568,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -648,7 +648,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -723,7 +723,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -798,7 +798,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -875,7 +875,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -955,7 +955,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -1032,7 +1032,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -1111,7 +1111,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},
@@ -1188,7 +1188,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb"},
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v2", Tag: "v2", Migration: "migration1", Phase: "phase1"},
 									{ID: "v1", Tag: "v1"},
@@ -1437,7 +1437,7 @@ func TestNewConfig(t *testing.T) {
 						Channels: []updates.Channel{
 							{
 								Name:     "spanner",
-								Metadata: map[string]string{"datastore": "spanner"},
+								Metadata: map[string]string{"datastore": "spanner", "default": "true"},
 								Nodes: []updates.State{
 									{ID: "v1", Tag: "v1"},
 								},

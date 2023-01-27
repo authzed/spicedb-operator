@@ -61,8 +61,8 @@ var (
 	spannerCredentialsKey             = newStringKey("spannerCredentials")
 	datastoreTLSSecretKey             = newStringKey("datastoreTLSSecretName")
 	datastoreEngineKey                = newStringKey("datastoreEngine")
-	replicasKey                       = newIntOrStringKey("replicas", 2)
-	replicasKeyForMemory              = newIntOrStringKey("replicas", 1)
+	replicasKey                       = newIntOrStringKey[int32]("replicas", 2)
+	replicasKeyForMemory              = newIntOrStringKey[int32]("replicas", 1)
 	extraPodLabelsKey                 = metadataSetKey("extraPodLabels")
 	extraPodAnnotationsKey            = metadataSetKey("extraPodAnnotations")
 	extraServiceAccountAnnotationsKey = metadataSetKey("extraServiceAccountAnnotations")
@@ -250,7 +250,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 		errs = append(errs, fmt.Errorf("invalid value for replicas %q: %w", replicas, err))
 	}
 
-	spiceConfig.Replicas = int32(replicas)
+	spiceConfig.Replicas = replicas
 	if replicas > 1 && datastoreEngine == "memory" {
 		errs = append(errs, fmt.Errorf("cannot set replicas > 1 for memory engine"))
 	}
