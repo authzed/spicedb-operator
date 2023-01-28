@@ -50,7 +50,7 @@ metadata:
   name: dev
 spec:
   config:
-    datastoreEngine: memory 
+    datastoreEngine: memory
   secretName: dev-spicedb-config
 ---
 apiVersion: v1
@@ -84,13 +84,63 @@ zed --insecure --endpoint=localhost:50051 --token=averysecretpresharedkey schema
 - Learn how to use SpiceDB via the [docs](https://docs.authzed.com/) and [playground](https://play.authzed.com/).
 - Ask questions and join the community in [discord](https://authzed.com/discord).
 
-## Updating SpiceDBClusters
+## Automatic and Suggested Updates
 
-The operator handles the rollout of `SpiceDB` upgrades, inluding coordinating migrations.
-By default, the operator will upgrade all `SpiceDBCluster`s that it manages when the operator sees a new default image in the config (see [default-operator-config.yaml](default-operator-config.yaml) for the current default images).
-This config can be updated manually, but it is also updated with each release of spicedb-operator and included in the operator image.
+The SpiceDB operator now ships with a set of release channels for SpiceDB.
+Release channels allow the operator to walk through a safe series of updates, like the [phased migration for postgres in SpiceDB v1.14.0](https://github.com/authzed/spicedb/releases/tag/v1.14.0)
 
-If you wish to opt out of automated updates, you can specify an image for the SpiceDBCluster in the config:
+There are two ways you can choose to use update channels:
+
+- automatic updates
+- suggested updates
+
+Which mode you choose depends on your tolerance for uncertainty.
+If possible, we recommend running a stage or canary instance with automatic updates enabled, and using suggested updates for production and production-like environments.
+
+If no channel is selected, a default (stable) channel will be used for the selected datastore.
+
+Available Update Channels:
+
+| Datastore   | Channels |
+|-------------|----------|
+| postgres    | stable   |
+| cockroachdb | stable   |
+| mysql       | stable   |
+| spanner     | stable   |
+| memory      | (none)   |
+
+### Automatic Updates
+
+If you do not specify a `version` that you want to run, the operator will always keep you up to date with the newest version in the channel.
+
+If the operator or the update graph changes, the head of the channel may change and trigger an update.
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: dev
+  namespace: default
+spec:
+  channel: stable 
+  config:
+    datastoreEngine: cockroachdb
+status:
+  currentVersion:
+    name: v1.16.1
+    channel: stable 
+```
+
+### Suggested Updates
+
+Even if you do not want automatic updates, you should choose an update channel - this ensures you do not miss important upgrade steps in phased migrations.
+
+By specifying a `version`, the operator will install the specific version you have requested.
+If another version is already running, the operator will walk through the steps defined in the update channel, but will stop once it reaches `version`.
+No updates will be taken automatically, you must pick the next version to run and write it into the `spec.version` field.
+This keeps SpiceDB updates "on rails" while giving you full control over when and how to roll out updates.
+
+Once you are at the specified `version`, the operator will inform you of available updates in the status of the `SpiceDBCluster`:
 
 ```yaml
 apiVersion: authzed.com/v1alpha1
@@ -98,21 +148,35 @@ kind: SpiceDBCluster
 metadata:
   name: dev
 spec:
+  channel: stable 
+  version: v1.14.0
   config:
-    image: ghcr.io/authzed/spicedb:v1.11.0
-    datastoreEngine: memory 
-  secretName: dev-spicedb-config
+    datastoreEngine: cockroachdb
+status:
+  currentVersion:
+    name: v1.14.0
+    channel: stable 
+  availableVersions:
+  - name: v1.14.1
+    channel: stable
+    description: direct update with no migrations
 ```
 
-The spicedb-operator will happily attempt to run any image you specify, but if you specify an image that is not in the list of `allowedImages`, `allowedTags`, or `allowedDigests`, the status will warn you:
+Note that it can also show you updates that are available in other channels, if you wish to switch back and forth (be careful! if you switch to another channel and update, there may not be a path to get back to the original channel!)
+Only the nearest-neighbor update will be shown for channels other than the current one.
 
-```yaml
-status:
-  conditions:
-  - lastTransitionTime: "2022-09-02T21:49:19Z"
-    message: '["ubuntu" invalid: "ubuntu" is not in the configured list of allowed
-      images"]'
-    reason: WarningsPresent
-    status: "True"
-    type: ConfigurationWarning
+### Force Override
+
+You can opt out of update channels entirely, and force spicedb-operator to install a specific image and manage it as a `spicedb` instance.
+
+This is not recommended, but may be useful for development environments or to try prerelease versions of SpiceDB before they are in an update channel.
+
+```yaml=
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: dev
+spec:
+  config:
+    image: ghcr.io/authzed/spicedb:v1.11.0-prerelease
 ```
