@@ -1,12 +1,10 @@
 FROM golang:1.19-alpine3.16 AS builder
 WORKDIR /go/src/app
+ENV CGO_ENABLED=0
 
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go mod download
-
-ENV CGO_ENABLED=0
 COPY . .
-RUN go build ./cmd/...
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go build ./cmd/...
 
 FROM alpine:3.17.0
 
