@@ -282,6 +282,16 @@ var _ = Describe("SpiceDBClusters", func() {
 						jsonConfig, err := json.Marshal(config)
 						Expect(err).To(BeNil())
 						cluster.Spec.Config = jsonConfig
+						cluster.Spec.Patches = []v1alpha1.Patch{{
+							Kind: "Deployment",
+							Patch: json.RawMessage(`{
+							  "metadata": {
+								"labels": {
+								  "added": "via-patch"
+								}
+							  }
+							}`),
+						}}
 
 						tlsSecret := GenerateCertManagerCompliantTLSSecretForService(
 							ktypes.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace},
@@ -296,7 +306,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 						DeferCleanup(cancel)
 
-						By("not having TLS warnings")
+						By("not having warnings")
 						var conditions []metav1.Condition
 						Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: cluster.Name, Namespace: testNamespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
 							conditions = c.Status.Conditions

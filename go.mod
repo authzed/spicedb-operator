@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/spanner v1.39.0
 	github.com/authzed/controller-idioms v0.7.0
 	github.com/cespare/xxhash/v2 v2.1.2
+	github.com/evanphx/json-patch v4.12.0+incompatible
 	github.com/fatih/camelcase v1.0.0
 	github.com/fluxcd/pkg/ssa v0.23.0
 	github.com/go-logr/logr v1.2.3
@@ -67,7 +68,6 @@ require (
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
-	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20151013193312-d6023ce2651d // indirect
 	github.com/fatih/color v1.12.0 // indirect

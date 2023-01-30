@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -31,8 +33,8 @@ func TestToEnvVarName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.prefix+"/"+tt.key, func(t *testing.T) {
-			if got := ToEnvVarName(tt.prefix, tt.key); got != tt.want {
-				t.Errorf("ToEnvVarName() = %v, want %v", got, tt.want)
+			if got := toEnvVarName(tt.prefix, tt.key); got != tt.want {
+				t.Errorf("toEnvVarName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1532,7 +1534,7 @@ func TestNewConfig(t *testing.T) {
 			require.Equal(t, tt.want, got)
 
 			if got != nil {
-				gotEnvs := got.ToEnvVarApplyConfiguration()
+				gotEnvs := got.toEnvVarApplyConfiguration()
 				wantEnvs := envVarFromStrings(tt.wantEnvs)
 				require.Equal(t, wantEnvs, gotEnvs)
 
@@ -1581,4 +1583,41 @@ func envVarFromStrings(envs []string) []*v1.EnvVarApplyConfiguration {
 		})
 	}
 	return vars
+}
+
+func TestPatchesApplyToAllObjects(t *testing.T) {
+	config := &Config{}
+	configType := reflect.TypeOf(config)
+	for i := 0; i < configType.NumMethod(); i++ {
+		method := configType.Method(i)
+
+		// Every public method of Config should return an object
+		// that supports patching
+		t.Run(method.Name, func(t *testing.T) {
+			config.Patches = []v1alpha1.Patch{}
+
+			// all args are strings
+			args := []reflect.Value{reflect.ValueOf(config)}
+			for i := 1; i < method.Type.NumIn(); i++ {
+				args = append(args, reflect.ValueOf("testtesttesttesttesttest"))
+			}
+
+			object := method.Func.Call(args)[0]
+			initialBytes, err := json.Marshal(object.Interface())
+			require.NoError(t, err)
+
+			config.Patches = []v1alpha1.Patch{
+				{
+					Kind:  wildcard,
+					Patch: json.RawMessage(`{"op": "add", "path": "/metadata/labels", "value":{"added":"via-patch"}}`),
+				},
+			}
+			after := method.Func.Call(args)[0]
+			afterBytes, err := json.Marshal(after.Interface())
+			require.NoError(t, err)
+
+			require.NotEqual(t, initialBytes, afterBytes)
+			require.True(t, bytes.Contains(afterBytes, []byte("via-patch")))
+		})
+	}
 }
