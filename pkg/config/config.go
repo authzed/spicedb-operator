@@ -146,19 +146,27 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, currentVersion *v1alpha1.SpiceDBVersion, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret, rolling bool) (*Config, Warning, error) {
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret) (*Config, Warning, error) {
+	if cluster.Spec.Config == nil {
+		return nil, nil, fmt.Errorf("couldn't parse empty config")
+	}
+
 	config := RawConfig(make(map[string]any))
-	if err := json.Unmarshal(rawConfig, &config); err != nil {
+	if err := json.Unmarshal(cluster.Spec.Config, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
 	}
+
+	rolloutInProgress := cluster.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
+		cluster.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) ||
+		cluster.Status.CurrentMigrationHash != cluster.Status.TargetMigrationHash
 
 	passthroughConfig := make(map[string]string, 0)
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
 	spiceConfig := SpiceConfig{
-		Name:                         nn.Name,
-		Namespace:                    nn.Namespace,
-		UID:                          string(uid),
+		Name:                         cluster.Name,
+		Namespace:                    cluster.Namespace,
+		UID:                          string(cluster.UID),
 		TLSSecretName:                tlsSecretNameKey.pop(config),
 		ServiceAccountName:           serviceAccountNameKey.pop(config),
 		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
@@ -186,7 +194,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
 
-	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, version, channel, datastoreEngine, currentVersion, rolling)
+	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, cluster.Spec.Version, cluster.Spec.Channel, datastoreEngine, cluster.Status.CurrentVersion, rolloutInProgress)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -199,7 +207,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	}
 
 	if len(spiceConfig.ServiceAccountName) == 0 {
-		spiceConfig.ServiceAccountName = nn.Name
+		spiceConfig.ServiceAccountName = cluster.Name
 	}
 
 	switch {

@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -25,37 +24,25 @@ type ValidateConfigHandler struct {
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
-	currentStatus := CtxClusterStatus.MustValue(ctx)
-	nn := CtxClusterNN.MustValue(ctx)
-	cluster := CtxCluster.MustValue(ctx)
-	rawConfig := cluster.Spec.Config
-	if rawConfig == nil {
-		rawConfig = json.RawMessage("")
-	}
+	cluster := CtxClusterStatus.MustValue(ctx)
 	secret := CtxSecret.Value(ctx)
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
 
-	status := CtxClusterStatus.MustValue(ctx).Status
-
-	rolloutInProgress := currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
-		currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) ||
-		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash
-
-	validatedConfig, warning, err := config.NewConfig(nn, cluster.UID, cluster.Spec.Version, cluster.Spec.Channel, status.CurrentVersion, operatorConfig, rawConfig, secret, rolloutInProgress)
+	validatedConfig, warning, err := config.NewConfig(cluster, operatorConfig, secret)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
-		if existing := currentStatus.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
+		if existing := cluster.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {
 			QueueOps.Done(ctx)
 			return
 		}
-		currentStatus.Status.ObservedGeneration = currentStatus.GetGeneration()
-		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
-		currentStatus.SetStatusCondition(failedCondition)
-		if err := c.patchStatus(ctx, currentStatus); err != nil {
+		cluster.Status.ObservedGeneration = cluster.GetGeneration()
+		cluster.RemoveStatusCondition(v1alpha1.ConditionTypeValidating)
+		cluster.SetStatusCondition(failedCondition)
+		if err := c.patchStatus(ctx, cluster); err != nil {
 			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
-		c.recorder.Eventf(currentStatus, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
+		c.recorder.Eventf(cluster, corev1.EventTypeWarning, EventInvalidSpiceDBConfig, "invalid config: %v", err)
 		// if the config is invalid, there's no work to do until it has changed
 		QueueOps.Done(ctx)
 		return
@@ -71,15 +58,15 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	ctx = CtxMigrationHash.WithValue(ctx, migrationHash)
 
 	computedStatus := v1alpha1.ClusterStatus{
-		ObservedGeneration:   currentStatus.GetGeneration(),
+		ObservedGeneration:   cluster.GetGeneration(),
 		TargetMigrationHash:  migrationHash,
-		CurrentMigrationHash: currentStatus.Status.CurrentMigrationHash,
-		SecretHash:           currentStatus.Status.SecretHash,
+		CurrentMigrationHash: cluster.Status.CurrentMigrationHash,
+		SecretHash:           cluster.Status.SecretHash,
 		Image:                validatedConfig.TargetSpiceDBImage,
 		Migration:            validatedConfig.TargetMigration,
 		Phase:                validatedConfig.TargetPhase,
 		CurrentVersion:       validatedConfig.SpiceDBVersion,
-		Conditions:           *currentStatus.GetStatusConditions(),
+		Conditions:           *cluster.GetStatusConditions(),
 	}
 	if version := validatedConfig.SpiceDBVersion; version != nil {
 		computedStatus.AvailableVersions, err = operatorConfig.UpdateGraph.AvailableVersions(validatedConfig.DatastoreEngine, *version)
@@ -97,15 +84,15 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	// Remove invalid config status and set image and hash
-	if !currentStatus.Status.Equals(computedStatus) {
-		currentStatus.Status = computedStatus
-		if err := c.patchStatus(ctx, currentStatus); err != nil {
+	if !cluster.Status.Equals(computedStatus) {
+		cluster.Status = computedStatus
+		if err := c.patchStatus(ctx, cluster); err != nil {
 			QueueOps.RequeueAPIErr(ctx, err)
 			return
 		}
 	}
 
 	ctx = CtxConfig.WithValue(ctx, validatedConfig)
-	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
+	ctx = CtxClusterStatus.WithValue(ctx, cluster)
 	c.next.Handle(ctx)
 }
