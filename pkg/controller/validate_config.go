@@ -24,7 +24,7 @@ type ValidateConfigHandler struct {
 }
 
 func (c *ValidateConfigHandler) Handle(ctx context.Context) {
-	cluster := CtxClusterStatus.MustValue(ctx)
+	cluster := CtxCluster.MustValue(ctx)
 	secret := CtxSecret.Value(ctx)
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
 
@@ -93,6 +93,6 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	}
 
 	ctx = CtxConfig.WithValue(ctx, validatedConfig)
-	ctx = CtxClusterStatus.WithValue(ctx, cluster)
+	ctx = CtxCluster.WithValue(ctx, cluster)
 	c.next.Handle(ctx)
 }

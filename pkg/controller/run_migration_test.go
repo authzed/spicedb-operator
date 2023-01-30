@@ -39,7 +39,7 @@ func TestRunMigrationHandler(t *testing.T) {
 		expectApply                  bool
 		expectDelete                 bool
 		expectNext                   bool
-		expectCtxClusterStatus       *v1alpha1.ClusterStatus
+		expectCtxCluster             *v1alpha1.ClusterStatus
 		expectCtxCurrentMigrationJob *batchv1.Job
 		expectRequeueErr             error
 		expectRequeue                bool
@@ -93,7 +93,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			deleteCalled := false
 			nextCalled := false
 
-			ctx := CtxClusterStatus.WithValue(context.Background(), tt.clusterStatus)
+			ctx := CtxCluster.WithValue(context.Background(), tt.clusterStatus)
 			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxConfig.WithValue(ctx, &tt.config)
 			ctx = CtxJobs.WithBox(ctx)
@@ -119,7 +119,7 @@ func TestRunMigrationHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			require.True(t, CtxClusterStatus.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
+			require.True(t, CtxCluster.MustValue(ctx).IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating))
 			require.Equal(t, tt.expectApply, applyCalled)
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectNext, nextCalled)

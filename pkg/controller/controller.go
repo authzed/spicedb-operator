@@ -299,8 +299,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	)
 	ctx = logr.NewContext(ctx, logger)
 
-	ctx = CtxCluster.WithValue(ctx, cluster)
-	ctx = CtxClusterStatus.WithValue(ctx, cluster)
+	ctx = CtxCluster.WithValue(ctx, cluster.DeepCopy())
 	ctx = CtxClusterNN.WithValue(ctx, cluster.NamespacedName())
 	ctx = CtxSecretNN.WithValue(ctx, types.NamespacedName{
 		Name:      cluster.Spec.SecretRef,
