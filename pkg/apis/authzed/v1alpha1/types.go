@@ -87,6 +87,24 @@ type ClusterSpec struct {
 	// If the secret is omitted, one will be generated
 	// +optional
 	SecretRef string `json:"secretName,omitempty"`
+
+	// Patches is a list of patches to apply to generated resources.
+	// +optional
+	Patches []Patch `json:"patches,omitempty"`
+}
+
+// Patch represents a single change to apply to generated manifests
+type Patch struct {
+	// Kind targets an object by its kubernetes Kind name.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+
+	// Patch is an inlined representation of a structured merge patch, one that
+	// just specifies the structure and fields to be modified.
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	Patch json.RawMessage `json:"patch"`
 }
 
 // ClusterStatus communicates the observed state of the cluster.
