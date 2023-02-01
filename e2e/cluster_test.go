@@ -5,10 +5,10 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"embed"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -51,23 +51,14 @@ var (
 
 	noop = func(namespace string) error { return nil }
 
-	//go:embed cockroach.yaml
-	cockroachyaml []byte
-
-	//go:embed postgresql.yaml
-	postgresqlyaml []byte
-
-	//go:embed mysql.yaml
-	mysqlyaml []byte
-
-	//go:embed spanner.yaml
-	spanneryaml []byte
+	//go:embed manifests/datastores/*.yaml
+	datastores embed.FS
 )
 
 type datastoreDef struct {
 	description       string
 	label             string
-	definition        []byte
+	yamlFile          string
 	definedObjs       int
 	datastoreUri      string
 	datastoreEngine   string
@@ -79,7 +70,7 @@ var datastoreDefs = []datastoreDef{
 	{
 		description:     "With Spanner",
 		label:           "spanner",
-		definition:      spanneryaml,
+		yamlFile:        "manifests/datastores/spanner.yaml",
 		definedObjs:     2,
 		datastoreUri:    "projects/fake-project-id/instances/fake-instance/databases/fake-database-id",
 		datastoreEngine: "spanner",
@@ -146,8 +137,8 @@ var datastoreDefs = []datastoreDef{
 	{
 		description:     "With CockroachDB",
 		label:           "cockroachdb",
-		definition:      cockroachyaml,
-		definedObjs:     5,
+		yamlFile:        "manifests/datastores/cockroach.yaml",
+		definedObjs:     4,
 		datastoreUri:    "postgresql://root:unused@cockroachdb-public:26257/defaultdb?sslmode=disable",
 		datastoreEngine: "cockroachdb",
 		datastoreSetup:  noop,
@@ -155,7 +146,7 @@ var datastoreDefs = []datastoreDef{
 	{
 		description:     "With Postgresql",
 		label:           "postgresql",
-		definition:      postgresqlyaml,
+		yamlFile:        "manifests/datastores/postgresql.yaml",
 		definedObjs:     2,
 		datastoreUri:    "postgresql://postgres:testpassword@postgresql-db-public:5432/postgres?sslmode=disable",
 		datastoreEngine: "postgres",
@@ -164,7 +155,7 @@ var datastoreDefs = []datastoreDef{
 	{
 		description:     "With MySQL",
 		label:           "mysql",
-		definition:      mysqlyaml,
+		yamlFile:        "manifests/datastores/mysql.yaml",
 		definedObjs:     2,
 		datastoreUri:    "root:password@tcp(mysql-public:3306)/mysql?parseTime=true",
 		datastoreEngine: "mysql",
@@ -548,7 +539,12 @@ var _ = Describe("SpiceDBClusters", func() {
 				dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
 				Expect(err).To(Succeed())
 				mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-				decoder := yaml.NewYAMLToJSONDecoder(io.NopCloser(bytes.NewReader(dsDef.definition)))
+
+				yamlReader, err := datastores.Open(dsDef.yamlFile)
+				Expect(err).To(Succeed())
+				DeferCleanup(yamlReader.Close)
+
+				decoder := yaml.NewYAMLToJSONDecoder(yamlReader)
 				objs := make([]*unstructured.Unstructured, 0, 5)
 				var db *appsv1.StatefulSet
 				for {
@@ -858,7 +854,12 @@ var _ = Describe("SpiceDBClusters", func() {
 			dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
 			Expect(err).To(Succeed())
 			mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
-			decoder := yaml.NewYAMLToJSONDecoder(io.NopCloser(bytes.NewReader(postgresqlyaml)))
+
+			yamlReader, err := datastores.Open("manifests/datastores/postgresql.yaml")
+			Expect(err).To(Succeed())
+			DeferCleanup(yamlReader.Close)
+
+			decoder := yaml.NewYAMLToJSONDecoder(yamlReader)
 			objs := make([]*unstructured.Unstructured, 0, 5)
 			var db *appsv1.StatefulSet
 			for {
