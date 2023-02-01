@@ -64,11 +64,11 @@ func main() {
 
 func postgresChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.16.1", Tag: "v1.16.1", Migration: "drop-id-constraints"},
-		{ID: "v1.16.0", Tag: "v1.16.0", Migration: "drop-id-constraints"},
-		{ID: "v1.15.0", Tag: "v1.15.0", Migration: "drop-id-constraints"},
-		{ID: "v1.14.1", Tag: "v1.14.1", Migration: "drop-id-constraints"},
-		{ID: "v1.14.0", Tag: "v1.14.0", Migration: "drop-id-constraints"},
+		{ID: "v1.16.1", Tag: "v1.16.1", Migration: "drop-bigserial-ids"},
+		{ID: "v1.16.0", Tag: "v1.16.0", Migration: "drop-bigserial-ids"},
+		{ID: "v1.15.0", Tag: "v1.15.0", Migration: "drop-bigserial-ids"},
+		{ID: "v1.14.1", Tag: "v1.14.1", Migration: "drop-bigserial-ids"},
+		{ID: "v1.14.0", Tag: "v1.14.0", Migration: "drop-bigserial-ids"},
 		{ID: "v1.14.0-phase2", Tag: "v1.14.0", Migration: "add-xid-constraints", Phase: "write-both-read-new"},
 		{ID: "v1.14.0-phase1", Tag: "v1.14.0", Migration: "add-xid-columns", Phase: "write-both-read-old"},
 		{ID: "v1.13.0", Tag: "v1.13.0", Migration: "add-ns-config-id"},

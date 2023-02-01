@@ -148,22 +148,23 @@ channels:
     - v1.16.1
   metadata:
     datastore: postgres
+    default: "true"
   name: stable
   nodes:
   - id: v1.16.1
-    migration: drop-id-constraints
+    migration: drop-bigserial-ids
     tag: v1.16.1
   - id: v1.16.0
-    migration: drop-id-constraints
+    migration: drop-bigserial-ids
     tag: v1.16.0
   - id: v1.15.0
-    migration: drop-id-constraints
+    migration: drop-bigserial-ids
     tag: v1.15.0
   - id: v1.14.1
-    migration: drop-id-constraints
+    migration: drop-bigserial-ids
     tag: v1.14.1
   - id: v1.14.0
-    migration: drop-id-constraints
+    migration: drop-bigserial-ids
     tag: v1.14.0
   - id: v1.14.0-phase2
     migration: add-xid-constraints
@@ -408,6 +409,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: cockroachdb
+    default: "true"
   name: stable
   nodes:
   - id: v1.16.1
@@ -555,6 +557,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: mysql
+    default: "true"
   name: stable
   nodes:
   - id: v1.16.1
@@ -786,6 +789,7 @@ channels:
     - v1.16.1
   metadata:
     datastore: spanner
+    default: "true"
   name: stable
   nodes:
   - id: v1.16.1
