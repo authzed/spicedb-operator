@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"os"
@@ -16,14 +18,17 @@ import (
 	"time"
 
 	"github.com/go-logr/zapr"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -32,6 +37,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+	"k8s.io/utils/pointer"
 	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/env"
@@ -79,8 +85,8 @@ func init() {
 
 	// Test Defaults
 	SetDefaultEventuallyTimeout(5 * time.Minute)
-	SetDefaultEventuallyPollingInterval(100 * time.Millisecond)
-	SetDefaultConsistentlyDuration(30 * time.Second)
+	SetDefaultEventuallyPollingInterval(1 * time.Second)
+	SetDefaultConsistentlyDuration(5 * time.Second)
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
 }
 
@@ -90,7 +96,8 @@ func TestEndToEnd(t *testing.T) {
 
 var testEnv *envtest.Environment
 
-var _ = BeforeSuite(func() {
+var _ = SynchronizedBeforeSuite(func() []byte {
+	// this runs only once, no matter how many processes are running tests
 	testEnv = &envtest.Environment{
 		ControlPlaneStopTimeout: 3 * time.Minute,
 	}
@@ -101,16 +108,23 @@ var _ = BeforeSuite(func() {
 		ConfigureKube()
 	}
 
-	var err error
-	restConfig, err = testEnv.Start()
+	config, err := testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(testEnv.Stop)
 
-	run.DisableClientRateLimits(restConfig)
+	run.DisableClientRateLimits(config)
 
-	StartOperator()
-	CreateNamespace("test")
-	DeferCleanup(DeleteNamespace, "test")
+	StartOperator(config)
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	Expect(enc.Encode(config)).To(Succeed())
+	return buf.Bytes()
+}, func(rc []byte) {
+	// this runs once per process, we grab the existing rest.Config here
+	dec := gob.NewDecoder(bytes.NewReader(rc))
+	var config rest.Config
+	Expect(dec.Decode(&config)).To(Succeed())
+	restConfig = &config
 })
 
 func CreateNamespace(name string) {
@@ -130,13 +144,9 @@ func DeleteNamespace(name string) {
 	Expect(kclient.CoreV1().Namespaces().Delete(ctx, name, metav1.DeleteOptions{})).To(Succeed())
 }
 
-func StartOperator() {
+func StartOperator(rc *rest.Config) {
 	ctx, cancel := context.WithCancel(genericapiserver.SetupSignalContext())
 	DeferCleanup(cancel)
-
-	opconfig := config.OperatorConfig{
-		ImageName: "spicedb",
-	}
 
 	testRestConfig := rest.CopyConfig(restConfig)
 	go func() {
@@ -144,8 +154,8 @@ func StartOperator() {
 		options := run.RecommendedOptions()
 		options.DebugAddress = ":"
 		options.BootstrapCRDs = true
-		options.OperatorConfigPath = WriteConfig(opconfig)
-		_ = options.Run(ctx, cmdutil.NewFactory(ClientGetter{}))
+		options.OperatorConfigPath = WriteConfig(GetDefaultConfig())
+		_ = options.Run(ctx, cmdutil.NewFactory(ClientGetter{config: rc}))
 	}()
 
 	Eventually(func(g Gomega) {
@@ -178,6 +188,15 @@ func WriteConfig(operatorConfig config.OperatorConfig) string {
 	GinkgoWriter.Println("wrote new config to", ConfigFileName)
 
 	return ConfigFileName
+}
+
+func GetDefaultConfig() (cfg config.OperatorConfig) {
+	file, err := os.Open("../default-operator-config.yaml")
+	Expect(err).To(Succeed())
+	defer file.Close()
+	decoder := utilyaml.NewYAMLOrJSONDecoder(file, 100)
+	Expect(decoder.Decode(&cfg)).To(Succeed())
+	return
 }
 
 func ConfigureApiserver() {
@@ -234,11 +253,11 @@ func ConfigureKube() {
 	var err error
 	restConfig, err = clientconfig.GetConfig()
 
-	// if no kubeconfig or explictly told to provision, provision a cluster
+	// if no kubeconfig or explicitly told to provision, provision a cluster
 	if err != nil || provision {
-		kubeconfigPath, cleanup, err := Provision()
+		// TODO: option to enable cleanup
+		kubeconfigPath, _, err := Provision("spicedb-operator-e2e")
 		Expect(err).To(Succeed())
-		DeferCleanup(cleanup)
 		clientFactory := cmdutil.NewFactory(&genericclioptions.ConfigFlags{
 			KubeConfig: &kubeconfigPath,
 		})
@@ -249,18 +268,16 @@ func ConfigureKube() {
 	// if we have a connection to an existing cluster or started a new one,
 	// we don't use envtest binaries (apiserver, etcd)
 	if restConfig != nil {
-		existingCluster := true
-		testEnv.UseExistingCluster = &existingCluster
+		testEnv.UseExistingCluster = pointer.Bool(true)
 		testEnv.Config = restConfig
 	}
 }
 
-func Provision() (string, func(), error) {
+func Provision(name string) (string, func(), error) {
 	provider := kind.NewProvider(
 		kind.ProviderWithLogger(cmd.NewLogger()),
 	)
 
-	name := fmt.Sprintf("kind-%s", rand.String(16))
 	kubeconfig := fmt.Sprintf("%s.kubeconfig", name)
 
 	var once sync.Once
@@ -284,16 +301,21 @@ func Provision() (string, func(), error) {
 		}
 	}
 	if !needsCluster {
-		return name, deprovision, nil
+		err := provider.ExportKubeConfig(name, kubeconfig, false)
+		return kubeconfig, deprovision, err
 	}
 
 	err = provider.Create(
 		name,
 		kind.CreateWithWaitForReady(5*time.Minute),
-		kind.CreateWithKubeconfigPath(kubeconfig),
 	)
 	if err != nil {
 		err = fmt.Errorf("failed to create kind controller: %w", err)
+		return kubeconfig, deprovision, err
+	}
+	err = provider.ExportKubeConfig(name, kubeconfig, false)
+	if err != nil {
+		err = fmt.Errorf("failed to export kubeconfig: %w", err)
 		return kubeconfig, deprovision, err
 	}
 
@@ -347,10 +369,21 @@ func Provision() (string, func(), error) {
 // SnapshotFailHandler dumps cluster state when a test fails
 // It prints SpiceDBClusters, Pods, and Jobs from all namespaces with the prefix
 // "test".
-// TODO: turn into generic, re-usable library
 func SnapshotFailHandler(message string, callerSkip ...int) {
 	defer Fail(message, callerSkip...)
 
+	gvrs := []schema.GroupVersionResource{
+		v1alpha1ClusterGVR,
+		corev1.SchemeGroupVersion.WithResource("pods"),
+		corev1.SchemeGroupVersion.WithResource("jobs"),
+		corev1.SchemeGroupVersion.WithResource("secrets"),
+	}
+
+	SaveClusterState("./cluster-state/", gvrs)
+}
+
+// SaveClusterState saves the resources defined by `gvrs` to the specified directory.
+func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 	c, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		GinkgoWriter.Println("could not create client to report cluster state on error", err)
@@ -375,53 +408,37 @@ func SnapshotFailHandler(message string, callerSkip ...int) {
 			continue
 		}
 		GinkgoWriter.Println("dumping namespace", n.Name)
-
-		// dump spicedbclusters
-		GinkgoWriter.Println("dumping SpiceDBClusters")
-		clusters, err := c.Resource(v1alpha1ClusterGVR).Namespace(n.Name).List(ctx, metav1.ListOptions{})
+		namespacePath := filepath.Join(directory, n.Name)
+		err = os.MkdirAll(namespacePath, 0o700)
 		if err != nil {
-			GinkgoWriter.Println("error fetching clusters from namespace", n.Name, err)
-		}
-		for _, item := range clusters.Items {
-			cluster, err := yaml.Marshal(item)
-			if err != nil {
-				GinkgoWriter.Println("error fetching cluster", item.GetName(), item.GetNamespace(), err)
-				continue
-			}
-			GinkgoWriter.Println(string(cluster))
-			GinkgoWriter.Println("---")
+			GinkgoWriter.Println("error making directory for namespace", n.Name, err)
+			continue
 		}
 
-		// dump pods
-		GinkgoWriter.Println("dumping pods")
-		pods, err := k.CoreV1().Pods(n.Name).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			GinkgoWriter.Println("error fetching pods from namespace", n.Name, err)
-		}
-		for _, item := range pods.Items {
-			pod, err := yaml.Marshal(item)
+		for _, gvr := range gvrs {
+			GinkgoWriter.Println(n.Name, "dumping", gvr.Resource)
+			spicedbPath := filepath.Join(namespacePath, gvr.Resource)
+			err = os.MkdirAll(spicedbPath, 0o700)
 			if err != nil {
-				GinkgoWriter.Println("error fetching pod", item.GetName(), item.GetNamespace(), err)
+				GinkgoWriter.Println("error making directory for", gvr.Resource, err)
 				continue
 			}
-			GinkgoWriter.Println(string(pod))
-			GinkgoWriter.Println("---")
-		}
-
-		// dump jobs
-		GinkgoWriter.Println("dumping jobs")
-		jobs, err := k.BatchV1().Jobs(n.Name).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			GinkgoWriter.Println("error fetching jobs from namespace", n.Name, err)
-		}
-		for _, item := range jobs.Items {
-			job, err := yaml.Marshal(item)
+			objs, err := c.Resource(gvr).Namespace(n.Name).List(ctx, metav1.ListOptions{})
 			if err != nil {
-				GinkgoWriter.Println("error fetching job", item.GetName(), item.GetNamespace(), err)
-				continue
+				GinkgoWriter.Println("error fetching", gvr.Resource, "from namespace", n.Name, err)
 			}
-			GinkgoWriter.Println(string(job))
-			GinkgoWriter.Println("---")
+			for _, item := range objs.Items {
+				cluster, err := yaml.Marshal(item)
+				if err != nil {
+					GinkgoWriter.Println("error fetching", gvr.Resource, item.GetName(), item.GetNamespace(), err)
+					continue
+				}
+				err = os.WriteFile(filepath.Join(spicedbPath, item.GetName()+".yaml"), cluster, 0o700)
+				if err != nil {
+					GinkgoWriter.Println("error writing", gvr.Resource, item.GetName(), item.GetNamespace(), err)
+					continue
+				}
+			}
 		}
 	}
 }

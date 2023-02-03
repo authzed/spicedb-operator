@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"embed"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fluxcd/pkg/ssa"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/disk"
@@ -35,6 +38,8 @@ import (
 	"k8s.io/kubectl/pkg/cmd/logs"
 	"k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
+	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
+	crClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func PortForward(namespace, podName string, ports []string, stopChan <-chan struct{}) {
@@ -62,6 +67,7 @@ func PortForward(namespace, podName string, ports []string, stopChan <-chan stru
 	fw, err := portforward.New(dialer, ports, stopChan, readyc, GinkgoWriter, GinkgoWriter)
 	Expect(err).To(Succeed())
 	go func() {
+		defer GinkgoRecover()
 		Expect(fw.ForwardPorts()).To(Succeed())
 	}()
 	<-readyc
@@ -85,7 +91,7 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 		logger.Follow = false
 		logger.IgnoreLogErrors = false
 		logger.Object = obj
-		logger.RESTClientGetter = util.NewFactory(ClientGetter{})
+		logger.RESTClientGetter = util.NewFactory(ClientGetter{config: restConfig})
 		logger.LogsForObject = polymorphichelpers.LogsForObjectFn
 		logger.ConsumeRequestFn = logs.DefaultConsumeRequest
 		var err error
@@ -99,6 +105,8 @@ func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 	}()
 }
 
+// Watch calls eventFn for every event starting at the given resourceVersion.
+// eventFn returns false when the watch should stop
 func Watch[K runtime.Object](ctx context.Context, client dynamic.Interface, gvr schema.GroupVersionResource, nn types.NamespacedName, rv string, eventFunc func(obj K) bool) {
 	watcher, err := client.Resource(gvr).Namespace(nn.Namespace).Watch(ctx, metav1.ListOptions{
 		Watch:           true,
@@ -143,14 +151,58 @@ func GenerateCertManagerCompliantTLSSecretForService(service, secret types.Names
 	}
 }
 
+//go:embed manifests/datastores/*.yaml
+var datastores embed.FS
+
+// CreateDatabase reads a database yaml definition from a file and creates it
+func CreateDatabase(ctx context.Context, mapper meta.RESTMapper, namespace string, engine string) {
+	ssaClient, err := crClient.NewWithWatch(restConfig, crClient.Options{
+		Mapper: mapper,
+	})
+	Expect(err).To(Succeed())
+	resourceManager := ssa.NewResourceManager(ssaClient, polling.NewStatusPoller(ssaClient, mapper, polling.Options{}), ssa.Owner{
+		Field: "test.authzed.com",
+		Group: "test.authzed.com",
+	})
+
+	yamlReader, err := datastores.Open(fmt.Sprintf("manifests/datastores/%s.yaml", engine))
+	Expect(err).To(Succeed())
+	DeferCleanup(yamlReader.Close)
+
+	decoder := yaml.NewYAMLToJSONDecoder(yamlReader)
+	objs := make([]*unstructured.Unstructured, 0)
+	for {
+		u := &unstructured.Unstructured{Object: map[string]interface{}{}}
+		err := decoder.Decode(&u.Object)
+		if err == io.EOF {
+			break
+		} else {
+			Expect(err).To(Succeed())
+		}
+		u.SetNamespace(namespace)
+		objs = append(objs, u)
+	}
+	_, err = resourceManager.ApplyAll(ctx, objs, ssa.DefaultApplyOptions())
+	Expect(err).To(Succeed())
+	By(fmt.Sprintf("waiting for %s to start..", engine))
+	err = resourceManager.Wait(objs, ssa.WaitOptions{
+		Interval: 1 * time.Second,
+		Timeout:  90 * time.Second,
+	})
+	Expect(err).To(Succeed())
+	By(fmt.Sprintf("%s running", engine))
+}
+
 // ClientGetter implements RESTClientGetter to return values for the configured
 // test.
-type ClientGetter struct{}
+type ClientGetter struct {
+	config *rest.Config
+}
 
 var _ genericclioptions.RESTClientGetter = &ClientGetter{}
 
 func (c ClientGetter) ToRESTConfig() (*rest.Config, error) {
-	return rest.CopyConfig(restConfig), nil
+	return c.config, nil
 }
 
 func (c ClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, error) {
@@ -160,7 +212,7 @@ func (c ClientGetter) ToDiscoveryClient() (discovery.CachedDiscoveryInterface, e
 	}
 	httpCacheDir := filepath.Join(cacheDir, "http")
 	discoveryCacheDir := filepath.Join(cacheDir, "discovery")
-	return disk.NewCachedDiscoveryClientForConfig(restConfig, discoveryCacheDir, httpCacheDir, 5*time.Minute)
+	return disk.NewCachedDiscoveryClientForConfig(c.config, discoveryCacheDir, httpCacheDir, 5*time.Minute)
 }
 
 func (c ClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
