@@ -20,9 +20,9 @@ require (
 	go.uber.org/zap v1.24.0
 	golang.org/x/exp v0.0.0-20220823124025-807a23277127
 	google.golang.org/genproto v0.0.0-20220916134934-764224ccc2d1
-	k8s.io/api v0.26.0
+	k8s.io/api v0.26.1
 	k8s.io/apiextensions-apiserver v0.26.0
-	k8s.io/apimachinery v0.26.0
+	k8s.io/apimachinery v0.26.1
 	k8s.io/apiserver v0.26.0
 	k8s.io/cli-runtime v0.26.0
 	k8s.io/client-go v0.26.0
