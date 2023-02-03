@@ -561,19 +561,19 @@ channels:
   name: stable
   nodes:
   - id: v1.16.1
-    migration: add-caveats
+    migration: add_caveat
     tag: v1.16.1
   - id: v1.16.0
-    migration: add-caveats
+    migration: add_caveat
     tag: v1.16.0
   - id: v1.15.0
-    migration: add-caveats
+    migration: add_caveat
     tag: v1.15.0
   - id: v1.14.1
-    migration: add-caveats
+    migration: add_caveat
     tag: v1.14.1
   - id: v1.14.0
-    migration: add-caveats
+    migration: add_caveat
     tag: v1.14.0
   - id: v1.13.0
     migration: add_ns_config_id
