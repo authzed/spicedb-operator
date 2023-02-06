@@ -7,6 +7,8 @@ on:  # yamllint disable-line rule:truthy
   pull_request:
     branches:
       - "*"
+env:
+  GO_VERSION: "~1.19"
 jobs:
   paths-filter:
     runs-on: "ubuntu-latest"
@@ -35,9 +37,9 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v3"
-      - uses: "actions/setup-go@v3"
+      - uses: "authzed/actions/setup-go@main"
         with:
-          go-version: "~1.19"
+          go-version: "${{ env.GO_VERSION }}"
       - uses: "authzed/actions/go-build@main"
 
   image-build:
@@ -48,9 +50,9 @@ jobs:
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v3"
-      - uses: "actions/setup-go@v3"
+      - uses: "authzed/actions/setup-go@main"
         with:
-          go-version: "~1.19"
+          go-version: "${{ env.GO_VERSION }}"
       - uses: "authzed/actions/docker-build@main"
         with:
           push: false
@@ -58,35 +60,51 @@ jobs:
           buildx: false
           qemu: false
 
-  test:
+  unit:
     needs: "paths-filter"
     if: |
       needs.paths-filter.outputs.codechange == 'true'
-    name: "Test"
+    name: "Unit Tests"
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v3"
         with:
           submodules: true
-      - uses: "actions/setup-go@v2"
+      - uses: "authzed/actions/setup-go@main"
         with:
-          go-version: "^1.19"
-      - uses: "actions/checkout@v3"
-        with:
-          repository: "authzed/spicedb"
-          path: "spicedb"
-          submodules: true
+          go-version: "${{ env.GO_VERSION }}"
       - uses: "docker/setup-qemu-action@v2"
       - uses: "docker/setup-buildx-action@v2"
-      - name: "Tag Test SpiceDB Image"
-        uses: "docker/build-push-action@v3"
+      - name: "Run Unit Tests"
+        uses: "magefile/mage-action@v2"
         with:
-          context: "spicedb"
-          file: "spicedb/Dockerfile"
-          tags: "spicedb:dev,spicedb:updated"
-          outputs: "type=docker,dest=/tmp/image.tar"
-      - name: "Run Ginkgo Tests"
-        run: "go run github.com/onsi/ginkgo/v2/ginkgo --skip-package ./spicedb --tags=e2e -r --procs=2 -v --randomize-all --randomize-suites --fail-on-pending --fail-fast --no-color --race --trace --json-report=report.json -- -v=4"
-        env:
-          PROVISION: "true"
-          ARCHIVES: "/tmp/image.tar"
+          version: "latest"
+          args: "test:unit"
+
+  e2e:
+    needs: "paths-filter"
+    if: |
+      needs.paths-filter.outputs.codechange == 'true'
+    name: "E2E Tests"
+    runs-on: "ubuntu-latest-8-cores"
+    steps:
+      - uses: "actions/checkout@v3"
+        with:
+          submodules: true
+      - uses: "authzed/actions/setup-go@main"
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+      - uses: "docker/setup-qemu-action@v2"
+      - uses: "docker/setup-buildx-action@v2"
+      - name: "Run E2E Tests"
+        uses: "magefile/mage-action@v2"
+        with:
+          version: "latest"
+          args: "test:e2e"
+      - uses: "actions/upload-artifact@v2"
+        if: "always()"
+        # this upload step is really flaky, don't fail the job if it fails
+        continue-on-error: true
+        with:
+          name: "cluster-state"
+          path: "e2e/cluster-state"

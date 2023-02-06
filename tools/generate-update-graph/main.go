@@ -176,11 +176,11 @@ func crdbChannel() updates.Channel {
 
 func mysqlChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.16.1", Tag: "v1.16.1", Migration: "add-caveats"},
-		{ID: "v1.16.0", Tag: "v1.16.0", Migration: "add-caveats"},
-		{ID: "v1.15.0", Tag: "v1.15.0", Migration: "add-caveats"},
-		{ID: "v1.14.1", Tag: "v1.14.1", Migration: "add-caveats"},
-		{ID: "v1.14.0", Tag: "v1.14.0", Migration: "add-caveats"},
+		{ID: "v1.16.1", Tag: "v1.16.1", Migration: "add_caveat"},
+		{ID: "v1.16.0", Tag: "v1.16.0", Migration: "add_caveat"},
+		{ID: "v1.15.0", Tag: "v1.15.0", Migration: "add_caveat"},
+		{ID: "v1.14.1", Tag: "v1.14.1", Migration: "add_caveat"},
+		{ID: "v1.14.0", Tag: "v1.14.0", Migration: "add_caveat"},
 		{ID: "v1.13.0", Tag: "v1.13.0", Migration: "add_ns_config_id"},
 		{ID: "v1.12.0", Tag: "v1.12.0", Migration: "add_ns_config_id"},
 		{ID: "v1.11.0", Tag: "v1.11.0", Migration: "add_ns_config_id"},

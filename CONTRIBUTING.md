@@ -74,28 +74,23 @@ In order to build and test the project, the [latest stable version of Go] and kn
 [latest stable version of Go]: https://golang.org/dl
 [working Go environment]: https://golang.org/doc/code.html
 
-Install ginkgo:
+Install [mage](https://magefile.org/#installation):
 
 ```sh
-go install github.com/onsi/ginkgo/v2/ginkgo@v2
+# homebrew, see link for other options
+brew install mage
 ```
 
-Run against an existing cluster with images already loaded (current kubeconfig context)
+Run e2e tests:
 
 ```sh
-ginkgo --tags=e2e -r
+mage test:e2e
 ```
 
-Spin up a new `kind` cluster and run tests:
+Run unit tests:
 
 ```sh
-PROVISION=true IMAGES=spicedb:dev,spicedb:updated ginkgo --tags=e2e -r
-```
-
-Run with `go test` (ginkgo has better signal handling, prefer ginkgo to `go test`)
-
-```sh
-go test -tags=e2e ./...
+mage test:unit
 ```
 
 ### Adding dependencies

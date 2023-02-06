@@ -37,7 +37,7 @@ We recommend one of the following:
 Next, you'll install a [release](https://github.com/authzed/spicedb-operator/releases/) of the operator:
 
 ```console
-kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/download/v1.1.0/bundle.yaml
+kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/latest/download/bundle.yaml
 ```
 
 Finally you can create your first cluster:

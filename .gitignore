@@ -1,3 +1,6 @@
 dist/
 testbin/
 release/
+*.kubeconfig
+*.test
+e2e/cluster-state/**

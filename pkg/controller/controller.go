@@ -8,6 +8,15 @@ import (
 	"os"
 	"sync"
 
+	"github.com/authzed/controller-idioms/adopt"
+	"github.com/authzed/controller-idioms/cachekeys"
+	"github.com/authzed/controller-idioms/component"
+	"github.com/authzed/controller-idioms/fileinformer"
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
+	"github.com/authzed/controller-idioms/manager"
+	"github.com/authzed/controller-idioms/middleware"
+	"github.com/authzed/controller-idioms/typed"
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-logr/logr"
 	"go.uber.org/atomic"
@@ -34,16 +43,6 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
-
-	"github.com/authzed/controller-idioms/adopt"
-	"github.com/authzed/controller-idioms/cachekeys"
-	"github.com/authzed/controller-idioms/component"
-	"github.com/authzed/controller-idioms/fileinformer"
-	"github.com/authzed/controller-idioms/handler"
-	"github.com/authzed/controller-idioms/hash"
-	"github.com/authzed/controller-idioms/manager"
-	"github.com/authzed/controller-idioms/middleware"
-	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
@@ -390,7 +389,8 @@ func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {
 		},
 		deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
 			logr.FromContextOrDiscard(ctx).V(4).Info("deleting job", "namespace", nn.Namespace, "name", nn.Name)
-			return c.kclient.BatchV1().Jobs(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+			backgroundPolicy := metav1.DeletePropagationBackground
+			return c.kclient.BatchV1().Jobs(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{PropagationPolicy: &backgroundPolicy})
 		},
 		deletePod: func(ctx context.Context, nn types.NamespacedName) error {
 			logr.FromContextOrDiscard(ctx).V(4).Info("deleting job pod", "namespace", nn.Namespace, "name", nn.Name)
@@ -440,6 +440,8 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 			if err := c.PatchStatus(ctx, status); err != nil {
 				QueueOps.RequeueAPIErr(ctx, err)
 			}
+			// keep checking to see if the secret is added
+			QueueOps.Requeue(ctx)
 		},
 		typed.IndexerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
 		func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
