@@ -1,6 +1,6 @@
 module github.com/authzed/spicedb-operator
 
-go 1.18
+go 1.20
 
 require (
 	cloud.google.com/go/spanner v1.39.0

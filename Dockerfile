@@ -2,7 +2,7 @@ FROM golang:1.19-alpine3.16 AS builder
 WORKDIR /go/src/app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go mod download
 
 ENV CGO_ENABLED=0
 COPY . .

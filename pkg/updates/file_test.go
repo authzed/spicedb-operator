@@ -356,3 +356,92 @@ func TestComputeTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateGraphDifference(t *testing.T) {
+	tests := []struct {
+		name                string
+		first, second, want []Channel
+	}{
+		{
+			name: "no difference",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			second: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			want: []Channel{},
+		},
+		{
+			name: "channel has new nodes",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}, {ID: "C", Tag: "C"}},
+				Edges: map[string][]string{
+					"A": {"B", "C"},
+					"B": {"C"},
+				},
+			}},
+			second: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			want: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}, {ID: "C", Tag: "C"}},
+				Edges: map[string][]string{
+					"A": {"C"},
+					"B": {"C"},
+				},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &UpdateGraph{
+				Channels: tt.first,
+			}
+			got := g.Difference(&UpdateGraph{
+				Channels: tt.second,
+			})
+			GraphEqual(t, got, &UpdateGraph{Channels: tt.want})
+		})
+	}
+}
+
+func GraphEqual(t testing.TB, a, b *UpdateGraph) {
+	require.Equal(t, len(a.Channels), len(b.Channels))
+
+	equalCount := 0
+	for _, ac := range a.Channels {
+		for _, bc := range b.Channels {
+			if ac.EqualIdentity(bc) {
+				equalCount++
+				require.ElementsMatch(t, ac.Nodes, bc.Nodes)
+				for source, edges := range ac.Edges {
+					require.ElementsMatch(t, edges, bc.Edges[source])
+				}
+				for source, edges := range bc.Edges {
+					require.ElementsMatch(t, edges, ac.Edges[source])
+				}
+			}
+		}
+	}
+	require.Equal(t, len(a.Channels), equalCount)
+}
