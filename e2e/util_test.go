@@ -4,16 +4,13 @@ package e2e
 
 import (
 	"context"
-	"embed"
 	"encoding/pem"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/fluxcd/pkg/ssa"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -23,55 +20,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/disk"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/tools/portforward"
-	"k8s.io/client-go/transport/spdy"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/kubectl/pkg/cmd/logs"
 	"k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
-	crClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-func PortForward(namespace, podName string, ports []string, stopChan <-chan struct{}) {
-	transport, upgrader, err := spdy.RoundTripperFor(restConfig)
-	Expect(err).To(Succeed())
-	readyc := make(chan struct{})
-	restConfig.GroupVersion = &schema.GroupVersion{Group: "", Version: "v1"}
-	if restConfig.APIPath == "" {
-		restConfig.APIPath = "/api"
-	}
-	if restConfig.NegotiatedSerializer == nil {
-		restConfig.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
-	}
-	Expect(rest.SetKubernetesDefaults(restConfig)).To(Succeed())
-	restClient, err := rest.RESTClientFor(restConfig)
-	Expect(err).To(Succeed())
-
-	req := restClient.Post().
-		Resource("pods").
-		Namespace(namespace).
-		Name(podName).
-		SubResource("portforward")
-
-	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, "POST", req.URL())
-	fw, err := portforward.New(dialer, ports, stopChan, readyc, GinkgoWriter, GinkgoWriter)
-	Expect(err).To(Succeed())
-	go func() {
-		defer GinkgoRecover()
-		Expect(fw.ForwardPorts()).To(Succeed())
-	}()
-	<-readyc
-}
 
 // TailF adds the logs from the object to the Ginkgo output
 func TailF(obj runtime.Object) {
@@ -83,25 +43,25 @@ func TailF(obj runtime.Object) {
 func Tail(obj runtime.Object, assert func(g Gomega), writers ...io.Writer) {
 	go func() {
 		defer GinkgoRecover()
-		logger := logs.NewLogsOptions(genericclioptions.IOStreams{
-			In:     os.Stdin,
-			Out:    io.MultiWriter(writers...),
-			ErrOut: io.MultiWriter(writers...),
-		}, true)
-		logger.Follow = false
-		logger.IgnoreLogErrors = false
-		logger.Object = obj
-		logger.RESTClientGetter = util.NewFactory(ClientGetter{config: restConfig})
-		logger.LogsForObject = polymorphichelpers.LogsForObjectFn
-		logger.ConsumeRequestFn = logs.DefaultConsumeRequest
-		var err error
-		logger.Options, err = logger.ToLogOptions()
-		Expect(err).To(Succeed())
-		Expect(logger.Validate()).To(Succeed())
 		Eventually(func(g Gomega) {
+			logger := logs.NewLogsOptions(genericclioptions.IOStreams{
+				In:     os.Stdin,
+				Out:    io.MultiWriter(writers...),
+				ErrOut: io.MultiWriter(writers...),
+			}, true)
+			logger.Follow = false
+			logger.IgnoreLogErrors = false
+			logger.Object = obj
+			logger.RESTClientGetter = util.NewFactory(ClientGetter{config: restConfig})
+			logger.LogsForObject = polymorphichelpers.LogsForObjectFn
+			logger.ConsumeRequestFn = logs.DefaultConsumeRequest
+			var err error
+			logger.Options, err = logger.ToLogOptions()
+			g.Expect(err).To(Succeed())
+			g.Expect(logger.Validate()).To(Succeed())
 			g.Expect(logger.RunLogs()).To(Succeed())
 			assert(g)
-		}).WithTimeout(4 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+		}).Should(Succeed())
 	}()
 }
 
@@ -149,48 +109,6 @@ func GenerateCertManagerCompliantTLSSecretForService(service, secret types.Names
 			"ca.crt":  pem.EncodeToMemory(ca),
 		},
 	}
-}
-
-//go:embed manifests/datastores/*.yaml
-var datastores embed.FS
-
-// CreateDatabase reads a database yaml definition from a file and creates it
-func CreateDatabase(ctx context.Context, mapper meta.RESTMapper, namespace string, engine string) {
-	ssaClient, err := crClient.NewWithWatch(restConfig, crClient.Options{
-		Mapper: mapper,
-	})
-	Expect(err).To(Succeed())
-	resourceManager := ssa.NewResourceManager(ssaClient, polling.NewStatusPoller(ssaClient, mapper, polling.Options{}), ssa.Owner{
-		Field: "test.authzed.com",
-		Group: "test.authzed.com",
-	})
-
-	yamlReader, err := datastores.Open(fmt.Sprintf("manifests/datastores/%s.yaml", engine))
-	Expect(err).To(Succeed())
-	DeferCleanup(yamlReader.Close)
-
-	decoder := yaml.NewYAMLToJSONDecoder(yamlReader)
-	objs := make([]*unstructured.Unstructured, 0)
-	for {
-		u := &unstructured.Unstructured{Object: map[string]interface{}{}}
-		err := decoder.Decode(&u.Object)
-		if err == io.EOF {
-			break
-		} else {
-			Expect(err).To(Succeed())
-		}
-		u.SetNamespace(namespace)
-		objs = append(objs, u)
-	}
-	_, err = resourceManager.ApplyAll(ctx, objs, ssa.DefaultApplyOptions())
-	Expect(err).To(Succeed())
-	By(fmt.Sprintf("waiting for %s to start..", engine))
-	err = resourceManager.Wait(objs, ssa.WaitOptions{
-		Interval: 1 * time.Second,
-		Timeout:  90 * time.Second,
-	})
-	Expect(err).To(Succeed())
-	By(fmt.Sprintf("%s running", engine))
 }
 
 // ClientGetter implements RESTClientGetter to return values for the configured

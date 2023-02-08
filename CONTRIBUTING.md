@@ -105,11 +105,11 @@ go get github.com/org/newdependency@version
 
 Continuous integration enforces that `go mod tidy` has been run.
 
-### Regenerating `default-operator-config.yaml`
+### Regenerating `proposed-update-graph.yaml`
 
-The default config can be regenerated whenever there is a new spicedb release.
+The update graph can be regenerated whenever there is a new spicedb release.
+CI will validate all new edges when there are changes to `proposed-update-graph.yaml` and will copy them into `validated-update-graph.yaml` if successful.
 
 ```go
-cd tools
-go generate ./...
+mage gen:graph
 ```

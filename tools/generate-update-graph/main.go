@@ -1,37 +1,21 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	"github.com/google/go-github/v43/github"
 	"sigs.k8s.io/yaml"
 
 	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
-//go:generate go run main.go ../../default-operator-config.yaml
-
-const (
-	githubNamespace  = "authzed"
-	githubRepository = "spicedb"
-)
+//go:generate go run main.go ../../proposed-update-graph.yaml
 
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("must provide filename")
 		os.Exit(1)
-	}
-	ctx := context.Background()
-	client := github.NewClient(nil)
-
-	// this returns the newest release by date, not by version
-	// note that spicedb uses the same API to determine if it's up to date
-	latestRelease, _, err := client.Repositories.GetLatestRelease(ctx, githubNamespace, githubRepository)
-	if err != nil {
-		panic(err)
 	}
 
 	opconfig := config.OperatorConfig{
@@ -42,14 +26,6 @@ func main() {
 			mysqlChannel(),
 			spannerChannel(),
 		}},
-	}
-
-	for _, c := range opconfig.Channels {
-		if c.Nodes[0].Tag != *latestRelease.Name {
-			fmt.Printf("channel %q does not contain the latest release %q\n", c.Name, *latestRelease.Name)
-			os.Exit(1)
-			return
-		}
 	}
 
 	yamlBytes, err := yaml.Marshal(&opconfig)
@@ -84,16 +60,12 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.4.0", Tag: "v1.4.0", Migration: "add-transaction-timestamp-index"},
 		{ID: "v1.3.0", Tag: "v1.3.0", Migration: "add-transaction-timestamp-index"},
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transaction-timestamp-index"},
-		{ID: "v1.1.0", Tag: "v1.1.0", Migration: "add-transaction-timestamp-index"},
-		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "add-unique-living-ns"},
 	}
 	return updates.Channel{
-		ChannelID: updates.ChannelID{
-			Name: "stable",
-			Metadata: map[string]string{
-				"datastore": "postgres",
-				"default":   "true",
-			},
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "postgres",
+			"default":   "true",
 		},
 		Nodes: releases,
 		Edges: map[string][]string{
@@ -116,8 +88,6 @@ func postgresChannel() updates.Channel {
 			"v1.4.0":         {"v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.0-phase1"},
 			"v1.3.0":         {"v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.0-phase1"},
 			"v1.2.0":         {"v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.0-phase1"},
-			"v1.1.0":         {"v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.0-phase1"},
-			"v1.0.0":         {"v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.0-phase1"},
 		},
 	}
 }
@@ -142,16 +112,12 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.4.0", Tag: "v1.4.0", Migration: "add-transactions-table"},
 		{ID: "v1.3.0", Tag: "v1.3.0", Migration: "add-transactions-table"},
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transactions-table"},
-		{ID: "v1.1.0", Tag: "v1.1.0", Migration: "add-transactions-table"},
-		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "add-transactions-table"},
 	}
 	return updates.Channel{
-		ChannelID: updates.ChannelID{
-			Name: "stable",
-			Metadata: map[string]string{
-				"datastore": "cockroachdb",
-				"default":   "true",
-			},
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "cockroachdb",
+			"default":   "true",
 		},
 		Nodes: releases,
 		Edges: map[string][]string{
@@ -172,8 +138,6 @@ func crdbChannel() updates.Channel {
 			"v1.4.0":  {"v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 			"v1.3.0":  {"v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 			"v1.2.0":  {"v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.1.0":  {"v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.0.0":  {"v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 		},
 	}
 }
@@ -195,12 +159,10 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id"},
 	}
 	return updates.Channel{
-		ChannelID: updates.ChannelID{
-			Name: "stable",
-			Metadata: map[string]string{
-				"datastore": "mysql",
-				"default":   "true",
-			},
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "mysql",
+			"default":   "true",
 		},
 		Nodes: releases,
 		Edges: map[string][]string{
@@ -233,23 +195,12 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.10.0", Tag: "v1.10.0", Migration: "add-metadata-and-counters"},
 		{ID: "v1.9.0", Tag: "v1.9.0", Migration: "add-metadata-and-counters"},
 		{ID: "v1.8.0", Tag: "v1.8.0", Migration: "add-metadata-and-counters"},
-		{ID: "v1.7.1", Tag: "v1.7.1", Migration: "add-metadata-and-counters"},
-		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add-metadata-and-counters"},
-		{ID: "v1.6.0", Tag: "v1.6.0", Migration: "add-metadata-and-counters"},
-		{ID: "v1.5.0", Tag: "v1.5.0", Migration: "initial"},
-		{ID: "v1.4.0", Tag: "v1.4.0", Migration: "initial"},
-		{ID: "v1.3.0", Tag: "v1.3.0", Migration: "initial"},
-		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "initial"},
-		{ID: "v1.1.0", Tag: "v1.1.0", Migration: "initial"},
-		{ID: "v1.0.0", Tag: "v1.0.0", Migration: "initial"},
 	}
 	return updates.Channel{
-		ChannelID: updates.ChannelID{
-			Name: "stable",
-			Metadata: map[string]string{
-				"datastore": "spanner",
-				"default":   "true",
-			},
+		Name: "stable",
+		Metadata: map[string]string{
+			"datastore": "spanner",
+			"default":   "true",
 		},
 		Nodes: releases,
 		Edges: map[string][]string{
@@ -263,15 +214,6 @@ func spannerChannel() updates.Channel {
 			"v1.10.0": {"v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 			"v1.9.0":  {"v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 			"v1.8.0":  {"v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.7.1":  {"v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.7.0":  {"v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.6.0":  {"v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.5.0":  {"v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.4.0":  {"v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.3.0":  {"v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.2.0":  {"v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.1.0":  {"v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
-			"v1.0.0":  {"v1.1.0", "v1.2.0", "v1.3.0", "v1.4.0", "v1.5.0", "v1.6.0", "v1.7.1", "v1.8.0", "v1.9.0", "v1.10.0", "v1.11.0", "v1.12.0", "v1.13.0", "v1.14.1", "v1.15.0", "v1.16.0", "v1.16.1"},
 		},
 	}
 }

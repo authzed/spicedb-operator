@@ -25,6 +25,12 @@ spec:
           volumeMounts:
             - name: postgresql-db-disk
               mountPath: /data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init
+          configMap:
+            name: init
   volumeClaimTemplates:
     - metadata:
         name: postgresql-db-disk
@@ -46,3 +52,10 @@ spec:
       targetPort: 5432
   selector:
     app: postgresql-db
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: init
+data:
+  max_conns.sql: "ALTER SYSTEM SET max_connections = 500;"

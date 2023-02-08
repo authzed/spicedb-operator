@@ -101,6 +101,25 @@ jobs:
         with:
           version: "latest"
           args: "test:e2e"
+      - name: "Check if validated update graph has changed"
+        uses: "tj-actions/verify-changed-files@v13"
+        id: "verify-changed-graph"
+        with:
+          files: |
+            validated-update-graph.yaml
+      - name: "Commit validated update graph"
+        uses: "EndBug/add-and-commit@v9"
+        if: |
+          steps.verify-changed-graph.outputs.files_changed == 'true'
+        with:
+          author_name: "Authzed, Inc."
+          author_email: "86801627+authzedbot@users.noreply.github.com"
+          committer_name: "GitHub Actions"
+          committer_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          message: "update validated graph after successful tests"
+          pathspec_error_handling: "exitImmediately"
+          push: true
+          tag: "${{github.ref_name}}"
       - uses: "actions/upload-artifact@v2"
         if: "always()"
         # this upload step is really flaky, don't fail the job if it fails

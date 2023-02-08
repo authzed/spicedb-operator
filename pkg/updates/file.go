@@ -295,7 +295,6 @@ func (g *UpdateGraph) Difference(other *UpdateGraph) *UpdateGraph {
 
 	// Find matching channels between the graphs
 	for _, thisChannel := range g.Channels {
-
 		foundMatchingChannel := false
 
 		for _, otherChannel := range other.Channels {

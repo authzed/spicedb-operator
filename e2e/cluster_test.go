@@ -10,18 +10,13 @@ import (
 	"os"
 	"time"
 
-	database "cloud.google.com/go/spanner/admin/database/apiv1"
-	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
 	"github.com/authzed/controller-idioms/typed"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/logr/funcr"
-	"github.com/jackc/pgx/v5"
 	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	adminpb "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
-	"google.golang.org/genproto/googleapis/spanner/admin/instance/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -35,8 +30,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 
+	"github.com/authzed/spicedb-operator/e2e/databases"
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
+	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
 var (
@@ -103,9 +100,10 @@ var _ = Describe("SpiceDBClusters", func() {
 		}
 
 		config := map[string]any{
-			"envPrefix": spicedbEnvPrefix,
-			"image":     image,
-			"cmd":       spicedbCmd,
+			"envPrefix":        spicedbEnvPrefix,
+			"image":            image,
+			"cmd":              spicedbCmd,
+			"skipReleaseCheck": "true",
 		}
 		jsonConfig, err := json.Marshal(config)
 		Expect(err).To(Succeed())
@@ -221,29 +219,26 @@ var _ = Describe("SpiceDBClusters", func() {
 	})
 
 	Describe("With a database", func() {
-		var (
-			datastoreURI string
-			engine       string
-			extraConfig  map[string]string
-		)
+		var db *databases.LogicalDatabase
 
 		BasicSpiceDBFunctionality := func() {
 			When("a valid SpiceDBCluster is created", func() {
 				BeforeEach(func() {
 					secret.StringData = map[string]string{
 						"logLevel":          "debug",
-						"datastore_uri":     datastoreURI,
+						"datastore_uri":     db.DatastoreURI,
 						"preshared_key":     "testtesttesttest",
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
 
 					config := map[string]any{
-						"datastoreEngine": engine,
-						"envPrefix":       spicedbEnvPrefix,
-						"image":           image,
-						"cmd":             spicedbCmd,
+						"skipReleaseCheck": "true",
+						"datastoreEngine":  db.Engine,
+						"envPrefix":        spicedbEnvPrefix,
+						"image":            image,
+						"cmd":              spicedbCmd,
 					}
-					for k, v := range extraConfig {
+					for k, v := range db.ExtraConfig {
 						config[k] = v
 					}
 					jsonConfig, err := json.Marshal(config)
@@ -253,7 +248,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				})
 
 				JustBeforeEach(func() {
-					AssertMigrationsCompleted(image, "", "", cluster.Name, engine)
+					AssertMigrationsCompleted(image, "", "", cluster.Name, db.Engine)
 				})
 
 				AfterEach(func() {
@@ -272,7 +267,8 @@ var _ = Describe("SpiceDBClusters", func() {
 						// this installs from the head of the current channel, skip validating image
 						image = ""
 						config := map[string]any{
-							"datastoreEngine":                engine,
+							"skipReleaseCheck":               true,
+							"datastoreEngine":                db.Engine,
 							"envPrefix":                      spicedbEnvPrefix,
 							"cmd":                            spicedbCmd,
 							"tlsSecretName":                  "spicedb-grpc-tls",
@@ -280,7 +276,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							"serviceAccountName":             "spicedb-non-default",
 							"extraServiceAccountAnnotations": "authzed.com/e2e=true",
 						}
-						for k, v := range extraConfig {
+						for k, v := range db.ExtraConfig {
 							config[k] = v
 						}
 						jsonConfig, err := json.Marshal(config)
@@ -319,13 +315,13 @@ var _ = Describe("SpiceDBClusters", func() {
 				BeforeEach(func() {
 					secret.StringData = map[string]string{
 						"logLevel":          "debug",
-						"datastore_uri":     datastoreURI,
+						"datastore_uri":     db.DatastoreURI,
 						"preshared_key":     "testtesttesttest",
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
 					config, err := json.Marshal(map[string]any{
 						"skipMigrations":  true,
-						"datastoreEngine": engine,
+						"datastoreEngine": db.Engine,
 						"image":           image,
 						"envPrefix":       spicedbEnvPrefix,
 						"cmd":             spicedbCmd,
@@ -355,55 +351,145 @@ var _ = Describe("SpiceDBClusters", func() {
 			})
 		}
 
-		Describe("With cockroachdb", Ordered, func() {
-			BeforeAll(func() {
-				engine = "cockroachdb"
-				datastoreURI = "postgresql://root:unused@cockroachdb-public.crdb:26257/defaultdb?sslmode=disable"
-				CreateNamespace("crdb")
-				DeferCleanup(DeleteNamespace, "crdb")
-				CreateDatabase(ctx, mapper, "crdb", engine)
+		UpdateTest := func(engine, channel, from, to string) {
+			Describe(fmt.Sprintf("using channel %s, from %s to %s", channel, from, to), func() {
+				BeforeEach(func() {
+					secret.StringData = map[string]string{
+						"logLevel":          "debug",
+						"datastore_uri":     db.DatastoreURI,
+						"preshared_key":     "testtesttesttest",
+						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+					}
+
+					config := map[string]any{
+						"skipReleaseCheck": "true",
+						"datastoreEngine":  engine,
+						"envPrefix":        spicedbEnvPrefix,
+						"cmd":              spicedbCmd,
+					}
+					for k, v := range db.ExtraConfig {
+						config[k] = v
+					}
+					jsonConfig, err := json.Marshal(config)
+					Expect(err).To(Succeed())
+
+					cluster.Spec.Config = jsonConfig
+					cluster.Spec.Channel = channel
+					cluster.Spec.Version = from
+				})
+
+				JustBeforeEach(func() {
+					Eventually(func(g Gomega) {
+						clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Get(ctx, cluster.Name, metav1.GetOptions{})
+						g.Expect(err).To(Succeed())
+						fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
+						g.Expect(err).To(Succeed())
+						logr.FromContextOrDiscard(ctx).Info("fetched cluster", "status", fetched.Status)
+						g.Expect(fetched.Status.CurrentVersion).ToNot(BeNil())
+						g.Expect(fetched.Status.CurrentVersion.Name).To(Equal(from))
+						meta.RemoveStatusCondition(&fetched.Status.Conditions, v1alpha1.ConditionTypeConfigWarnings)
+						g.Expect(len(fetched.Status.Conditions)).To(BeZero())
+						g.Expect(len(fetched.Status.AvailableVersions)).ToNot(BeZero(), "status should show available updates")
+						// TODO: validate the target version is in the available version list
+					}).Should(Succeed())
+
+					// once the cluster is running at the initial version, update the target version
+					Eventually(func(g Gomega) {
+						clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Get(ctx, cluster.Name, metav1.GetOptions{})
+						g.Expect(err).To(Succeed())
+						fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
+						g.Expect(err).To(Succeed())
+						meta.RemoveStatusCondition(&fetched.Status.Conditions, v1alpha1.ConditionTypeConfigWarnings)
+						g.Expect(len(fetched.Status.Conditions)).To(BeZero())
+
+						fetched.Spec.Version = to
+						u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(fetched)
+						g.Expect(err).To(Succeed())
+						_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: u}, metav1.UpdateOptions{})
+						g.Expect(err).To(Succeed())
+					}).Should(Succeed())
+				})
+
+				AfterEach(func() {
+					AssertDependentResourceCleanup(cluster.Name, "spicedb")
+				})
+
+				It("should update with no issues", func() {
+					Eventually(func(g Gomega) {
+						clusterUnst, err := client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Get(ctx, cluster.Name, metav1.GetOptions{})
+						g.Expect(err).To(Succeed())
+						fetched, err := typed.UnstructuredObjToTypedObj[*v1alpha1.SpiceDBCluster](clusterUnst)
+						g.Expect(err).To(Succeed())
+						logr.FromContextOrDiscard(ctx).Info("fetched cluster", "status", fetched.Status)
+						g.Expect(fetched.Status.CurrentVersion).ToNot(BeNil())
+						meta.RemoveStatusCondition(&fetched.Status.Conditions, v1alpha1.ConditionTypeConfigWarnings)
+						g.Expect(len(fetched.Status.Conditions)).To(BeZero())
+						g.Expect(fetched.Status.CurrentVersion.Name).To(Equal(to))
+					}).Should(Succeed())
+
+					AssertHealthySpiceDBCluster("", cluster.Name, Not(ContainSubstring("ERROR: kuberesolver")))
+				})
+			})
+		}
+
+		ValidateNewGraphEdges := func(engine string) {
+			Describe("with a new update graph", func() {
+				proposedGraph := GetConfig(ProposedGraphFile)
+				validatedGraph := GetConfig(ValidatedGraphFile)
+				diffGraph := proposedGraph.UpdateGraph.Difference(&validatedGraph.UpdateGraph)
+				for _, c := range diffGraph.Channels {
+					if c.Metadata[updates.DatastoreMetadataKey] == engine {
+						for source, targets := range c.Edges {
+							source := source
+							for _, target := range targets {
+								target := target
+								UpdateTest(engine, c.Name, source, target)
+							}
+						}
+					}
+				}
+			})
+		}
+
+		Describe("With cockroachdb", func() {
+			BeforeEach(func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				db = crdbProvider.New(ctx)
+				DeferCleanup(crdbProvider.Cleanup, context.Background(), db)
 			})
 
 			BasicSpiceDBFunctionality()
+			ValidateNewGraphEdges("cockroachdb")
 		})
 
-		Describe("With mysql", Ordered, func() {
-			BeforeAll(func() {
-				engine = "mysql"
-				datastoreURI = "root:password@tcp(mysql-public.mysql:3306)/mysql?parseTime=true"
-				CreateNamespace("mysql")
-				DeferCleanup(DeleteNamespace, "mysql")
-				CreateDatabase(ctx, mapper, "mysql", engine)
+		Describe("With mysql", func() {
+			BeforeEach(func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				db = mysqlProvider.New(ctx)
+				DeferCleanup(mysqlProvider.Cleanup, context.Background(), db)
 			})
 
 			BasicSpiceDBFunctionality()
+			ValidateNewGraphEdges("mysql")
 		})
 
-		Describe("With postgres", Ordered, func() {
-			BeforeAll(func() {
-				engine = "postgres"
-				datastoreURI = "postgresql://postgres:testpassword@postgresql-db-public.postgres:5432/postgres?sslmode=disable"
-				CreateNamespace("postgres")
-				DeferCleanup(DeleteNamespace, "postgres")
-				CreateDatabase(ctx, mapper, "postgres", engine)
+		Describe("With postgres", func() {
+			BeforeEach(func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				db = postgresProvider.New(ctx)
+				DeferCleanup(postgresProvider.Cleanup, context.Background(), db)
 			})
 
 			BasicSpiceDBFunctionality()
+			ValidateNewGraphEdges("postgres")
 
 			Describe("there is a series of required migrations", func() {
 				BeforeEach(func() {
-					func() {
-						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-						defer cancel()
-						PortForward("postgres", "postgresql-db-0", []string{"5432"}, ctx.Done())
-						conn, err := pgx.Connect(ctx, "postgresql://postgres:testpassword@localhost:5432/postgres?sslmode=disable")
-						Expect(err).To(Succeed())
-						_, err = conn.Exec(ctx, "CREATE DATABASE postgres2;")
-						Expect(err).To(Succeed())
-						datastoreURI = "postgresql://postgres:testpassword@postgresql-db-public.postgres:5432/postgres2?sslmode=disable"
-					}()
-
 					classConfig := map[string]any{
+						"skipReleaseCheck":             "true",
 						"logLevel":                     "debug",
 						"datastoreEngine":              "postgres",
 						"tlsSecretName":                "spicedb-grpc-tls",
@@ -415,7 +501,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					cluster.Spec.Config = jsonConfig
 
 					secret.StringData = map[string]string{
-						"datastore_uri":     datastoreURI,
+						"datastore_uri":     db.DatastoreURI,
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 						"preshared_key":     "testtesttesttest",
 					}
@@ -478,73 +564,21 @@ var _ = Describe("SpiceDBClusters", func() {
 			})
 		})
 
-		Describe("With spanner", Ordered, func() {
-			BeforeAll(func() {
-				engine = "spanner"
-				datastoreURI = "projects/fake-project-id/instances/fake-instance/databases/fake-database-id"
-				extraConfig = map[string]string{
-					"datastoreSpannerEmulatorHost": "spanner-service.spanner:9010",
-				}
-				CreateNamespace("spanner")
-				DeferCleanup(DeleteNamespace, "spanner")
-				CreateDatabase(ctx, mapper, "spanner", engine)
-
+		Describe("With spanner", func() {
+			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
-				PortForward("spanner", "spanner-0", []string{"9010"}, ctx.Done())
 				defer cancel()
 
-				Expect(os.Setenv("SPANNER_EMULATOR_HOST", "localhost:9010")).To(Succeed())
-
-				var instancesClient *instances.InstanceAdminClient
-				Eventually(func() *instances.InstanceAdminClient {
-					// Create instance
-					client, err := instances.NewInstanceAdminClient(ctx)
-					if err != nil {
-						return nil
-					}
-					instancesClient = client
-					return client
-				}).Should(Not(BeNil()))
-
-				defer func() { Expect(instancesClient.Close()).To(Succeed()) }()
-
-				var createInstanceOp *instances.CreateInstanceOperation
-				Eventually(func(g Gomega) {
-					var err error
-					createInstanceOp, err = instancesClient.CreateInstance(ctx, &instance.CreateInstanceRequest{
-						Parent:     "projects/fake-project-id",
-						InstanceId: "fake-instance",
-						Instance: &instance.Instance{
-							Config:      "emulator-config",
-							DisplayName: "Test Instance",
-							NodeCount:   1,
-						},
-					})
-					g.Expect(err).To(Succeed())
-				}).Should(Succeed())
-
-				spannerInstance, err := createInstanceOp.Wait(ctx)
-				Expect(err).To(Succeed())
-
-				// Create db
-				adminClient, err := database.NewDatabaseAdminClient(ctx)
-				Expect(err).To(Succeed())
-				defer func() {
-					Expect(adminClient.Close()).To(Succeed())
-				}()
-
-				dbID := "fake-database-id"
-				op, err := adminClient.CreateDatabase(ctx, &adminpb.CreateDatabaseRequest{
-					Parent:          spannerInstance.Name,
-					CreateStatement: "CREATE DATABASE `" + dbID + "`",
-				})
-				Expect(err).To(Succeed())
-
-				_, err = op.Wait(ctx)
-				Expect(err).To(Succeed())
+				// Each spanner test spins up its own database pod; the spanner
+				// emulator doesn't support concurrent transactions so a single
+				// instance can't be shared.
+				spannerProvider := databases.NewSpannerProvider(mapper, restConfig, testNamespace)
+				db = spannerProvider.New(ctx)
+				DeferCleanup(spannerProvider.Cleanup, context.Background(), db)
 			})
 
 			BasicSpiceDBFunctionality()
+			ValidateNewGraphEdges("spanner")
 		})
 	})
 })

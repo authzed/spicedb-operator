@@ -10,6 +10,6 @@ RUN go build ./cmd/...
 
 FROM alpine:3.17.0
 
-COPY --from=builder /go/src/app/default-operator-config.yaml /opt/operator/config.yaml
+COPY --from=builder /go/src/app/validated-update-graph.yaml /opt/operator/config.yaml
 COPY --from=builder /go/src/app/spicedb-operator /usr/local/bin/spicedb-operator
 ENTRYPOINT ["spicedb-operator"]

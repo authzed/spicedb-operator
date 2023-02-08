@@ -5,12 +5,17 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
+	"github.com/magefile/mage/target"
 	kind "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/fs"
 )
 
 var Aliases = map[string]interface{}{
@@ -24,25 +29,52 @@ type Test mg.Namespace
 // Runs the unit tests
 func (Test) Unit() error {
 	fmt.Println("running unit tests")
-	goCmd := "go"
-	if hasBinary("richgo") {
-		goCmd = "richgo"
-	}
-	return sh.RunV(goCmd, "test", "./...")
+	return sh.RunV(goCmdForTests(), "test", "./...")
 }
 
 // Runs the end-to-end tests in a kind cluster
 func (Test) E2e() error {
-	mg.Deps(checkDocker)
+	mg.Deps(checkDocker, Gen{}.generateGraphIfSourcesChanged)
 	fmt.Println("running e2e tests")
-	return sh.RunWithV(map[string]string{
-		"PROVISION": "true",
-	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-v", "--fail-fast", "--randomize-all", "--race", "e2e")
+
+	if err := sh.RunWithV(map[string]string{
+		"PROVISION":            "true",
+		"SPICEDB_CMD":          os.Getenv("SPICEDB_CMD"),
+		"SPICEDB_ENV_PREFIX":   os.Getenv("SPICEDB_ENV_PREFIX"),
+		"ARCHIVES":             os.Getenv("ARCHIVES"),
+		"IMAGES":               os.Getenv("IMAGES"),
+		"PROPOSED_GRAPH_FILE":  os.Getenv("PROPOSED_GRAPH_FILE"),
+		"VALIDATED_GRAPH_FILE": os.Getenv("VALIDATED_GRAPH_FILE"),
+	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "e2e"); err != nil {
+		return err
+	}
+
+	const (
+		ProposedGraphFile  = "proposed-update-graph.yaml"
+		ValidatedGraphFile = "validated-update-graph.yaml"
+	)
+
+	equal, err := fileEqual(ProposedGraphFile, ValidatedGraphFile)
+	if err != nil {
+		return err
+	}
+
+	if !equal {
+		fmt.Println("marking update graph as validated after successful test run")
+		return fs.CopyFile("proposed-update-graph.yaml", "validated-update-graph.yaml")
+	}
+	fmt.Println("no changes to update graph")
+
+	return nil
 }
 
 // Removes the kind cluster used for end-to-end tests
 func (Test) Clean_e2e() error {
 	mg.Deps(checkDocker)
+	fmt.Println("removing saved cluster state")
+	if err := os.RemoveAll("./e2e/cluster-state"); err != nil {
+		return err
+	}
 	fmt.Println("removing kind cluster")
 	return kind.NewProvider(
 		kind.ProviderWithLogger(cmd.NewLogger()),
@@ -69,6 +101,18 @@ func (Gen) Graph() error {
 	return sh.RunV("go", "generate", "./tools/generate-update-graph/main.go")
 }
 
+// If the update graph definition
+func (g Gen) generateGraphIfSourcesChanged() error {
+	regen, err := target.Dir("proposed-update-graph.yaml", "tools/generate-update-graph")
+	if err != nil {
+		return err
+	}
+	if regen {
+		return g.Graph()
+	}
+	return nil
+}
+
 func checkDocker() error {
 	if !hasBinary("docker") {
 		return fmt.Errorf("docker must be installed to run e2e tests")
@@ -83,4 +127,34 @@ func checkDocker() error {
 func hasBinary(binaryName string) bool {
 	_, err := exec.LookPath(binaryName)
 	return err == nil
+}
+
+func goCmdForTests() string {
+	if hasBinary("richgo") {
+		return "richgo"
+	}
+	return "go"
+}
+
+func fileEqual(a, b string) (bool, error) {
+	aFile, err := os.Open(a)
+	if err != nil {
+		return false, err
+	}
+	aHash := xxhash.New()
+	_, err = io.Copy(aHash, aFile)
+	if err != nil {
+		return false, err
+	}
+	bFile, err := os.Open(b)
+	if err != nil {
+		return false, err
+	}
+	bHash := xxhash.New()
+	_, err = io.Copy(bHash, bFile)
+	if err != nil {
+		return false, err
+	}
+
+	return aHash.Sum64() == bHash.Sum64(), nil
 }
