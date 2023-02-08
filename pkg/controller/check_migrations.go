@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 
+	"golang.org/x/exp/slices"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/controller-idioms/handler"
 	"github.com/authzed/controller-idioms/hash"
 
+	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -47,10 +49,16 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 		}
 	}
 
-	// don't handle migrations at all if `skipMigrations` is set or if the
-	// `memory` datastore is used
+	// don't handle migrations at all if `skipMigrations` is set, if the
+	// `memory` datastore is used, or if the update graph says there are no
+	// migrations for this step.
 	config := CtxConfig.MustValue(ctx)
 	if config.SkipMigrations || config.DatastoreEngine == "memory" {
+		m.nextDeploymentHandler.Handle(ctx)
+		return
+	}
+	status := CtxClusterStatus.MustValue(ctx).Status
+	if status.CurrentVersion != nil && !slices.Contains(status.CurrentVersion.Attributes, v1alpha1.SpiceDBVersionAttributesMigration) {
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}

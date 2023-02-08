@@ -58,7 +58,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n5c6h647h664h64bh67dh65dh66bh676q",
+				metadata.SpiceDBConfigKey: "nb5hfh598h5h5d6h645h57fh64dq",
 			}}}},
 			expectNext: nextKey,
 		},
@@ -67,7 +67,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n5c6h647h664h64bh67dh65dh66bh676q",
+				metadata.SpiceDBConfigKey: "nb5hfh598h5h5d6h645h57fh64dq",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
@@ -77,7 +77,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret1",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n568h68fh5d4h66dh5c5hc4h5fbhbfq",
+				metadata.SpiceDBConfigKey: "nb5hfh598h5h5d6h645h57fh64dq",
 			}}}},
 			expectApply:        true,
 			expectRequeueAfter: true,
@@ -112,7 +112,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n58bh9ch566h5d6h554hc5h585h596q",
+					metadata.SpiceDBConfigKey: "nd7h67h558hd4h544h585h6h5fq",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -145,7 +145,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n58bh9ch566h5d6h554hc5h585h596q",
+					metadata.SpiceDBConfigKey: "nd7h67h558hd4h544h585h6h5fq",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,

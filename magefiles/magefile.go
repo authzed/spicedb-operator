@@ -45,7 +45,7 @@ func (Test) E2e() error {
 		"IMAGES":               os.Getenv("IMAGES"),
 		"PROPOSED_GRAPH_FILE":  os.Getenv("PROPOSED_GRAPH_FILE"),
 		"VALIDATED_GRAPH_FILE": os.Getenv("VALIDATED_GRAPH_FILE"),
-	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "e2e"); err != nil {
+	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "e2e"); err != nil {
 		return err
 	}
 

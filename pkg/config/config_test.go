@@ -122,6 +122,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -193,6 +196,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "memory",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -378,6 +384,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -451,6 +460,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -524,6 +536,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -604,6 +619,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -683,6 +701,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -758,6 +779,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -831,6 +855,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -911,6 +938,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -989,6 +1019,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -1068,6 +1101,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -1148,6 +1184,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -1226,6 +1265,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v2",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -1308,6 +1350,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v2",
 						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{
@@ -1471,6 +1516,9 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "spanner",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
 					},
 				},
 				SpiceConfig: SpiceConfig{

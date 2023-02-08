@@ -245,7 +245,7 @@ func TestComputeTarget(t *testing.T) {
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
 			engine:            "cockroachdb",
-			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0"},
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
@@ -298,6 +298,47 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.0"},
 		},
 		{
+			name: "crossing a migration boundary sets the migration attribute",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1", Migration: "b"}, {ID: "v1.0.0", Migration: "a"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.1",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.1",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.1", Migration: "b"},
+		},
+		{
+			name: "not crossing a migration boundary doesn't set the migration attribute",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1", Migration: "a"}, {ID: "v1.0.0", Migration: "a"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.1",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "cockroachdb",
+			},
+			expectedState: State{ID: "v1.0.1", Migration: "a"},
+		},
+		{
 			name: "version specified and no current version",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
@@ -310,9 +351,12 @@ func TestComputeTarget(t *testing.T) {
 			version:           "v1.0.0",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedState:     State{ID: "v1.0.0"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
 		},
 		{
 			name: "version specified and current version is the same",
@@ -327,8 +371,12 @@ func TestComputeTarget(t *testing.T) {
 			version:           "v1.0.0",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedState:     State{ID: "v1.0.0"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
 		},
 		{
 			name: "head returns same currentVersion",
@@ -358,8 +406,12 @@ func TestComputeTarget(t *testing.T) {
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
-			expectedState:     State{ID: "v1.0.1"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.1",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.1"},
 		},
 		{
 			name: "no currentVersion returns spec.version if specified",
@@ -374,8 +426,12 @@ func TestComputeTarget(t *testing.T) {
 			version:           "v1.0.0",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			expectedState:     State{ID: "v1.0.0"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
 		},
 	}
 

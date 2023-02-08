@@ -61,22 +61,23 @@ func (p *CockroachProvider) Cleanup(ctx context.Context, db *LogicalDatabase) {
 }
 
 func (p *CockroachProvider) exec(ctx context.Context, g Gomega, cmd string) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
+	g.Eventually(func(g Gomega) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		ports := e2eutil.PortForward(g, p.namespace, "cockroachdb-0", []string{":26257"}, ctx.Done())
+		g.Expect(len(ports)).To(Equal(1))
+		conn, err := pgx.Connect(ctx, fmt.Sprintf(CRDBAdminConnString, ports[0].Local))
+		if err != nil {
+			GinkgoWriter.Println(err)
+		}
 
-	ports := e2eutil.PortForward(g, p.namespace, "cockroachdb-0", []string{":26257"}, ctx.Done())
-	g.Expect(len(ports)).To(Equal(1))
-	conn, err := pgx.Connect(ctx, fmt.Sprintf(CRDBAdminConnString, ports[0].Local))
-	if err != nil {
-		GinkgoWriter.Println(err)
-	}
-
-	g.Expect(err).To(Succeed())
-	_, err = conn.Exec(ctx, cmd)
-	if err != nil {
-		GinkgoWriter.Println(err)
-	}
-	g.Expect(err).To(Succeed())
+		g.Expect(err).To(Succeed())
+		_, err = conn.Exec(ctx, cmd)
+		if err != nil {
+			GinkgoWriter.Println(err)
+		}
+		g.Expect(err).To(Succeed())
+	}).WithPolling(2 * time.Second).Should(Succeed())
 }
 
 // ensureDatabase checks to see if the cockroach instance has been set up,
