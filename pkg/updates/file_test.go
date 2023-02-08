@@ -298,6 +298,39 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.0"},
 		},
 		{
+			name: "version specified and no current version",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedState:     State{ID: "v1.0.0"},
+		},
+		{
+			name: "version specified and current version is the same",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedState:     State{ID: "v1.0.0"},
+		},
+		{
 			name: "head returns same currentVersion",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
@@ -327,6 +360,22 @@ func TestComputeTarget(t *testing.T) {
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
 			expectedState:     State{ID: "v1.0.1"},
+		},
+		{
+			name: "no currentVersion returns spec.version if specified",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedState:     State{ID: "v1.0.0"},
 		},
 	}
 
@@ -381,6 +430,26 @@ func TestUpdateGraphDifference(t *testing.T) {
 				},
 			}},
 			want: []Channel{},
+		},
+		{
+			name: "new channel",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			second: []Channel{},
+			want: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
 		},
 		{
 			name: "channel has new nodes",

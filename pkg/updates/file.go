@@ -218,7 +218,19 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		}
 	}
 
-	// Default to the currentVersion we're working toward.
+	// If version is explicit,and there's no current version yet, or the
+	// explicit version matches the current version, just install it
+	if len(version) > 0 && currentVersion == nil ||
+		(currentVersion != nil && currentVersion.Name == version && currentVersion.Channel == channel) {
+		state = updateSource.State(version)
+		target = &v1alpha1.SpiceDBVersion{
+			Name:    state.ID,
+			Channel: channel,
+		}
+		return
+	}
+
+	// Default to the currentVersion we're working towards.
 	target = currentVersion
 
 	var currentState State
@@ -242,7 +254,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 
 	// If currentVersion is set, we only use the subset of the update graph that leads
 	// to that currentVersion.
-	if len(version) > 0 {
+	if currentVersion != nil && len(version) > 0 {
 		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
 			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
@@ -283,8 +295,12 @@ func (g *UpdateGraph) Difference(other *UpdateGraph) *UpdateGraph {
 
 	// Find matching channels between the graphs
 	for _, thisChannel := range g.Channels {
+
+		foundMatchingChannel := false
+
 		for _, otherChannel := range other.Channels {
 			if thisChannel.EqualIdentity(otherChannel) {
+				foundMatchingChannel = true
 				// Determine which edges are in this channel but not the other
 				keepEdges := make(map[string][]string, 0)
 
@@ -329,6 +345,11 @@ func (g *UpdateGraph) Difference(other *UpdateGraph) *UpdateGraph {
 					Nodes:    keepNodes,
 				})
 			}
+		}
+
+		// if there's no matching channel, the whole channel is new
+		if !foundMatchingChannel {
+			diffGraph.Channels = append(diffGraph.Channels, thisChannel)
 		}
 	}
 	return diffGraph
