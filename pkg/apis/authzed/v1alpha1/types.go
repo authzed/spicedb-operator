@@ -21,7 +21,16 @@ const (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:categories=authzed
+// +kubebuilder:resource:categories=authzed,shortName=spicedbs
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Channel",type=string,JSONPath=".spec.channel"
+// +kubebuilder:printcolumn:name="Desired",type=string,JSONPath=".spec.version"
+// +kubebuilder:printcolumn:name="Current",type=string,JSONPath=".status.version.name"
+// +kubebuilder:printcolumn:name="Warnings",type=string,JSONPath=".status.conditions[?(@.type=='ConfigurationWarning')].status"
+// +kubebuilder:printcolumn:name="Migrating",type=string,JSONPath=".status.conditions[?(@.type=='Migrating')].status"
+// +kubebuilder:printcolumn:name="Updating",type=string,JSONPath=".status.conditions[?(@.type=='RollingDeployment')].status"
+// +kubebuilder:printcolumn:name="Invalid",type=string,JSONPath=".status.conditions[?(@.type=='ConditionValidatingFailed')].status"
+// +kubebuilder:printcolumn:name="Paused",type=string,JSONPath=".status.conditions[?(@.type=='Paused')].status"
 type SpiceDBCluster struct {
 	metav1.TypeMeta `json:",inline"`
 	// +optional
