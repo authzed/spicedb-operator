@@ -21,7 +21,8 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 	secret := CtxSecret.Value(ctx)
 	var secretHash string
 	if secret != nil {
-		ctx = CtxSecretHash.WithValue(ctx, hash.SecureObject(secret.Data))
+		secretHash = hash.SecureObject(secret.Data)
+		ctx = CtxSecretHash.WithValue(ctx, secretHash)
 	}
 	status := &v1alpha1.SpiceDBCluster{
 		TypeMeta: metav1.TypeMeta{
