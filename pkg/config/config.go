@@ -503,6 +503,8 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue),
+			).WithLabels(
+				c.ExtraPodLabels,
 			).WithAnnotations(
 				c.ExtraPodAnnotations,
 			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).
