@@ -17,6 +17,7 @@ jobs:
     runs-on: "ubuntu-latest"
     outputs:
       codechange: "${{ steps.filter.outputs.codechange }}"
+      graphchange: "${{ steps.graph-filter.outputs.graphchange }}"
     steps:
       - uses: "actions/checkout@v2"
       - uses: "dorny/paths-filter@v2"
@@ -32,6 +33,12 @@ jobs:
               - "pkg/**"
               - "e2e/**"
               - "internal/**"
+      - uses: "dorny/paths-filter@v2"
+        id: "graph-filter"
+        with:
+          filters: |
+            graphchange:
+              - "proposed-update-graph.yaml"
   build:
     needs: "paths-filter"
     if: |
@@ -92,11 +99,18 @@ jobs:
     runs-on: "ubuntu-latest-8-cores"
     steps:
       - uses: "actions/checkout@v3"
+        if: |
+          needs.paths-filter.outputs.graphchange == 'true'
         with:
           submodules: true
           token: "${{ secrets.AUTHZED_BOT_PAT }}"
           repository: "${{ github.event.pull_request.head.repo.full_name }}"
           ref: "${{ github.event.pull_request.head.ref }}"
+      - uses: "actions/checkout@v3"
+        if: |
+          needs.paths-filter.outputs.graphchange == 'false'
+        with:
+          submodules: true
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -108,6 +122,8 @@ jobs:
           version: "latest"
           args: "test:e2e"
       - name: "Check if validated update graph has changed"
+        if: |
+          needs.paths-filter.outputs.graphchange == 'true'
         uses: "tj-actions/verify-changed-files@v13"
         id: "verify-changed-graph"
         with:
