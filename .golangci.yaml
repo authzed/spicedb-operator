@@ -6,6 +6,10 @@ output:
 linters-settings:
   goimports:
     local-prefixes: "github.com/authzed/spicedb-operator"
+  stylecheck:
+    dot-import-whitelist:
+      - "github.com/onsi/ginkgo/v2"
+      - "github.com/onsi/gomega"
 linters:
   enable:
     - "bidichk"

@@ -18,8 +18,7 @@ import (
 	"time"
 
 	"github.com/go-logr/zapr"
-	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
-
+	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -29,12 +28,16 @@ import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	applyv1 "k8s.io/client-go/applyconfigurations/core/v1"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
 	"k8s.io/klog/v2"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/utils/pointer"
@@ -51,6 +54,8 @@ import (
 	"sigs.k8s.io/kind/pkg/fs"
 	"sigs.k8s.io/yaml"
 
+	"github.com/authzed/spicedb-operator/e2e/databases"
+	e2eutil "github.com/authzed/spicedb-operator/e2e/util"
 	"github.com/authzed/spicedb-operator/pkg/cmd/run"
 	"github.com/authzed/spicedb-operator/pkg/config"
 )
@@ -64,12 +69,16 @@ var (
 	// - if run with `APISERVER_ONLY=true`, we'll use apiserver + etcd instead of a real cluster
 	// - if run with `PROVISION=false` and `APISERVER_ONLY=false` we'll use the environment / kubeconfig flags to connect to an existing cluster
 
-	apiserverOnly = os.Getenv("APISERVER_ONLY") == "true"
-	provision     = os.Getenv("PROVISION") == "true"
-	archives      = strings.FieldsFunc(os.Getenv("ARCHIVES"), listsep)
-	images        = strings.FieldsFunc(os.Getenv("IMAGES"), listsep)
+	apiserverOnly      = os.Getenv("APISERVER_ONLY") == "true"
+	provision          = os.Getenv("PROVISION") == "true"
+	archives           = strings.FieldsFunc(os.Getenv("ARCHIVES"), listsep)
+	images             = strings.FieldsFunc(os.Getenv("IMAGES"), listsep)
+	ProposedGraphFile  = stringz.DefaultEmpty(os.Getenv("PROPOSED_GRAPH_FILE"), "../proposed-update-graph.yaml")
+	ValidatedGraphFile = stringz.DefaultEmpty(os.Getenv("VALIDATED_GRAPH_FILE"), "../validated-update-graph.yaml")
 
 	restConfig *rest.Config
+
+	postgresProvider, mysqlProvider, crdbProvider databases.Provider
 )
 
 func init() {
@@ -114,6 +123,14 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	run.DisableClientRateLimits(config)
 
+	restConfig = config
+	e2eutil.RestConfig = config
+
+	seed := GinkgoRandomSeed()
+	CreateNamespace(fmt.Sprintf("postgres-%d", seed))
+	CreateNamespace(fmt.Sprintf("mysql-%d", seed))
+	CreateNamespace(fmt.Sprintf("cockroachdb-%d", seed))
+
 	StartOperator(config)
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -125,6 +142,26 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	var config rest.Config
 	Expect(dec.Decode(&config)).To(Succeed())
 	restConfig = &config
+	e2eutil.RestConfig = &config
+	dc, err := discovery.NewDiscoveryClientForConfig(restConfig)
+	Expect(err).To(Succeed())
+	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(dc))
+
+	// Databases (except spanner) are spun up once per test suite run,
+	// with parallel tests using different logical databases.
+	// The kube resources are created lazily and won't deploy if no tests in
+	// focus need that database.
+	seed := GinkgoRandomSeed()
+	postgresProvider = databases.NewPostgresProvider(mapper, restConfig, fmt.Sprintf("postgres-%d", seed))
+	mysqlProvider = databases.NewMySQLProvider(mapper, restConfig, fmt.Sprintf("mysql-%d", seed))
+	crdbProvider = databases.NewCockroachProvider(mapper, restConfig, fmt.Sprintf("cockroachdb-%d", seed))
+})
+
+var _ = SynchronizedAfterSuite(func() {}, func() {
+	seed := GinkgoRandomSeed()
+	DeleteNamespace(fmt.Sprintf("postgres-%d", seed))
+	DeleteNamespace(fmt.Sprintf("mysql-%d", seed))
+	DeleteNamespace(fmt.Sprintf("cockroachdb-%d", seed))
 })
 
 func CreateNamespace(name string) {
@@ -154,7 +191,7 @@ func StartOperator(rc *rest.Config) {
 		options := run.RecommendedOptions()
 		options.DebugAddress = ":"
 		options.BootstrapCRDs = true
-		options.OperatorConfigPath = WriteConfig(GetDefaultConfig())
+		options.OperatorConfigPath = WriteConfig(GetConfig(ProposedGraphFile))
 		_ = options.Run(ctx, cmdutil.NewFactory(ClientGetter{config: rc}))
 	}()
 
@@ -190,12 +227,19 @@ func WriteConfig(operatorConfig config.OperatorConfig) string {
 	return ConfigFileName
 }
 
-func GetDefaultConfig() (cfg config.OperatorConfig) {
-	file, err := os.Open("../default-operator-config.yaml")
+func GetConfig(fileName string) (cfg config.OperatorConfig) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		fmt.Println(err)
+	}
 	Expect(err).To(Succeed())
 	defer file.Close()
 	decoder := utilyaml.NewYAMLOrJSONDecoder(file, 100)
-	Expect(decoder.Decode(&cfg)).To(Succeed())
+	err = decoder.Decode(&cfg)
+	if err != nil {
+		fmt.Println(err)
+	}
+	Expect(err).To(Succeed())
 	return
 }
 

@@ -1,6 +1,6 @@
 module github.com/authzed/spicedb-operator
 
-go 1.18
+go 1.19
 
 require (
 	cloud.google.com/go/spanner v1.39.0
@@ -10,10 +10,12 @@ require (
 	github.com/fluxcd/pkg/ssa v0.23.0
 	github.com/go-logr/logr v1.2.3
 	github.com/go-logr/zapr v1.2.3
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/jackc/pgx/v5 v5.2.0
 	github.com/jzelinskie/stringz v0.0.1
 	github.com/magefile/mage v1.14.0
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.5.0
+	github.com/nightlyone/lockfile v1.0.0
 	github.com/onsi/ginkgo/v2 v2.8.0
 	github.com/onsi/gomega v1.25.0
 	github.com/spf13/afero v1.9.2
@@ -22,7 +24,9 @@ require (
 	go.uber.org/atomic v1.10.0
 	go.uber.org/zap v1.24.0
 	golang.org/x/exp v0.0.0-20220823124025-807a23277127
+	google.golang.org/api v0.96.0
 	google.golang.org/genproto v0.0.0-20220916134934-764224ccc2d1
+	google.golang.org/grpc v1.49.0
 	k8s.io/api v0.26.1
 	k8s.io/apiextensions-apiserver v0.26.0
 	k8s.io/apimachinery v0.26.1
@@ -150,9 +154,7 @@ require (
 	golang.org/x/text v0.6.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.5.0 // indirect
-	google.golang.org/api v0.96.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/grpc v1.49.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

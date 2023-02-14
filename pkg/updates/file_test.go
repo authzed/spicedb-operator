@@ -245,7 +245,7 @@ func TestComputeTarget(t *testing.T) {
 				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 			}}},
 			engine:            "cockroachdb",
-			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0"},
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
@@ -298,6 +298,87 @@ func TestComputeTarget(t *testing.T) {
 			expectedState:     State{ID: "v1.0.0"},
 		},
 		{
+			name: "crossing a migration boundary sets the migration attribute",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1", Migration: "b"}, {ID: "v1.0.0", Migration: "a"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.1",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.1",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.1", Migration: "b"},
+		},
+		{
+			name: "not crossing a migration boundary doesn't set the migration attribute",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1", Migration: "a"}, {ID: "v1.0.0", Migration: "a"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.1",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "cockroachdb",
+			},
+			expectedState: State{ID: "v1.0.1", Migration: "a"},
+		},
+		{
+			name: "version specified and no current version",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
+		},
+		{
+			name: "version specified and current version is the same",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
+		},
+		{
 			name: "head returns same currentVersion",
 			graph: &UpdateGraph{Channels: []Channel{{
 				Name:     "cockroachdb",
@@ -325,8 +406,32 @@ func TestComputeTarget(t *testing.T) {
 			channel:           "cockroachdb",
 			baseImage:         "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
-			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
-			expectedState:     State{ID: "v1.0.1"},
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.1",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
+		{
+			name: "no currentVersion returns spec.version if specified",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			version:           "v1.0.0",
+			baseImage:         "ghcr.io/authzed/spicedb",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:       "v1.0.0",
+				Channel:    "cockroachdb",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration},
+			},
+			expectedState: State{ID: "v1.0.0"},
 		},
 	}
 
@@ -355,4 +460,113 @@ func TestComputeTarget(t *testing.T) {
 			require.Equal(t, tt.expectedTarget, target)
 		})
 	}
+}
+
+func TestUpdateGraphDifference(t *testing.T) {
+	tests := []struct {
+		name                string
+		first, second, want []Channel
+	}{
+		{
+			name: "no difference",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			second: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			want: []Channel{},
+		},
+		{
+			name: "new channel",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			second: []Channel{},
+			want: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+		},
+		{
+			name: "channel has new nodes",
+			first: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}, {ID: "C", Tag: "C"}},
+				Edges: map[string][]string{
+					"A": {"B", "C"},
+					"B": {"C"},
+				},
+			}},
+			second: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			}},
+			want: []Channel{{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A", Tag: "A"}, {ID: "B", Tag: "B"}, {ID: "C", Tag: "C"}},
+				Edges: map[string][]string{
+					"A": {"C"},
+					"B": {"C"},
+				},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &UpdateGraph{
+				Channels: tt.first,
+			}
+			got := g.Difference(&UpdateGraph{
+				Channels: tt.second,
+			})
+			GraphEqual(t, got, &UpdateGraph{Channels: tt.want})
+		})
+	}
+}
+
+func GraphEqual(t testing.TB, a, b *UpdateGraph) {
+	require.Equal(t, len(a.Channels), len(b.Channels))
+
+	equalCount := 0
+	for _, ac := range a.Channels {
+		for _, bc := range b.Channels {
+			if ac.EqualIdentity(bc) {
+				equalCount++
+				require.ElementsMatch(t, ac.Nodes, bc.Nodes)
+				for source, edges := range ac.Edges {
+					require.ElementsMatch(t, edges, bc.Edges[source])
+				}
+				for source, edges := range bc.Edges {
+					require.ElementsMatch(t, edges, ac.Edges[source])
+				}
+			}
+		}
+	}
+	require.Equal(t, len(a.Channels), equalCount)
 }

@@ -10,7 +10,9 @@ type OperatorConfig struct {
 
 func NewOperatorConfig() OperatorConfig {
 	return OperatorConfig{
-		UpdateGraph: updates.UpdateGraph{},
+		UpdateGraph: updates.UpdateGraph{
+			Channels: make([]updates.Channel, 0),
+		},
 	}
 }
 

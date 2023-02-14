@@ -14,10 +14,40 @@ spec:
     kind: SpiceDBCluster
     listKind: SpiceDBClusterList
     plural: spicedbclusters
+    shortNames:
+    - spicedbs
     singular: spicedbcluster
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .spec.channel
+      name: Channel
+      type: string
+    - jsonPath: .spec.version
+      name: Desired
+      type: string
+    - jsonPath: .status.version.name
+      name: Current
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='ConfigurationWarning')].status
+      name: Warnings
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Migrating')].status
+      name: Migrating
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='RollingDeployment')].status
+      name: Updating
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='ConditionValidatingFailed')].status
+      name: Invalid
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Paused')].status
+      name: Paused
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: SpiceDBCluster defines all options for a full SpiceDB cluster

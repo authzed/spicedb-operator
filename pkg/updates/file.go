@@ -5,10 +5,14 @@ import (
 	"strings"
 
 	"github.com/jzelinskie/stringz"
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
+
+const DatastoreMetadataKey = "datastore"
 
 // Channel is a named series of updates in which we expect to have a path
 // to the "head" of the channel from every node.
@@ -25,6 +29,13 @@ type Channel struct {
 
 	// Nodes are the possible states in an update graph.
 	Nodes []State `json:"nodes,omitempty"`
+}
+
+func (c Channel) EqualIdentity(other Channel) bool {
+	if c.Metadata == nil || other.Metadata == nil {
+		return false
+	}
+	return c.Name == other.Name && c.Metadata[DatastoreMetadataKey] == other.Metadata[DatastoreMetadataKey]
 }
 
 // State is a "node" in the channel graph, indicating how to run at that
@@ -47,7 +58,7 @@ type UpdateGraph struct {
 // provided. In the future we may want to explicitly define default channels.
 func (g *UpdateGraph) DefaultChannelForDatastore(datastore string) (string, error) {
 	for _, c := range g.Channels {
-		if strings.EqualFold(c.Metadata["datastore"], datastore) && strings.EqualFold(c.Metadata["default"], "true") {
+		if strings.EqualFold(c.Metadata[DatastoreMetadataKey], datastore) && strings.EqualFold(c.Metadata["default"], "true") {
 			return c.Name, nil
 		}
 	}
@@ -166,8 +177,9 @@ func explodeImage(image string) (baseImage, tag, digest string) {
 	return
 }
 
-// ComputeTarget determines the target update currentVersion and state given an update
+// ComputeTarget determines the target update version and state given an update
 // graph and the proper context.
+// TODO: test that this does the right thing when switching channels
 func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, rolling bool) (baseImage string, target *v1alpha1.SpiceDBVersion, state State, err error) {
 	baseImage, tag, digest := explodeImage(image)
 
@@ -207,8 +219,29 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		}
 	}
 
-	// Default to the currentVersion we're working toward.
-	target = currentVersion
+	target = &v1alpha1.SpiceDBVersion{
+		Channel: channel,
+	}
+
+	// If version is explicit, and there's no current version yet, just install
+	if len(version) > 0 && (currentVersion == nil || len(currentVersion.Name) == 0) {
+		state = updateSource.State(version)
+		target.Name = state.ID
+		target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
+		return
+	}
+
+	// Default to the currentVersion we're working towards.
+	if currentVersion != nil {
+		currentVersion.DeepCopyInto(target)
+	}
+
+	// If version is explicit, and the explicit version matches the current
+	// version, just install it
+	if currentVersion != nil && currentVersion.Name == version && currentVersion.Channel == channel {
+		state = updateSource.State(currentVersion.Name)
+		return
+	}
 
 	var currentState State
 	if currentVersion != nil {
@@ -222,6 +255,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 	// want to actually return status.image/etc?
 	if rolling {
 		if len(currentState.ID) == 0 {
+			target = nil
 			err = fmt.Errorf("cluster is rolling out, but no current state is defined")
 			return
 		}
@@ -231,7 +265,7 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 
 	// If currentVersion is set, we only use the subset of the update graph that leads
 	// to that currentVersion.
-	if len(version) > 0 {
+	if currentVersion != nil && len(version) > 0 {
 		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
 			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
@@ -248,17 +282,85 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 			target = currentVersion
 			return
 		}
+		if targetVersion != updateSource.NextVersionWithoutMigrations(currentVersion.Name) {
+			target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
+		}
 	} else {
 		// There's no current currentVersion, so install head.
-		// TODO(jzelinskie): find a way to make this less "magical"
 		targetVersion = updateSource.LatestVersion("")
+		target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
 	}
 
 	// If we found the next step to take, return it.
 	state = updateSource.State(targetVersion)
-	target = &v1alpha1.SpiceDBVersion{
-		Name:    state.ID,
-		Channel: channel,
-	}
+	target.Name = state.ID
 	return
+}
+
+// Difference returns a graph that contains just edges in g that are not
+// in the second update graph, plus the nodes/channels associated with them
+// This is primarily used for diffing update graphs to know what edges require
+// testing.
+func (g *UpdateGraph) Difference(other *UpdateGraph) *UpdateGraph {
+	diffGraph := &UpdateGraph{Channels: make([]Channel, 0)}
+
+	// Find matching channels between the graphs
+	for _, thisChannel := range g.Channels {
+		foundMatchingChannel := false
+
+		for _, otherChannel := range other.Channels {
+			if thisChannel.EqualIdentity(otherChannel) {
+				foundMatchingChannel = true
+				// Determine which edges are in this channel but not the other
+				keepEdges := make(map[string][]string, 0)
+
+				for thisStartNode, thisEdgeSet := range thisChannel.Edges {
+					// Keep all edges if the start node isn't in the other graph
+					existingEdges, ok := otherChannel.Edges[thisStartNode]
+					if !ok {
+						keepEdges[thisStartNode] = thisEdgeSet
+						continue
+					}
+
+					// Otherwise, only keep the edges in this channel not in
+					// the other
+					edges := sets.New(thisEdgeSet...).Difference(sets.New(existingEdges...))
+					if edges.Len() > 0 {
+						keepEdges[thisStartNode] = edges.UnsortedList()
+					}
+				}
+
+				if len(keepEdges) == 0 {
+					continue
+				}
+
+				// find all nodes that are referenced by some edge that we
+				// are keeping in the new graph
+				keepNodeIDs := sets.New(maps.Keys(keepEdges)...)
+				for _, edgeset := range keepEdges {
+					keepNodeIDs = keepNodeIDs.Union(sets.New(edgeset...))
+				}
+				keepNodes := make([]State, 0, len(keepNodeIDs))
+				for _, id := range keepNodeIDs.UnsortedList() {
+					idx := slices.IndexFunc(thisChannel.Nodes, func(state State) bool {
+						return state.ID == id
+					})
+					keepNodes = append(keepNodes, thisChannel.Nodes[idx])
+				}
+
+				diffGraph.Channels = append(diffGraph.Channels, Channel{
+					Name:     thisChannel.Name,
+					Metadata: thisChannel.Metadata,
+					Edges:    keepEdges,
+					Nodes:    keepNodes,
+				})
+			}
+		}
+
+		// if there's no matching channel, the whole channel is new
+		if !foundMatchingChannel {
+			diffGraph.Channels = append(diffGraph.Channels, thisChannel)
+		}
+	}
+	return diffGraph
 }
