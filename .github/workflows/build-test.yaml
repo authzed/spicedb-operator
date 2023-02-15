@@ -94,7 +94,7 @@ jobs:
   e2e:
     needs: "paths-filter"
     if: |
-      needs.paths-filter.outputs.codechange == 'true'
+      needs.paths-filter.outputs.codechange == 'true' ||  needs.paths-filter.outputs.graphchange == 'true'
     name: "E2E Tests"
     runs-on: "ubuntu-latest-8-cores"
     steps:

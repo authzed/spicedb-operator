@@ -465,6 +465,15 @@ var _ = Describe("SpiceDBClusters", func() {
 			})
 		}
 
+		Describe("With memory", func() {
+			BeforeEach(func() {
+				db = &databases.LogicalDatabase{
+					Engine: "memory",
+				}
+			})
+			ValidateNewGraphEdges("memory")
+		})
+
 		Describe("With cockroachdb", func() {
 			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
