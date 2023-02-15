@@ -10,6 +10,7 @@ import (
 	"os/exec"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/jzelinskie/stringz"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/magefile/mage/target"
@@ -32,10 +33,18 @@ func (Test) Unit() error {
 	return sh.RunV(goCmdForTests(), "test", "./...")
 }
 
+const (
+	DefaultProposedGraphFile  = "proposed-update-graph.yaml"
+	DefaultValidatedGraphFile = "validated-update-graph.yaml"
+)
+
 // Runs the end-to-end tests in a kind cluster
 func (Test) E2e() error {
 	mg.Deps(checkDocker, Gen{}.generateGraphIfSourcesChanged)
 	fmt.Println("running e2e tests")
+
+	proposedGraphFile := stringz.DefaultEmpty(os.Getenv("PROPOSED_GRAPH_FILE"), DefaultProposedGraphFile)
+	validatedGraphFile := stringz.DefaultEmpty(os.Getenv("VALIDATED_GRAPH_FILE"), DefaultValidatedGraphFile)
 
 	if err := sh.RunWithV(map[string]string{
 		"PROVISION":            "true",
@@ -43,25 +52,20 @@ func (Test) E2e() error {
 		"SPICEDB_ENV_PREFIX":   os.Getenv("SPICEDB_ENV_PREFIX"),
 		"ARCHIVES":             os.Getenv("ARCHIVES"),
 		"IMAGES":               os.Getenv("IMAGES"),
-		"PROPOSED_GRAPH_FILE":  os.Getenv("PROPOSED_GRAPH_FILE"),
-		"VALIDATED_GRAPH_FILE": os.Getenv("VALIDATED_GRAPH_FILE"),
+		"PROPOSED_GRAPH_FILE":  proposedGraphFile,
+		"VALIDATED_GRAPH_FILE": validatedGraphFile,
 	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "e2e"); err != nil {
 		return err
 	}
 
-	const (
-		ProposedGraphFile  = "proposed-update-graph.yaml"
-		ValidatedGraphFile = "validated-update-graph.yaml"
-	)
-
-	equal, err := fileEqual(ProposedGraphFile, ValidatedGraphFile)
+	equal, err := fileEqual(proposedGraphFile, validatedGraphFile)
 	if err != nil {
 		return err
 	}
 
 	if !equal {
 		fmt.Println("marking update graph as validated after successful test run")
-		return fs.CopyFile("proposed-update-graph.yaml", "validated-update-graph.yaml")
+		return fs.CopyFile(proposedGraphFile, validatedGraphFile)
 	}
 	fmt.Println("no changes to update graph")
 
