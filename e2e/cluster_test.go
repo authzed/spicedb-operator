@@ -100,10 +100,11 @@ var _ = Describe("SpiceDBClusters", func() {
 		}
 
 		config := map[string]any{
-			"envPrefix":        spicedbEnvPrefix,
-			"image":            image,
-			"cmd":              spicedbCmd,
-			"skipReleaseCheck": "true",
+			"envPrefix":         spicedbEnvPrefix,
+			"image":             image,
+			"cmd":               spicedbCmd,
+			"skipReleaseCheck":  "true",
+			"telemetryEndpoint": "",
 		}
 		jsonConfig, err := json.Marshal(config)
 		Expect(err).To(Succeed())
@@ -232,11 +233,12 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 
 					config := map[string]any{
-						"skipReleaseCheck": "true",
-						"datastoreEngine":  db.Engine,
-						"envPrefix":        spicedbEnvPrefix,
-						"image":            image,
-						"cmd":              spicedbCmd,
+						"skipReleaseCheck":  "true",
+						"telemetryEndpoint": "",
+						"datastoreEngine":   db.Engine,
+						"envPrefix":         spicedbEnvPrefix,
+						"image":             image,
+						"cmd":               spicedbCmd,
 					}
 					for k, v := range db.ExtraConfig {
 						config[k] = v
@@ -268,6 +270,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						image = ""
 						config := map[string]any{
 							"skipReleaseCheck":               true,
+							"telemetryEndpoint":              "",
 							"datastoreEngine":                db.Engine,
 							"envPrefix":                      spicedbEnvPrefix,
 							"cmd":                            spicedbCmd,
@@ -372,10 +375,11 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 
 					config := map[string]any{
-						"skipReleaseCheck": "true",
-						"datastoreEngine":  engine,
-						"envPrefix":        spicedbEnvPrefix,
-						"cmd":              spicedbCmd,
+						"skipReleaseCheck":  "true",
+						"telemetryEndpoint": "",
+						"datastoreEngine":   engine,
+						"envPrefix":         spicedbEnvPrefix,
+						"cmd":               spicedbCmd,
 					}
 					for k, v := range db.ExtraConfig {
 						config[k] = v
@@ -500,6 +504,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				BeforeEach(func() {
 					classConfig := map[string]any{
 						"skipReleaseCheck":             "true",
+						"telemetryEndpoint":            "",
 						"logLevel":                     "debug",
 						"datastoreEngine":              "postgres",
 						"tlsSecretName":                "spicedb-grpc-tls",
