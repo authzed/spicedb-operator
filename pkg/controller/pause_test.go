@@ -104,7 +104,7 @@ func TestPauseHandler(t *testing.T) {
 			ctx := context.Background()
 			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxClusterNN.WithValue(ctx, tt.cluster.NamespacedName())
-			ctx = CtxClusterStatus.WithValue(ctx, tt.cluster)
+			ctx = CtxCluster.WithValue(ctx, tt.cluster)
 			ctx = CtxCluster.WithValue(ctx, tt.cluster)
 			var called handler.Key
 			NewPauseHandler(func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {

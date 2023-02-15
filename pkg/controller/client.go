@@ -14,6 +14,7 @@ func (c *Controller) PatchStatus(ctx context.Context, patch *v1alpha1.SpiceDBClu
 	for _, c := range patch.Status.Conditions {
 		c.ObservedGeneration = patch.Generation
 	}
+	patch.ManagedFields = nil
 	patch.Status.ObservedGeneration = patch.Generation
 	data, err := client.Apply.Data(patch)
 	if err != nil {

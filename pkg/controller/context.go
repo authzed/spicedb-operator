@@ -21,7 +21,6 @@ var (
 	CtxSecret                 = typedctx.WithDefault[*corev1.Secret](nil)
 	CtxSecretHash             = typedctx.WithDefault("")
 	CtxCluster                = typedctx.WithDefault[*v1alpha1.SpiceDBCluster](nil)
-	CtxClusterStatus          = typedctx.WithDefault[*v1alpha1.SpiceDBCluster](nil)
 	CtxConfig                 = typedctx.WithDefault[*config.Config](nil)
 	CtxMigrationHash          = typedctx.WithDefault("")
 	CtxDeployments            = typedctx.Boxed(make([]*appsv1.Deployment, 0))

@@ -17,7 +17,7 @@ func NewPauseHandler(
 	return handler.NewHandler(pause.NewPauseContextHandler(
 		QueueOps.Key,
 		metadata.PausedControllerSelectorKey,
-		CtxClusterStatus,
+		CtxCluster,
 		patchStatus,
 		next,
 	), "pauseCluster")

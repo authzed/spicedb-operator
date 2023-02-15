@@ -55,6 +55,14 @@ func (c *SpiceDBCluster) WithAnnotations(entries map[string]string) *SpiceDBClus
 	return c
 }
 
+// RolloutInProgress returns true if the current status indicates a rollout
+// is happening.
+func (c *SpiceDBCluster) RolloutInProgress() bool {
+	return c.IsStatusConditionTrue(ConditionTypeMigrating) ||
+		c.IsStatusConditionTrue(ConditionTypeRolling) ||
+		c.Status.CurrentMigrationHash != c.Status.TargetMigrationHash
+}
+
 // ClusterSpec holds the desired state of the cluster.
 type ClusterSpec struct {
 	// Version is the name of the version of SpiceDB that will be run.
@@ -87,6 +95,27 @@ type ClusterSpec struct {
 	// If the secret is omitted, one will be generated
 	// +optional
 	SecretRef string `json:"secretName,omitempty"`
+
+	// Patches is a list of patches to apply to generated resources.
+	// If multiple patches apply to the same object and field, later patches
+	// in the list take precedence over earlier ones.
+	// +optional
+	Patches []Patch `json:"patches,omitempty"`
+}
+
+// Patch represents a single change to apply to generated manifests
+type Patch struct {
+	// Kind targets an object by its kubernetes Kind name.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+
+	// Patch is an inlined representation of a structured merge patch (one that
+	// just specifies the structure and fields to be modified) or a an explicit
+	// JSON6902 patch operation.
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	Patch json.RawMessage `json:"patch"`
 }
 
 // ClusterStatus communicates the observed state of the cluster.

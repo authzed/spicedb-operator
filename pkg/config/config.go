@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/authzed/controller-idioms/hash"
 	"github.com/fatih/camelcase"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -104,6 +105,7 @@ func (r RawConfig) Pop(key string) string {
 type Config struct {
 	MigrationConfig
 	SpiceConfig
+	Patches []v1alpha1.Patch
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -146,9 +148,13 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, currentVersion *v1alpha1.SpiceDBVersion, globalConfig *OperatorConfig, rawConfig json.RawMessage, secret *corev1.Secret, rolling bool) (*Config, Warning, error) {
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret) (*Config, Warning, error) {
+	if cluster.Spec.Config == nil {
+		return nil, nil, fmt.Errorf("couldn't parse empty config")
+	}
+
 	config := RawConfig(make(map[string]any))
-	if err := json.Unmarshal(rawConfig, &config); err != nil {
+	if err := json.Unmarshal(cluster.Spec.Config, &config); err != nil {
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
 	}
 
@@ -156,9 +162,9 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
 	spiceConfig := SpiceConfig{
-		Name:                         nn.Name,
-		Namespace:                    nn.Namespace,
-		UID:                          string(uid),
+		Name:                         cluster.Name,
+		Namespace:                    cluster.Namespace,
+		UID:                          string(cluster.UID),
 		TLSSecretName:                tlsSecretNameKey.pop(config),
 		ServiceAccountName:           serviceAccountNameKey.pop(config),
 		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
@@ -186,7 +192,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
 
-	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, version, channel, datastoreEngine, currentVersion, rolling)
+	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, cluster.Spec.Version, cluster.Spec.Channel, datastoreEngine, cluster.Status.CurrentVersion, cluster.RolloutInProgress())
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -199,7 +205,7 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 	}
 
 	if len(spiceConfig.ServiceAccountName) == 0 {
-		spiceConfig.ServiceAccountName = nn.Name
+		spiceConfig.ServiceAccountName = cluster.Name
 	}
 
 	switch {
@@ -343,20 +349,49 @@ func NewConfig(nn types.NamespacedName, uid types.UID, version, channel string, 
 
 	spiceConfig.Passthrough = passthroughConfig
 
+	out := &Config{
+		MigrationConfig: migrationConfig,
+		SpiceConfig:     spiceConfig,
+		Patches:         cluster.Spec.Patches,
+	}
+
+	// Validate that patches apply cleanly ahead of time
+	totalAppliedPatches := 0
+	for _, obj := range []any{
+		out.unpatchedServiceAccount(),
+		out.unpatchedRole(),
+		out.unpatchedRoleBinding(),
+		out.unpatchedService(),
+		out.unpatchedMigrationJob(hash.Object("")),
+		out.unpatchedDeployment(hash.Object(""), hash.Object("")),
+	} {
+		applied, diff, err := ApplyPatches(obj, out.Patches)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		if applied > 0 && !diff {
+			warnings = append(warnings, fmt.Errorf("patches applied to object, but there were no changes to the object"))
+		}
+
+		totalAppliedPatches += applied
+	}
+
+	if totalAppliedPatches < len(out.Patches) {
+		warnings = append(warnings, fmt.Errorf("only %d/%d patches applied successfully", totalAppliedPatches, len(out.Patches)))
+	}
+
 	warning := Warning(errors.NewAggregate(warnings))
 	if len(errs) > 0 {
 		return nil, warning, errors.NewAggregate(errs)
 	}
 
-	return &Config{
-		MigrationConfig: migrationConfig,
-		SpiceConfig:     spiceConfig,
-	}, warning, nil
+	return out, warning, nil
 }
 
-// ToEnvVarApplyConfiguration returns a set of env variables to apply to a
+// toEnvVarApplyConfiguration returns a set of env variables to apply to a
 // spicedb container
-func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfiguration {
+func (c *Config) toEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfiguration {
 	// Set non-passthrough config that is either generated directly by the
 	// controller (dispatch address), has some direct effect on the cluster
 	// (tls), or lives in an external secret (preshared key).
@@ -383,13 +418,13 @@ func (c *Config) ToEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 
 	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(c.SpiceConfig.EnvPrefix, k)).WithValue(c.Passthrough[k]))
+			WithName(toEnvVarName(c.SpiceConfig.EnvPrefix, k)).WithValue(c.Passthrough[k]))
 	}
 
 	return envVars
 }
 
-func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
+func (c *Config) ownerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 	return applymetav1.OwnerReference().
 		WithName(c.Name).
 		WithKind(v1alpha1.SpiceDBClusterKind).
@@ -397,17 +432,26 @@ func (c *Config) OwnerRef() *applymetav1.OwnerReferenceApplyConfiguration {
 		WithUID(types.UID(c.UID))
 }
 
-func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
+func (c *Config) unpatchedServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	return applycorev1.ServiceAccount(c.ServiceAccountName, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
-		WithAnnotations(c.ExtraServiceAccountAnnotations).
-		WithOwnerReferences(c.OwnerRef())
+		WithAnnotations(c.ExtraServiceAccountAnnotations)
 }
 
-func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
+func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
+	sa := c.unpatchedServiceAccount()
+	_, _, _ = ApplyPatches(sa, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
+		WithOwnerReferences(c.ownerRef())
+	return sa
+}
+
+func (c *Config) unpatchedRole() *applyrbacv1.RoleApplyConfiguration {
 	return applyrbacv1.Role(c.Name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleLabel)).
-		WithOwnerReferences(c.OwnerRef()).
 		WithRules(
 			applyrbacv1.PolicyRule().
 				WithAPIGroups("").
@@ -416,10 +460,20 @@ func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 		)
 }
 
-func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
+func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
+	role := c.unpatchedRole()
+	_, _, _ = ApplyPatches(role, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	role.WithName(c.Name).WithNamespace(c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleLabel)).
+		WithOwnerReferences(c.ownerRef())
+	return role
+}
+
+func (c *Config) unpatchedRoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	return applyrbacv1.RoleBinding(c.Name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleBindingLabel)).
-		WithOwnerReferences(c.OwnerRef()).
 		WithRoleRef(applyrbacv1.RoleRef().
 			WithKind("Role").
 			WithName(c.Name),
@@ -429,14 +483,36 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	)
 }
 
-func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
+func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
+	rb := c.unpatchedRoleBinding()
+	_, _, _ = ApplyPatches(rb, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	rb.WithName(c.Name).WithNamespace(c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleBindingLabel)).
+		WithOwnerReferences(c.ownerRef())
+	return rb
+}
+
+func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
 	return applycorev1.Service(c.Name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
-		WithOwnerReferences(c.OwnerRef()).
 		WithSpec(applycorev1.ServiceSpec().
 			WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 			WithPorts(c.servicePorts()...),
 		)
+}
+
+func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
+	s := c.unpatchedService()
+	_, _, _ = ApplyPatches(s, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	s.WithName(c.Name).WithNamespace(c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceLabel)).
+		WithOwnerReferences(c.ownerRef())
+	s.Spec.WithSelector(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue))
+	return s
 }
 
 func (c *Config) servicePorts() []*applycorev1.ServicePortApplyConfiguration {
@@ -475,8 +551,15 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 	return volumeMounts
 }
 
-func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
-	name := fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:15])
+func (c *Config) jobName(migrationHash string) string {
+	size := 15
+	if len(migrationHash) < 15 {
+		size = len(migrationHash)
+	}
+	return fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:size])
+}
+
+func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	envPrefix := c.SpiceConfig.EnvPrefix
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.MigrationLogLevel),
@@ -491,11 +574,10 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 	sort.Strings(keys)
 	for _, k := range keys {
 		envVars = append(envVars, applycorev1.EnvVar().
-			WithName(ToEnvVarName(envPrefix, k)).WithValue(c.Passthrough[k]))
+			WithName(toEnvVarName(envPrefix, k)).WithValue(c.Passthrough[k]))
 	}
 
-	return applybatchv1.Job(name, c.Namespace).
-		WithOwnerReferences(c.OwnerRef()).
+	return applybatchv1.Job(c.jobName(migrationHash), c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
 		WithAnnotations(map[string]string{
 			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
@@ -510,7 +592,7 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 			).WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).
 				WithContainers(
 					applycorev1.Container().
-						WithName(name).
+						WithName("migrate").
 						WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.MigrationConfig.SpiceDBCmd, "migrate", c.MigrationConfig.TargetMigration).
 						WithEnv(envVars...).
@@ -518,6 +600,21 @@ func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfig
 						WithPorts(c.containerPorts()...).
 						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
 				).WithVolumes(c.jobVolumes()...).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
+}
+
+func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
+	j := c.unpatchedMigrationJob(migrationHash)
+	_, _, _ = ApplyPatches(j, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	name := c.jobName(migrationHash)
+	j.WithName(name).WithNamespace(c.Namespace).WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue)).
+		WithAnnotations(map[string]string{
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
+		})
+	j.Spec.Template.WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentMigrationJobLabelValue))
+	return j
 }
 
 func (c *Config) containerPorts() []*applycorev1.ContainerPortApplyConfiguration {
@@ -571,12 +668,12 @@ func (c *Config) probeCmd() []string {
 	return probeCmd
 }
 
-func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
+func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	if c.SkipMigrations {
 		migrationHash = "skipped"
 	}
-	name := DeploymentName(c.Name)
-	return applyappsv1.Deployment(name, c.Namespace).WithOwnerReferences(c.OwnerRef()).
+	name := deploymentName(c.Name)
+	return applyappsv1.Deployment(name, c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
 		WithAnnotations(map[string]string{
 			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
@@ -599,7 +696,7 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).WithContainers(
 					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
-						WithEnv(c.ToEnvVarApplyConfiguration()...).
+						WithEnv(c.toEnvVarApplyConfiguration()...).
 						WithPorts(c.containerPorts()...).
 						WithLivenessProbe(
 							applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand(c.probeCmd()...)).
@@ -614,9 +711,31 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 				).WithVolumes(c.deploymentVolumes()...))))
 }
 
-// ToEnvVarName converts a key from the api object into an env var name.
+func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
+	d := c.unpatchedDeployment(migrationHash, secretHash)
+	_, _, _ = ApplyPatches(d, c.Patches)
+
+	// ensure patches don't overwrite anything critical for operator function
+	name := deploymentName(c.Name)
+	d.WithName(name).WithNamespace(c.Namespace).WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue)).
+		WithAnnotations(map[string]string{
+			metadata.SpiceDBMigrationRequirementsKey: migrationHash,
+		})
+	d.Spec.Selector.WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})
+	d.Spec.Template.
+		WithAnnotations(map[string]string{
+			metadata.SpiceDBSecretRequirementsKey: secretHash,
+			metadata.SpiceDBTargetMigrationKey:    c.MigrationConfig.TargetMigration,
+		}).
+		WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue))
+	return d
+}
+
+// toEnvVarName converts a key from the api object into an env var name.
 // the key isCamelCased will be converted to PREFIX_IS_CAMEL_CASED
-func ToEnvVarName(prefix string, key string) string {
+func toEnvVarName(prefix string, key string) string {
 	prefix = strings.TrimSuffix(prefix, "_")
 	envVarParts := []string{strings.ToUpper(prefix)}
 	for _, p := range camelcase.Split(key) {
@@ -625,7 +744,7 @@ func ToEnvVarName(prefix string, key string) string {
 	return strings.Join(envVarParts, "_")
 }
 
-// DeploymentName returns the name of the deployment given a SpiceDBCluster name
-func DeploymentName(name string) string {
+// deploymentName returns the name of the unpatchedDeployment given a SpiceDBCluster name
+func deploymentName(name string) string {
 	return fmt.Sprintf("%s-spicedb", name)
 }

@@ -57,7 +57,7 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 		m.nextDeploymentHandler.Handle(ctx)
 		return
 	}
-	status := CtxClusterStatus.MustValue(ctx).Status
+	status := CtxCluster.MustValue(ctx).Status
 	if status.CurrentVersion != nil && !slices.Contains(status.CurrentVersion.Attributes, v1alpha1.SpiceDBVersionAttributesMigration) {
 		m.nextDeploymentHandler.Handle(ctx)
 		return
@@ -65,7 +65,7 @@ func (m *MigrationCheckHandler) Handle(ctx context.Context) {
 
 	// if there's no job and no (updated) deployment, create the job
 	if !hasDeployment && !hasJob {
-		m.recorder.Eventf(CtxClusterStatus.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
+		m.recorder.Eventf(CtxCluster.MustValue(ctx), corev1.EventTypeNormal, EventRunningMigrations, "Running migration job for %s", CtxConfig.MustValue(ctx).TargetSpiceDBImage)
 		m.nextMigrationRunHandler.Handle(ctx)
 		return
 	}

@@ -1,13 +1,16 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	v1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -30,8 +33,8 @@ func TestToEnvVarName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.prefix+"/"+tt.key, func(t *testing.T) {
-			if got := ToEnvVarName(tt.prefix, tt.key); got != tt.want {
-				t.Errorf("ToEnvVarName() = %v, want %v", got, tt.want)
+			if got := toEnvVarName(tt.prefix, tt.key); got != tt.want {
+				t.Errorf("toEnvVarName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -39,14 +42,10 @@ func TestToEnvVarName(t *testing.T) {
 
 func TestNewConfig(t *testing.T) {
 	type args struct {
-		nn               types.NamespacedName
-		uid              types.UID
-		version, channel string
-		currentVersion   *v1alpha1.SpiceDBVersion
-		globalConfig     OperatorConfig
-		rawConfig        json.RawMessage
-		secret           *corev1.Secret
-		rolling          bool
+		cluster      v1alpha1.ClusterSpec
+		status       v1alpha1.ClusterStatus
+		globalConfig OperatorConfig
+		secret       *corev1.Secret
 	}
 	tests := []struct {
 		name          string
@@ -60,16 +59,14 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "missing required",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+							{
+								"test": "field"
+							}
+`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"test": "field"
-					}
-				`),
 			},
 			wantErrs: []error{
 				fmt.Errorf("datastoreEngine is a required field"),
@@ -82,8 +79,11 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "simple",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -99,11 +99,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -157,8 +152,11 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "memory",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "memory"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -174,11 +172,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "memory"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"preshared_key": []byte("psk"),
 				}},
@@ -229,17 +222,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set image with tag explicitly",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName: "image",
-				},
-				rawConfig: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"image": "adifferentimage:tag"
 					}
-				`),
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+				},
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -286,17 +277,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set image with digest explicitly",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
-				globalConfig: OperatorConfig{
-					ImageName: "image",
-				},
-				rawConfig: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"image": "adifferentimage@sha256:abc"
 					}
-				`),
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+				},
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -343,8 +332,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set replicas as int",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"replicas": 3
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -360,12 +353,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"replicas": 3
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -419,8 +406,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set replicas as string",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"replicas": "3"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -436,12 +427,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"replicas": "3"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -495,8 +480,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as string",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodLabels": "test=label,other=label"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -512,12 +501,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"extraPodLabels": "test=label,other=label"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -575,8 +558,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as map",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodLabels": {
+							"test": "label",
+							"other": "label"
+						}
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -592,15 +582,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"extraPodLabels": {
-							"test": "label",
-							"other": "label"
-						}
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -658,8 +639,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations bool",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": true	
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -675,12 +660,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": true	
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -736,8 +715,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations string",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -753,12 +736,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -814,8 +791,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra annotations as string",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodAnnotations": "app.kubernetes.io/name=test,app.kubernetes.io/managed-by=test-owner"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -831,12 +812,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"extraPodAnnotations": "app.kubernetes.io/name=test,app.kubernetes.io/managed-by=test-owner"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -894,8 +869,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra annotations as map",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"extraPodAnnotations": {
+							"app.kubernetes.io/name": "test",
+							"app.kubernetes.io/managed-by": "test-owner"
+						}
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -911,15 +893,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-						"extraPodAnnotations": {
-							"app.kubernetes.io/name": "test",
-							"app.kubernetes.io/managed-by": "test-owner"
-						}
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -977,8 +950,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra service account with annotations as string",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+                        "serviceAccountName": "spicedb-non-default",
+						"extraServiceAccountAnnotations": "iam.gke.io/gcp-service-account=authzed-operator@account-12345.iam.gserviceaccount.com"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -994,13 +972,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-                        "serviceAccountName": "spicedb-non-default",
-						"extraServiceAccountAnnotations": "iam.gke.io/gcp-service-account=authzed-operator@account-12345.iam.gserviceaccount.com"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1057,8 +1028,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra service account with annotations as map",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+                        "serviceAccountName": "spicedb-non-default",
+						"extraServiceAccountAnnotations": {
+							"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com"
+						}
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1074,15 +1052,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "cockroachdb",
-                        "serviceAccountName": "spicedb-non-default",
-						"extraServiceAccountAnnotations": {
-							"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com"
-						}
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1139,8 +1108,14 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set different migration and spicedb log level",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"	
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1156,14 +1131,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"logLevel": "debug",
-						"migrationLogLevel": "info",
-						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1219,8 +1186,13 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "update graph pushes the current version forward",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1237,13 +1209,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"logLevel": "debug",
-						"migrationLogLevel": "info",
-						"datastoreEngine": "cockroachdb"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1302,10 +1267,17 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "explicit channel and version, updates to the next in the channel",
 			args: args{
-				nn:      types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:     types.UID("1"),
-				channel: "cockroachdb",
-				version: "v2",
+				cluster: v1alpha1.ClusterSpec{
+					Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+					Channel: "cockroachdb",
+					Version: "v2",
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1322,13 +1294,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"logLevel": "debug",
-						"migrationLogLevel": "info",
-						"datastoreEngine": "cockroachdb"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1387,10 +1352,23 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "explicit channel and version, doesn't update past the explicit version",
 			args: args{
-				nn:      types.NamespacedName{Namespace: "test", Name: "test"},
-				uid:     types.UID("1"),
-				channel: "cockroachdb",
-				version: "v2",
+				cluster: v1alpha1.ClusterSpec{
+					Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"migrationLogLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+					Channel: "cockroachdb",
+					Version: "v2",
+				},
+				status: v1alpha1.ClusterStatus{
+					CurrentVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v2",
+						Channel: "cockroachdb",
+					},
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1408,17 +1386,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				currentVersion: &v1alpha1.SpiceDBVersion{
-					Name:    "v2",
-					Channel: "cockroachdb",
-				},
-				rawConfig: json.RawMessage(`
-					{
-						"logLevel": "debug",
-						"migrationLogLevel": "info",
-						"datastoreEngine": "cockroachdb"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1474,8 +1441,12 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set spanner credentials",
 			args: args{
-				nn:  types.NamespacedName{Namespace: "test", Name: "test"},
-				uid: types.UID("1"),
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "spanner",
+						"spannerCredentials": "spanner-creds-secret-name"
+					}
+				`)},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1491,12 +1462,6 @@ func TestNewConfig(t *testing.T) {
 						},
 					},
 				},
-				rawConfig: json.RawMessage(`
-					{
-						"datastoreEngine": "spanner",
-						"spannerCredentials": "spanner-creds-secret-name"
-					}
-				`),
 				secret: &corev1.Secret{Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("psk"),
@@ -1554,13 +1519,22 @@ func TestNewConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			global := tt.args.globalConfig.Copy()
-			got, gotWarning, err := NewConfig(tt.args.nn, tt.args.uid, tt.args.version, tt.args.channel, tt.args.currentVersion, &global, tt.args.rawConfig, tt.args.secret, tt.args.rolling)
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec:   tt.args.cluster,
+				Status: tt.args.status,
+			}
+			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.Equal(t, tt.want, got)
 
 			if got != nil {
-				gotEnvs := got.ToEnvVarApplyConfiguration()
+				gotEnvs := got.toEnvVarApplyConfiguration()
 				wantEnvs := envVarFromStrings(tt.wantEnvs)
 				require.Equal(t, wantEnvs, gotEnvs)
 
@@ -1609,4 +1583,41 @@ func envVarFromStrings(envs []string) []*v1.EnvVarApplyConfiguration {
 		})
 	}
 	return vars
+}
+
+func TestPatchesApplyToAllObjects(t *testing.T) {
+	config := &Config{}
+	configType := reflect.TypeOf(config)
+	for i := 0; i < configType.NumMethod(); i++ {
+		method := configType.Method(i)
+
+		// Every public method of Config should return an object
+		// that supports patching
+		t.Run(method.Name, func(t *testing.T) {
+			config.Patches = []v1alpha1.Patch{}
+
+			// all args are strings
+			args := []reflect.Value{reflect.ValueOf(config)}
+			for i := 1; i < method.Type.NumIn(); i++ {
+				args = append(args, reflect.ValueOf("testtesttesttesttesttest"))
+			}
+
+			object := method.Func.Call(args)[0]
+			initialBytes, err := json.Marshal(object.Interface())
+			require.NoError(t, err)
+
+			config.Patches = []v1alpha1.Patch{
+				{
+					Kind:  wildcard,
+					Patch: json.RawMessage(`{"op": "add", "path": "/metadata/labels", "value":{"added":"via-patch"}}`),
+				},
+			}
+			after := method.Func.Call(args)[0]
+			afterBytes, err := json.Marshal(after.Interface())
+			require.NoError(t, err)
+
+			require.NotEqual(t, initialBytes, afterBytes)
+			require.True(t, bytes.Contains(afterBytes, []byte("via-patch")))
+		})
+	}
 }

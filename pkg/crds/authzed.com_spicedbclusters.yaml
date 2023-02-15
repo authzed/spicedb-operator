@@ -79,6 +79,27 @@ spec:
                 description: Config values to be passed to the cluster
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              patches:
+                description: Patches is a list of patches to apply to generated resources.
+                  If multiple patches apply to the same object and field, later patches
+                  in the list take precedence over earlier ones.
+                items:
+                  description: Patch represents a single change to apply to generated
+                    manifests
+                  properties:
+                    kind:
+                      description: Kind targets an object by its kubernetes Kind name.
+                      type: string
+                    patch:
+                      description: Patch is an inlined representation of a structured
+                        merge patch (one that just specifies the structure and fields
+                        to be modified) or a an explicit JSON6902 patch operation.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - patch
+                  type: object
+                type: array
               secretName:
                 description: SecretName points to a secret (in the same namespace)
                   that holds secret config for the cluster like passwords, credentials,

@@ -181,7 +181,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				SpiceConfig:     config.SpiceConfig{Replicas: tt.replicas},
 			})
 			ctx = QueueOps.WithValue(ctx, ctrls)
-			ctx = CtxClusterStatus.WithValue(ctx, tt.currentStatus)
+			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
 			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
@@ -206,7 +206,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}
 			h.Handle(ctx)
 
-			cluster := CtxClusterStatus.MustValue(ctx)
+			cluster := CtxCluster.MustValue(ctx)
 			for i := range cluster.Status.Conditions {
 				cluster.Status.Conditions[i].LastTransitionTime = now
 			}

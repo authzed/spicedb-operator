@@ -24,14 +24,14 @@ type MigrationRunHandler struct {
 
 func (m *MigrationRunHandler) Handle(ctx context.Context) {
 	// TODO: setting status is unconditional, should happen in a separate handler
-	currentStatus := CtxClusterStatus.MustValue(ctx)
+	currentStatus := CtxCluster.MustValue(ctx)
 	config := CtxConfig.MustValue(ctx)
 	currentStatus.SetStatusCondition(v1alpha1.NewMigratingCondition(config.DatastoreEngine, config.TargetMigration))
 	if err := m.patchStatus(ctx, currentStatus); err != nil {
 		QueueOps.RequeueErr(ctx, err)
 		return
 	}
-	ctx = CtxClusterStatus.WithValue(ctx, currentStatus)
+	ctx = CtxCluster.WithValue(ctx, currentStatus)
 
 	jobs := CtxJobs.MustValue(ctx)
 	migrationHash := CtxMigrationHash.Value(ctx)

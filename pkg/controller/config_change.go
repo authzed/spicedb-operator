@@ -46,6 +46,7 @@ func (c *ConfigChangedHandler) Handle(ctx context.Context) {
 			return
 		}
 	}
-	ctx = CtxClusterStatus.WithValue(ctx, status)
+	cluster.Status = status.Status
+	ctx = CtxCluster.WithValue(ctx, cluster)
 	c.next.Handle(ctx)
 }
