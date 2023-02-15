@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/jzelinskie/stringz"
@@ -46,14 +47,24 @@ func (Test) E2e() error {
 	proposedGraphFile := stringz.DefaultEmpty(os.Getenv("PROPOSED_GRAPH_FILE"), DefaultProposedGraphFile)
 	validatedGraphFile := stringz.DefaultEmpty(os.Getenv("VALIDATED_GRAPH_FILE"), DefaultValidatedGraphFile)
 
+	// calculate file paths relative to the e2e directory
+	e2eProposedGraph, err := filepath.Rel("e2e", proposedGraphFile)
+	if err != nil {
+		return err
+	}
+	e2eValidatedGraph, err := filepath.Rel("e2e", validatedGraphFile)
+	if err != nil {
+		return err
+	}
+
 	if err := sh.RunWithV(map[string]string{
 		"PROVISION":            "true",
 		"SPICEDB_CMD":          os.Getenv("SPICEDB_CMD"),
 		"SPICEDB_ENV_PREFIX":   os.Getenv("SPICEDB_ENV_PREFIX"),
 		"ARCHIVES":             os.Getenv("ARCHIVES"),
 		"IMAGES":               os.Getenv("IMAGES"),
-		"PROPOSED_GRAPH_FILE":  proposedGraphFile,
-		"VALIDATED_GRAPH_FILE": validatedGraphFile,
+		"PROPOSED_GRAPH_FILE":  e2eProposedGraph,
+		"VALIDATED_GRAPH_FILE": e2eValidatedGraph,
 	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "e2e"); err != nil {
 		return err
 	}
@@ -65,7 +76,7 @@ func (Test) E2e() error {
 
 	if !equal {
 		fmt.Println("marking update graph as validated after successful test run")
-		return fs.CopyFile(proposedGraphFile, validatedGraphFile)
+		return fs.CopyFile(e2eProposedGraph, e2eValidatedGraph)
 	}
 	fmt.Println("no changes to update graph")
 
