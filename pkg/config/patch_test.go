@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,8 +36,15 @@ func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			count, patched, err := ApplyPatches(tt.object, tt.patches)
-			require.Equalf(t, tt.wantErr, err, "expected: %v\ngot: %v", tt.wantErr, err)
-			require.Equal(t, tt.want, tt.object)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			require.Equal(t, tt.wantErr, err)
+			wantBytes, err := json.Marshal(tt.want)
+			require.NoError(t, err)
+			objectBytes, err := json.Marshal(tt.object)
+			require.NoError(t, err)
+			require.JSONEq(t, string(wantBytes), string(objectBytes))
 			require.Equal(t, tt.wantPatched, patched)
 			require.Equal(t, tt.wantCount, count)
 		})
@@ -515,6 +523,80 @@ spec:
 			),
 		wantPatched: true,
 		wantCount:   1,
+	},
+	{
+		name: "mount a file from a secret, preserves preexisting volumes, json6902",
+		object: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(applycorev1.Volume().
+							WithName("initial").
+							WithConfigMap(applycorev1.ConfigMapVolumeSource().
+								WithName("existing"))).
+						WithContainers(applycorev1.Container().
+							WithName("container").WithVolumeMounts(
+							applycorev1.VolumeMount().
+								WithName("initial").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/existing")),
+						)),
+				),
+			),
+		patches: []v1alpha1.Patch{{
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+			  {
+				"op": "add",
+				"path": "/spec/template/spec/containers/0/volumeMounts/-",
+				"value": {
+					"name": "config",
+					"readOnly": true,
+					"mountPath": "/etc/config/file"
+				}
+			  }`),
+		}, {
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+			  {
+				"op": "add",
+				"path": "/spec/template/spec/volumes/-",
+				"value": {
+					"name": "config",
+					"secret": {
+						"secretName": "secret"
+					}
+				}
+			  }`),
+		}},
+		want: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(
+							applycorev1.Volume().
+								WithName("initial").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("existing")),
+							applycorev1.Volume().
+								WithName("config").
+								WithSecret(applycorev1.SecretVolumeSource().
+									WithSecretName("secret"))).
+						WithContainers(applycorev1.Container().
+							WithName("container").WithVolumeMounts(
+							applycorev1.VolumeMount().
+								WithName("initial").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/existing"),
+							applycorev1.VolumeMount().
+								WithName("config").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/file")),
+						)),
+				),
+			),
+		wantPatched: true,
+		wantCount:   2,
 	},
 	{
 		name:   "mount secret from aws with csi secret driver",
