@@ -27,6 +27,8 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 		return 0, false, fmt.Errorf("error marshalling object to patch: %w", err)
 	}
 
+	initial := encoded
+
 	// HACK: Unmarshal into TypeMeta to determine `kind` of incoming object.
 	// The ApplyConfiguration objects don't have any getters, so there's no
 	// common interface to use to get their `kind`, even though they all have
@@ -74,6 +76,7 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 					errs = append(errs, fmt.Errorf("error converting patched object for patch %d back to object: %w", i, err))
 					continue
 				}
+				encoded = patched
 			} else {
 				json6902patch := jsonpatch.Patch([]jsonpatch.Operation{json6902op})
 				patched, err := json6902patch.Apply(encoded)
@@ -85,6 +88,7 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 					errs = append(errs, fmt.Errorf("error converting patched object from patch %d back to object: %w", i, err))
 					continue
 				}
+				encoded = patched
 			}
 			count++
 		}
@@ -92,12 +96,8 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 
 	diff := false
 	if count > 0 {
-		final, err := json.Marshal(object)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error marshaling fully patched %s: %w", *typeMeta.Kind, err))
-		}
 		// return true if there were patches defined and the output bytes differ
-		diff = !bytes.Equal(encoded, final)
+		diff = !bytes.Equal(encoded, initial)
 	}
 	return count, diff, errors.NewAggregate(errs)
 }
