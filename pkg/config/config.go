@@ -11,7 +11,9 @@ import (
 	"github.com/authzed/controller-idioms/hash"
 	"github.com/fatih/camelcase"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -357,15 +359,15 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 
 	// Validate that patches apply cleanly ahead of time
 	totalAppliedPatches := 0
-	for _, obj := range []any{
-		out.unpatchedServiceAccount(),
-		out.unpatchedRole(),
-		out.unpatchedRoleBinding(),
-		out.unpatchedService(),
-		out.unpatchedMigrationJob(hash.Object("")),
-		out.unpatchedDeployment(hash.Object(""), hash.Object("")),
+	for patch, obj := range map[any]any{
+		out.unpatchedServiceAccount():                             &corev1.ServiceAccount{},
+		out.unpatchedRole():                                       &rbacv1.Role{},
+		out.unpatchedRoleBinding():                                &rbacv1.RoleBinding{},
+		out.unpatchedService():                                    &corev1.Service{},
+		out.unpatchedMigrationJob(hash.Object("")):                &batchv1.Job{},
+		out.unpatchedDeployment(hash.Object(""), hash.Object("")): &appsv1.Deployment{},
 	} {
-		applied, diff, err := ApplyPatches(obj, out.Patches)
+		applied, diff, err := ApplyPatches(patch, obj, out.Patches)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -440,7 +442,7 @@ func (c *Config) unpatchedServiceAccount() *applycorev1.ServiceAccountApplyConfi
 
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	sa := c.unpatchedServiceAccount()
-	_, _, _ = ApplyPatches(sa, c.Patches)
+	_, _, _ = ApplyPatches(sa, &corev1.ServiceAccount{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
@@ -462,7 +464,7 @@ func (c *Config) unpatchedRole() *applyrbacv1.RoleApplyConfiguration {
 
 func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	role := c.unpatchedRole()
-	_, _, _ = ApplyPatches(role, c.Patches)
+	_, _, _ = ApplyPatches(role, &rbacv1.Role{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	role.WithName(c.Name).WithNamespace(c.Namespace).
@@ -485,7 +487,7 @@ func (c *Config) unpatchedRoleBinding() *applyrbacv1.RoleBindingApplyConfigurati
 
 func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	rb := c.unpatchedRoleBinding()
-	_, _, _ = ApplyPatches(rb, c.Patches)
+	_, _, _ = ApplyPatches(rb, &rbacv1.RoleBinding{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	rb.WithName(c.Name).WithNamespace(c.Namespace).
@@ -505,7 +507,7 @@ func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
 
 func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	s := c.unpatchedService()
-	_, _, _ = ApplyPatches(s, c.Patches)
+	_, _, _ = ApplyPatches(s, &corev1.Service{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	s.WithName(c.Name).WithNamespace(c.Namespace).
@@ -604,7 +606,7 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 
 func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	j := c.unpatchedMigrationJob(migrationHash)
-	_, _, _ = ApplyPatches(j, c.Patches)
+	_, _, _ = ApplyPatches(j, &batchv1.Job{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := c.jobName(migrationHash)
@@ -713,7 +715,7 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 
 func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	d := c.unpatchedDeployment(migrationHash, secretHash)
-	_, _, _ = ApplyPatches(d, c.Patches)
+	_, _, _ = ApplyPatches(d, &appsv1.Deployment{}, c.Patches)
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := deploymentName(c.Name)

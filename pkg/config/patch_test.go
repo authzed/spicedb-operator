@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
@@ -22,20 +23,21 @@ func TestApplyPatches(t *testing.T) {
 	runPatchTests(t, fileMountTests)
 }
 
-type patchTestCase[K any] struct {
+type patchTestCase[K, A any] struct {
 	name        string
-	object      K
+	val         K
+	object      A
 	patches     []v1alpha1.Patch
 	wantErr     error
-	want        K
+	want        A
 	wantPatched bool
 	wantCount   int
 }
 
-func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
+func runPatchTests[K, A any](t *testing.T, cases []patchTestCase[K, A]) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			count, patched, err := ApplyPatches(tt.object, tt.patches)
+			count, patched, err := ApplyPatches(tt.object, tt.val, tt.patches)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
@@ -51,9 +53,10 @@ func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
 	}
 }
 
-var patchBasicTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]{
+var patchBasicTests = []patchTestCase[*appsv1.Deployment, *applyappsv1.DeploymentApplyConfiguration]{
 	{
 		name:   "does nothing if kind doesn't match",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "ServiceAccount",
@@ -68,6 +71,7 @@ metadata:
 	},
 	{
 		name:   "does nothing if kind is omittied",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Patch: json.RawMessage(`
@@ -81,6 +85,7 @@ metadata:
 	},
 	{
 		name:   "add two labels with separate patches",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{
 			{
@@ -105,6 +110,7 @@ metadata:
 	},
 	{
 		name:   "later patches have higher precedence",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{
 			{
@@ -129,9 +135,10 @@ metadata:
 	},
 }
 
-var patchFormatTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]{
+var patchFormatTests = []patchTestCase[*appsv1.Deployment, *applyappsv1.DeploymentApplyConfiguration]{
 	{
 		name:   "add labels to unpatchedDeployment (smp, yaml)",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -147,6 +154,7 @@ metadata:
 	},
 	{
 		name:   "add labels to unpatchedDeployment (smp, json)",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -165,6 +173,7 @@ metadata:
 	},
 	{
 		name:   "add labels to unpatchedDeployment (JSON6902, yaml)",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -181,6 +190,7 @@ metadata:
 	},
 	{
 		name:   "add labels to unpatchedDeployment (JSON6902, json)",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind:  "Deployment",
@@ -193,6 +203,7 @@ metadata:
 	},
 	{
 		name: "add labels to unpatchedDeployment without affecting existing labels (JSON6902, json)",
+		val:  &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test").
 			WithLabels(map[string]string{"initial": "label"}),
 		patches: []v1alpha1.Patch{{
@@ -210,6 +221,7 @@ metadata:
 	},
 	{
 		name: "add labels to unpatchedDeployment without affecting existing labels (smp, json)",
+		val:  &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test").
 			WithLabels(map[string]string{"initial": "label"}),
 		patches: []v1alpha1.Patch{{
@@ -233,6 +245,7 @@ metadata:
 	},
 	{
 		name:   "add labels to unpatchedDeployment with a wildcard match (smp, yaml)",
+		val:    &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "*",
@@ -248,9 +261,10 @@ metadata:
 	},
 }
 
-var schedulerPatchTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]{
+var schedulerPatchTests = []patchTestCase[*appsv1.Deployment, *applyappsv1.DeploymentApplyConfiguration]{
 	{
 		name:   "specify tolerations",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -280,6 +294,7 @@ spec:
 	},
 	{
 		name:   "specify node selector",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -304,6 +319,7 @@ spec:
 	},
 	{
 		name:   "specify node name",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -327,6 +343,7 @@ spec:
 	},
 	{
 		name:   "specify node affinity",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -366,6 +383,7 @@ spec:
 	},
 	{
 		name:   "specify topology spread constraints",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -399,6 +417,7 @@ spec:
 	},
 	{
 		name:   "specify resource requests and limits",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -439,6 +458,7 @@ spec:
 	},
 	{
 		name: "customize existing readiness probe",
+		val:  &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test").
 			WithSpec(applyappsv1.DeploymentSpec().
 				WithTemplate(applycorev1.PodTemplateSpec().
@@ -484,9 +504,10 @@ spec:
 	},
 }
 
-var fileMountTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]{
+var fileMountTests = []patchTestCase[*appsv1.Deployment, *applyappsv1.DeploymentApplyConfiguration]{
 	{
 		name:   "mount a file from a configmap",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -526,6 +547,7 @@ spec:
 	},
 	{
 		name: "mount a file from a secret, preserves preexisting volumes, json6902",
+		val:  &appsv1.Deployment{},
 		object: applyappsv1.Deployment("test", "test").
 			WithSpec(applyappsv1.DeploymentSpec().
 				WithTemplate(applycorev1.PodTemplateSpec().
@@ -599,7 +621,74 @@ spec:
 		wantCount:   2,
 	},
 	{
+		name: "mount a file from a secret, preserves preexisting volumes, SMP",
+		val:  &appsv1.Deployment{},
+		object: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(applycorev1.Volume().
+							WithName("initial").
+							WithConfigMap(applycorev1.ConfigMapVolumeSource().
+								WithName("existing"))).
+						WithContainers(applycorev1.Container().
+							WithName("container").WithVolumeMounts(
+							applycorev1.VolumeMount().
+								WithName("initial").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/existing")),
+						)),
+				),
+			),
+		patches: []v1alpha1.Patch{{
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+spec:
+  template:
+    spec:
+      volumes:
+      - name:  config-volume
+        configMap:
+          name: special-config
+      containers:
+      - name: container
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config
+`),
+		}},
+		want: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(
+							applycorev1.Volume().
+								WithName("config-volume").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("special-config")),
+							applycorev1.Volume().
+								WithName("initial").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("existing")),
+						).WithContainers(applycorev1.Container().
+						WithName("container").WithVolumeMounts(
+						applycorev1.VolumeMount().
+							WithName("config-volume").
+							WithMountPath("/etc/config").
+							WithReadOnly(true),
+						applycorev1.VolumeMount().
+							WithName("initial").
+							WithReadOnly(true).
+							WithMountPath("/etc/config/existing"),
+					))),
+				),
+			),
+		wantPatched: true,
+		wantCount:   1,
+	},
+	{
 		name:   "mount secret from aws with csi secret driver",
+		val:    &appsv1.Deployment{},
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
@@ -646,9 +735,10 @@ spec:
 	},
 }
 
-var workloadIdentityPatchTests = []patchTestCase[*applycorev1.ServiceAccountApplyConfiguration]{
+var workloadIdentityPatchTests = []patchTestCase[*corev1.ServiceAccount, *applycorev1.ServiceAccountApplyConfiguration]{
 	{
 		name:   "add annotations to a serviceaccount",
+		val:    &corev1.ServiceAccount{},
 		object: applycorev1.ServiceAccount("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "ServiceAccount",
