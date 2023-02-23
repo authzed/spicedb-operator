@@ -599,6 +599,71 @@ spec:
 		wantCount:   2,
 	},
 	{
+		name: "mount a file from a secret, preserves preexisting volumes, SMP",
+		object: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(applycorev1.Volume().
+							WithName("initial").
+							WithConfigMap(applycorev1.ConfigMapVolumeSource().
+								WithName("existing"))).
+						WithContainers(applycorev1.Container().
+							WithName("container").WithVolumeMounts(
+							applycorev1.VolumeMount().
+								WithName("initial").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/existing")),
+						)),
+				),
+			),
+		patches: []v1alpha1.Patch{{
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+spec:
+  template:
+    spec:
+      volumes:
+      - name:  config-volume
+        configMap:
+          name: special-config
+      containers:
+      - name: container
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config
+`),
+		}},
+		want: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(
+							applycorev1.Volume().
+								WithName("config-volume").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("special-config")),
+							applycorev1.Volume().
+								WithName("initial").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("existing")),
+						).WithContainers(applycorev1.Container().
+						WithName("container").WithVolumeMounts(
+						applycorev1.VolumeMount().
+							WithName("config-volume").
+							WithMountPath("/etc/config").
+							WithReadOnly(true),
+						applycorev1.VolumeMount().
+							WithName("initial").
+							WithReadOnly(true).
+							WithMountPath("/etc/config/existing"),
+					))),
+				),
+			),
+		wantPatched: true,
+		wantCount:   1,
+	},
+	{
 		name:   "mount secret from aws with csi secret driver",
 		object: baseDeployment(),
 		patches: []v1alpha1.Patch{{
