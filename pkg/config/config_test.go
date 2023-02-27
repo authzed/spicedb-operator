@@ -133,6 +133,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -205,6 +206,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    false,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "memory",
 						"dispatchClusterEnabled": "false",
@@ -258,6 +260,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -313,6 +316,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -387,6 +391,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -461,6 +466,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -539,6 +545,7 @@ func TestNewConfig(t *testing.T) {
 						"other": "label",
 					},
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -620,6 +627,7 @@ func TestNewConfig(t *testing.T) {
 						"other": "label",
 					},
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -696,6 +704,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -772,6 +781,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -850,6 +860,7 @@ func TestNewConfig(t *testing.T) {
 						"app.kubernetes.io/managed-by": "test-owner",
 					},
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -931,6 +942,7 @@ func TestNewConfig(t *testing.T) {
 						"app.kubernetes.io/managed-by": "test-owner",
 					},
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1009,6 +1021,7 @@ func TestNewConfig(t *testing.T) {
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},
+					DispatchEnabled: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1089,6 +1102,7 @@ func TestNewConfig(t *testing.T) {
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},
+					DispatchEnabled: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1167,6 +1181,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1182,6 +1197,83 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 			},
 			wantPortCount: 4,
+		},
+		{
+			name: "disable dispatch",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"dispatchEnabled": false,
+						"datastoreEngine": "cockroachdb"
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:      "debug",
+					DatastoreEngine:        "cockroachdb",
+					DatastoreURI:           "uri",
+					SpannerCredsSecretRef:  "",
+					TargetSpiceDBImage:     "image:v1",
+					EnvPrefix:              "SPICEDB",
+					SpiceDBCmd:             "spicedb",
+					DatastoreTLSSecretName: "",
+					TargetMigration:        "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:           "debug",
+					SkipMigrations:     false,
+					Name:               "test",
+					Namespace:          "test",
+					UID:                "1",
+					Replicas:           2,
+					PresharedKey:       "psk",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					ServiceAccountName: "test",
+					DispatchEnabled:    false,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "false",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=debug",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
+			},
+			wantPortCount: 3,
 		},
 		{
 			name: "update graph pushes the current version forward",
@@ -1246,6 +1338,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1331,6 +1424,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1420,6 +1514,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1497,6 +1592,7 @@ func TestNewConfig(t *testing.T) {
 					EnvPrefix:          "SPICEDB",
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
+					DispatchEnabled:    true,
 					Passthrough: map[string]string{
 						"datastoreEngine":             "spanner",
 						"dispatchClusterEnabled":      "true",

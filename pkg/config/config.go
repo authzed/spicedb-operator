@@ -51,6 +51,7 @@ var (
 	imageKey                          = newStringKey("image")
 	tlsSecretNameKey                  = newStringKey("tlsSecretName")
 	dispatchCAKey                     = newStringKey("dispatchUpstreamCASecretName")
+	dispatchEnabledKey                = newBoolOrStringKey("dispatchEnabled", true)
 	telemetryCAKey                    = newStringKey("telemetryCASecretName")
 	envPrefixKey                      = newKey("envPrefix", "SPICEDB")
 	spiceDBCmdKey                     = newKey("cmd", "spicedb")
@@ -137,6 +138,7 @@ type SpiceConfig struct {
 	EnvPrefix                      string
 	SpiceDBCmd                     string
 	TLSSecretName                  string
+	DispatchEnabled                bool
 	DispatchUpstreamCASecretName   string
 	TelemetryTLSCASecretName       string
 	SecretName                     string
@@ -217,9 +219,19 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		errs = append(errs, fmt.Errorf("no update found in channel"))
 	}
 
+	spiceConfig.DispatchEnabled, err = dispatchEnabledKey.pop(config)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	// can't run dispatch with memory datastore
+	if datastoreEngine == "memory" {
+		spiceConfig.DispatchEnabled = false
+	}
+
 	migrationConfig.DatastoreEngine = datastoreEngine
 	passthroughConfig["datastoreEngine"] = datastoreEngine
-	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(datastoreEngine != "memory")
+	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(spiceConfig.DispatchEnabled)
 
 	if secret == nil {
 		errs = append(errs, fmt.Errorf("secret must be provided"))
@@ -312,7 +324,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		warnings = append(warnings, fmt.Errorf("no TLS configured, consider setting %q", "tlsSecretName"))
 	}
 
-	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 {
+	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 && spiceConfig.DispatchEnabled {
 		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
 	}
 
@@ -404,7 +416,10 @@ func (c *Config) toEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 	if c.DatastoreEngine != "memory" {
 		envVars = append(envVars,
 			applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
-				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
+				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))))
+	}
+	if c.DispatchEnabled {
+		envVars = append(envVars,
 			applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DISPATCH_UPSTREAM_ADDR").
 				WithValue(fmt.Sprintf("kubernetes:///%s.%s:dispatch", c.Name, c.Namespace)))
 	}
@@ -521,7 +536,7 @@ func (c *Config) servicePorts() []*applycorev1.ServicePortApplyConfiguration {
 		applycorev1.ServicePort().WithName("gateway").WithPort(8443),
 		applycorev1.ServicePort().WithName("metrics").WithPort(9090),
 	}
-	if c.DatastoreEngine != "memory" {
+	if c.DispatchEnabled {
 		ports = append(ports, applycorev1.ServicePort().WithName("dispatch").WithPort(50053))
 	}
 	return ports
@@ -623,7 +638,7 @@ func (c *Config) containerPorts() []*applycorev1.ContainerPortApplyConfiguration
 		applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
 		applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
 	}
-	if c.DatastoreEngine != "memory" {
+	if c.DispatchEnabled {
 		ports = append(ports, applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"))
 	}
 	return ports
@@ -635,7 +650,7 @@ func (c *Config) deploymentVolumes() []*applycorev1.VolumeApplyConfiguration {
 	if len(c.TLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName(tlsVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.TLSSecretName)))
 	}
-	if len(c.DispatchUpstreamCASecretName) > 0 {
+	if len(c.DispatchUpstreamCASecretName) > 0 && c.DispatchEnabled {
 		volumes = append(volumes, applycorev1.Volume().WithName(dispatchTLSVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DispatchUpstreamCASecretName)))
 	}
 	if len(c.TelemetryTLSCASecretName) > 0 {
@@ -650,7 +665,7 @@ func (c *Config) deploymentVolumeMounts() []*applycorev1.VolumeMountApplyConfigu
 	if len(c.TLSSecretName) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(tlsVolume).WithMountPath("/tls").WithReadOnly(true))
 	}
-	if len(c.DispatchUpstreamCASecretName) > 0 {
+	if len(c.DispatchUpstreamCASecretName) > 0 && c.DispatchEnabled {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(dispatchTLSVolume).WithMountPath("/dispatch-tls").WithReadOnly(true))
 	}
 	if len(c.TelemetryTLSCASecretName) > 0 {
