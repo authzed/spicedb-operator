@@ -19,7 +19,7 @@ require (
 	github.com/nightlyone/lockfile v1.0.0
 	github.com/onsi/ginkgo/v2 v2.8.0
 	github.com/onsi/gomega v1.25.0
-	github.com/spf13/afero v1.9.2
+	github.com/spf13/afero v1.9.4
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.0
 	go.uber.org/atomic v1.10.0
