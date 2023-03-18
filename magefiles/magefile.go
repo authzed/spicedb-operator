@@ -76,7 +76,7 @@ func (Test) E2e() error {
 
 	if !equal {
 		fmt.Println("marking update graph as validated after successful test run")
-		return fs.CopyFile(e2eProposedGraph, e2eValidatedGraph)
+		return fs.CopyFile(proposedGraphFile, validatedGraphFile)
 	}
 	fmt.Println("no changes to update graph")
 
