@@ -43,6 +43,7 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
+	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
@@ -79,6 +80,7 @@ type Controller struct {
 	*manager.OwnedResourceController
 	client      dynamic.Interface
 	kclient     kubernetes.Interface
+	resources   openapi.Resources
 	mainHandler handler.Handler
 
 	// config
@@ -87,10 +89,11 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, configFilePath string, broadcaster record.EventBroadcaster) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath string, broadcaster record.EventBroadcaster) (*Controller, error) {
 	c := Controller{
-		client:  dclient,
-		kclient: kclient,
+		client:    dclient,
+		kclient:   kclient,
+		resources: resources,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
 		klogr.New(),
@@ -464,6 +467,7 @@ func (c *Controller) checkConfigChanged(next ...handler.Handler) handler.Handler
 func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&ValidateConfigHandler{
 		patchStatus: c.PatchStatus,
+		resources:   c.resources,
 		recorder:    c.Recorder,
 		next:        handler.Handlers(next).MustOne(),
 	})

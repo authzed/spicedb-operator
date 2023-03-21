@@ -20,6 +20,7 @@ import (
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
+	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -106,7 +107,8 @@ func (r RawConfig) Pop(key string) string {
 type Config struct {
 	MigrationConfig
 	SpiceConfig
-	Patches []v1alpha1.Patch
+	Patches   []v1alpha1.Patch
+	Resources openapi.Resources
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -150,7 +152,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret, resources openapi.Resources) (*Config, Warning, error) {
 	if cluster.Spec.Config == nil {
 		return nil, nil, fmt.Errorf("couldn't parse empty config")
 	}
@@ -365,6 +367,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
 		Patches:         cluster.Spec.Patches,
+		Resources:       resources,
 	}
 
 	// Validate that patches apply cleanly ahead of time
@@ -377,7 +380,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		out.unpatchedMigrationJob(hash.Object("")),
 		out.unpatchedDeployment(hash.Object(""), hash.Object("")),
 	} {
-		applied, diff, err := ApplyPatches(obj, out.Patches)
+		applied, diff, err := ApplyPatches(obj, out.Patches, resources)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -455,7 +458,7 @@ func (c *Config) unpatchedServiceAccount() *applycorev1.ServiceAccountApplyConfi
 
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	sa := c.unpatchedServiceAccount()
-	_, _, _ = ApplyPatches(sa, c.Patches)
+	_, _, _ = ApplyPatches(sa, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
@@ -477,7 +480,7 @@ func (c *Config) unpatchedRole() *applyrbacv1.RoleApplyConfiguration {
 
 func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	role := c.unpatchedRole()
-	_, _, _ = ApplyPatches(role, c.Patches)
+	_, _, _ = ApplyPatches(role, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	role.WithName(c.Name).WithNamespace(c.Namespace).
@@ -500,7 +503,7 @@ func (c *Config) unpatchedRoleBinding() *applyrbacv1.RoleBindingApplyConfigurati
 
 func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	rb := c.unpatchedRoleBinding()
-	_, _, _ = ApplyPatches(rb, c.Patches)
+	_, _, _ = ApplyPatches(rb, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	rb.WithName(c.Name).WithNamespace(c.Namespace).
@@ -520,7 +523,7 @@ func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
 
 func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	s := c.unpatchedService()
-	_, _, _ = ApplyPatches(s, c.Patches)
+	_, _, _ = ApplyPatches(s, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	s.WithName(c.Name).WithNamespace(c.Namespace).
@@ -619,7 +622,7 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 
 func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	j := c.unpatchedMigrationJob(migrationHash)
-	_, _, _ = ApplyPatches(j, c.Patches)
+	_, _, _ = ApplyPatches(j, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := c.jobName(migrationHash)
@@ -728,7 +731,7 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 
 func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	d := c.unpatchedDeployment(migrationHash, secretHash)
-	_, _, _ = ApplyPatches(d, c.Patches)
+	_, _, _ = ApplyPatches(d, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := deploymentName(c.Name)

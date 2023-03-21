@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	v1 "k8s.io/client-go/applyconfigurations/core/v1"
+	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/updates"
@@ -41,6 +43,7 @@ func TestToEnvVarName(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
+	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger1.26.3.json"))
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
 		status       v1alpha1.ClusterStatus
@@ -139,6 +142,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -212,6 +216,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "false",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -266,6 +271,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -322,6 +328,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -397,6 +404,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -472,6 +480,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -551,6 +560,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -633,6 +643,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -710,6 +721,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -787,6 +799,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -866,6 +879,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -948,6 +962,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -1027,6 +1042,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -1108,6 +1124,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -1187,6 +1204,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=debug",
@@ -1265,6 +1283,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled": "false",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=debug",
@@ -1345,6 +1364,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled":  "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=debug",
@@ -1431,6 +1451,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled":  "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=debug",
@@ -1521,6 +1542,7 @@ func TestNewConfig(t *testing.T) {
 						"dispatchClusterEnabled":  "true",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=debug",
@@ -1599,6 +1621,7 @@ func TestNewConfig(t *testing.T) {
 						"datastoreSpannerCredentials": "/spanner-credentials/credentials.json",
 					},
 				},
+				Resources: resources,
 			},
 			wantEnvs: []string{
 				"SPICEDB_LOG_LEVEL=info",
@@ -1624,7 +1647,7 @@ func TestNewConfig(t *testing.T) {
 				Spec:   tt.args.cluster,
 				Status: tt.args.status,
 			}
-			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret)
+			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret, resources)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.Equal(t, tt.want, got)
