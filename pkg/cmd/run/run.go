@@ -103,6 +103,11 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
+	resources, err := f.OpenAPISchema()
+	if err != nil {
+		return err
+	}
+
 	logger := klogr.New()
 
 	dclient, err := dynamic.NewForConfig(restConfig)
@@ -140,7 +145,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, broadcaster)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster)
 	if err != nil {
 		return err
 	}
