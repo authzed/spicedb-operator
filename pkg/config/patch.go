@@ -68,7 +68,6 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch, resources openapi.R
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error converting patch %d to json: %w", i, err))
 					continue
-
 				}
 
 				gv, err := schema.ParseGroupVersion(*typeMeta.APIVersion)

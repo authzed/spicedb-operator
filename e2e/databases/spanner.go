@@ -7,16 +7,16 @@ import (
 	"path/filepath"
 	"time"
 
-	database "cloud.google.com/go/spanner/admin/database/apiv1"
-	instances "cloud.google.com/go/spanner/admin/instance/apiv1"
+	dbadmin "cloud.google.com/go/spanner/admin/database/apiv1"
+	database "cloud.google.com/go/spanner/admin/database/apiv1/databasepb"
+	instanceadmin "cloud.google.com/go/spanner/admin/instance/apiv1"
+	instance "cloud.google.com/go/spanner/admin/instance/apiv1/instancepb"
 	"github.com/go-logr/logr"
 	"github.com/nightlyone/lockfile"
 
 	//revive:disable:dot-imports convention is dot-import
 	. "github.com/onsi/gomega"
 	"google.golang.org/api/option"
-	adminpb "google.golang.org/genproto/googleapis/spanner/admin/database/v1"
-	"google.golang.org/genproto/googleapis/spanner/admin/instance/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -52,13 +52,12 @@ func (p *SpannerProvider) New(ctx context.Context) *LogicalDatabase {
 
 	Eventually(func(g Gomega) {
 		logicalDBName = names.SimpleNameGenerator.GenerateName("sp")
-		p.execDatabase(ctx, g, func(client *database.DatabaseAdminClient) {
-			op, err := client.CreateDatabase(ctx, &adminpb.CreateDatabaseRequest{
+		p.execDatabase(ctx, g, func(client *dbadmin.DatabaseAdminClient) {
+			op, err := client.CreateDatabase(ctx, &database.CreateDatabaseRequest{
 				Parent:          "projects/fake-project-id/instances/fake-instance",
 				CreateStatement: "CREATE DATABASE `" + logicalDBName + "`",
 			})
 			g.Expect(err).To(Succeed())
-
 			_, err = op.Wait(ctx)
 			g.Expect(err).To(Succeed())
 		})
@@ -77,7 +76,7 @@ func (p *SpannerProvider) Cleanup(ctx context.Context, db *LogicalDatabase) {
 	// TODO: figure out how to cleanup a spanner emulator db
 }
 
-func (p *SpannerProvider) execInstance(ctx context.Context, g Gomega, cmd func(client *instances.InstanceAdminClient)) {
+func (p *SpannerProvider) execInstance(ctx context.Context, g Gomega, cmd func(client *instanceadmin.InstanceAdminClient)) {
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Second)
 	defer cancel()
 	ports := e2eutil.PortForward(Default, p.namespace, "spanner-0", []string{":9010"}, ctx.Done())
@@ -85,10 +84,10 @@ func (p *SpannerProvider) execInstance(ctx context.Context, g Gomega, cmd func(c
 
 	Expect(os.Setenv("SPANNER_EMULATOR_HOST", fmt.Sprintf("localhost:%d", ports[0].Local))).To(Succeed())
 
-	var instancesClient *instances.InstanceAdminClient
+	var instancesClient *instanceadmin.InstanceAdminClient
 	g.Eventually(func() error {
 		var err error
-		instancesClient, err = instances.NewInstanceAdminClient(ctx,
+		instancesClient, err = instanceadmin.NewInstanceAdminClient(ctx,
 			option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 			option.WithoutAuthentication(),
 			option.WithEndpoint(fmt.Sprintf("localhost:%d", ports[0].Local)))
@@ -99,13 +98,12 @@ func (p *SpannerProvider) execInstance(ctx context.Context, g Gomega, cmd func(c
 	cmd(instancesClient)
 }
 
-func (p *SpannerProvider) execDatabase(ctx context.Context, g Gomega, cmd func(client *database.DatabaseAdminClient)) {
+func (p *SpannerProvider) execDatabase(ctx context.Context, g Gomega, cmd func(client *dbadmin.DatabaseAdminClient)) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	ports := e2eutil.PortForward(Default, p.namespace, "spanner-0", []string{":9010"}, ctx.Done())
 	g.Expect(len(ports)).To(Equal(1))
-
-	adminClient, err := database.NewDatabaseAdminClient(ctx,
+	adminClient, err := dbadmin.NewDatabaseAdminClient(ctx,
 		option.WithGRPCDialOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
 		option.WithoutAuthentication(),
 		option.WithEndpoint(fmt.Sprintf("localhost:%d", ports[0].Local)))
@@ -141,7 +139,7 @@ func (p *SpannerProvider) ensureDatabase(ctx context.Context) {
 		CreateFromManifests(ctx, p.namespace, "spanner", p.restConfig, p.mapper)
 
 		Eventually(func(g Gomega) {
-			p.execInstance(ctx, g, func(client *instances.InstanceAdminClient) {
+			p.execInstance(ctx, g, func(client *instanceadmin.InstanceAdminClient) {
 				createInstanceOp, err := client.CreateInstance(ctx, &instance.CreateInstanceRequest{
 					Parent:     "projects/fake-project-id",
 					InstanceId: "fake-instance",
@@ -173,7 +171,7 @@ func (p *SpannerProvider) running(ctx context.Context) error {
 	}
 
 	var err error
-	p.execInstance(ctx, Default, func(client *instances.InstanceAdminClient) {
+	p.execInstance(ctx, Default, func(client *instanceadmin.InstanceAdminClient) {
 		var i *instance.Instance
 		i, err = client.GetInstance(ctx, &instance.GetInstanceRequest{
 			Name: "projects/fake-project-id/instances/fake-instance",

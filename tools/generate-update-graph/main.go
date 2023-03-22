@@ -34,7 +34,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := os.WriteFile(os.Args[1], yamlBytes, 0o666); err != nil {
+	if err := os.WriteFile(os.Args[1], yamlBytes, 0o600); err != nil {
 		panic(err)
 	}
 }
