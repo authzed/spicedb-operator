@@ -107,7 +107,7 @@ Available Update Channels:
 | cockroachdb | stable   |
 | mysql       | stable   |
 | spanner     | stable   |
-| memory      | (none)   |
+| memory      | stable   |
 
 ### Automatic Updates
 
