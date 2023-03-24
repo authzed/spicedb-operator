@@ -28,17 +28,17 @@ require (
 	google.golang.org/api v0.96.0
 	google.golang.org/genproto v0.0.0-20220916134934-764224ccc2d1
 	google.golang.org/grpc v1.49.0
-	k8s.io/api v0.26.1
+	k8s.io/api v0.26.2
 	k8s.io/apiextensions-apiserver v0.26.0
-	k8s.io/apimachinery v0.26.1
+	k8s.io/apimachinery v0.26.2
 	k8s.io/apiserver v0.26.0
-	k8s.io/cli-runtime v0.26.0
-	k8s.io/client-go v0.26.0
+	k8s.io/cli-runtime v0.26.2
+	k8s.io/client-go v0.26.2
 	k8s.io/code-generator v0.26.0
-	k8s.io/component-base v0.26.0
+	k8s.io/component-base v0.26.2
 	k8s.io/controller-manager v0.26.0
 	k8s.io/klog/v2 v2.80.1
-	k8s.io/kubectl v0.26.0
+	k8s.io/kubectl v0.26.2
 	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
 	mvdan.cc/gofumpt v0.4.0
 	sigs.k8s.io/cli-utils v0.34.0
