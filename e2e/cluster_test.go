@@ -447,7 +447,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		}
 
 		ValidateNewGraphEdges := func(engine string) {
-			Describe("with a new update graph", func() {
+			Describe("with a new update graph", Label("graph"), func() {
 				proposedGraph := GetConfig(ProposedGraphFile)
 				validatedGraph := GetConfig(ValidatedGraphFile)
 				diffGraph := proposedGraph.UpdateGraph.Difference(&validatedGraph.UpdateGraph)
