@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/authzed/controller-idioms/typed"
@@ -382,6 +383,13 @@ var _ = Describe("SpiceDBClusters", func() {
 						"cmd":               spicedbCmd,
 					}
 					for k, v := range db.ExtraConfig {
+						config[k] = v
+					}
+					for _, s := range graphExtraConfig {
+						k, v, ok := strings.Cut(s, "=")
+						if !ok {
+							continue
+						}
 						config[k] = v
 					}
 					jsonConfig, err := json.Marshal(config)
