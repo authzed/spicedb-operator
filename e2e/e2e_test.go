@@ -8,6 +8,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -39,7 +41,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/klog/v2"
+	"k8s.io/kubectl/pkg/cmd/logs"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+	utilkubectl "k8s.io/kubectl/pkg/cmd/util"
+	"k8s.io/kubectl/pkg/polymorphichelpers"
 	"k8s.io/utils/pointer"
 	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -422,6 +427,7 @@ func SnapshotFailHandler(message string, callerSkip ...int) {
 		corev1.SchemeGroupVersion.WithResource("pods"),
 		corev1.SchemeGroupVersion.WithResource("jobs"),
 		corev1.SchemeGroupVersion.WithResource("secrets"),
+		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
 	}
 
 	SaveClusterState("./cluster-state/", gvrs)
@@ -483,7 +489,44 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 					GinkgoWriter.Println("error writing", gvr.Resource, item.GetName(), item.GetNamespace(), err)
 					continue
 				}
+				if gvr.Resource == "pods" {
+					var buf bytes.Buffer
+					var pod corev1.Pod
+					if err := kruntime.DefaultUnstructuredConverter.FromUnstructured(item.Object, &pod); err != nil {
+						GinkgoWriter.Println("error writing log", gvr.Resource, item.GetName(), item.GetNamespace(), err)
+						continue
+					}
+					if err := tail(&pod, os.Stdout, &buf); err != nil {
+						GinkgoWriter.Println("error writing log", gvr.Resource, item.GetName(), item.GetNamespace(), err)
+						continue
+					}
+					err = os.WriteFile(filepath.Join(spicedbPath, item.GetName()+".log"), buf.Bytes(), 0o700)
+					if err != nil {
+						GinkgoWriter.Println("error writing log", gvr.Resource, item.GetName(), item.GetNamespace(), err)
+						continue
+					}
+				}
 			}
 		}
 	}
+}
+
+func tail(pod *corev1.Pod, writers ...io.Writer) error {
+	logger := logs.NewLogsOptions(genericclioptions.IOStreams{
+		In:     os.Stdin,
+		Out:    io.MultiWriter(writers...),
+		ErrOut: io.MultiWriter(writers...),
+	}, true)
+	logger.Follow = false
+	logger.IgnoreLogErrors = false
+	logger.Object = pod
+	logger.RESTClientGetter = utilkubectl.NewFactory(ClientGetter{config: restConfig})
+	logger.LogsForObject = polymorphichelpers.LogsForObjectFn
+	logger.ConsumeRequestFn = logs.DefaultConsumeRequest
+	var err error
+	logger.Options, err = logger.ToLogOptions()
+	if err != nil {
+		return err
+	}
+	return logger.RunLogs()
 }
