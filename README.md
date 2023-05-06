@@ -126,7 +126,7 @@ spec:
   config:
     datastoreEngine: cockroachdb
 status:
-  currentVersion:
+  version:
     name: v1.16.1
     channel: stable 
 ```
@@ -153,7 +153,7 @@ spec:
   config:
     datastoreEngine: cockroachdb
 status:
-  currentVersion:
+  version:
     name: v1.14.0
     channel: stable 
   availableVersions:
