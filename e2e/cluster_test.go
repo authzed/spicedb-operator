@@ -473,7 +473,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			})
 		}
 
-		Describe("With memory", func() {
+		Describe("With memory", Label("memory"), func() {
 			BeforeEach(func() {
 				db = &databases.LogicalDatabase{
 					Engine: "memory",
@@ -482,7 +482,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			ValidateNewGraphEdges("memory")
 		})
 
-		Describe("With cockroachdb", func() {
+		Describe("With cockroachdb", Label("cockroachdb"), func() {
 			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
@@ -494,7 +494,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			ValidateNewGraphEdges("cockroachdb")
 		})
 
-		Describe("With mysql", func() {
+		Describe("With mysql", Label("mysql"), func() {
 			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
@@ -506,7 +506,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			ValidateNewGraphEdges("mysql")
 		})
 
-		Describe("With postgres", func() {
+		Describe("With postgres", Label("postgres"), func() {
 			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
@@ -596,7 +596,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			})
 		})
 
-		Describe("With spanner", func() {
+		Describe("With spanner", Label("spanner"), func() {
 			BeforeEach(func() {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
