@@ -1,0 +1,25 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+  name: spicedb-operator-edit
+rules:
+- apiGroups:
+  - authzed.com
+  resources:
+  - spicedbclusters
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - patch
+  - update
+- apiGroups:
+  - authzed.com
+  resources:
+  - spicedbclusters/status
+  verbs:
+  - update
