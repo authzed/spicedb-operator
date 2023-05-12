@@ -40,6 +40,8 @@ const (
 	// nolint:gosec // Creds in the naming causes a false positive here.
 	spannerCredsPath     = "/spanner-credentials"
 	spannerCredsFileName = "credentials.json"
+
+	ContainerNameSpiceDB = "spicedb"
 )
 
 type key[V comparable] struct {
@@ -709,7 +711,7 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 				WithLabels(c.ExtraPodLabels).
 				WithAnnotations(c.ExtraPodAnnotations).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName(c.ServiceAccountName).WithContainers(
-					applycorev1.Container().WithName(name).WithImage(c.TargetSpiceDBImage).
+					applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage(c.TargetSpiceDBImage).
 						WithCommand(c.SpiceConfig.SpiceDBCmd, "serve").
 						WithEnv(c.toEnvVarApplyConfiguration()...).
 						WithPorts(c.containerPorts()...).
