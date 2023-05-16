@@ -73,7 +73,7 @@ func (p *SpannerProvider) New(ctx context.Context) *LogicalDatabase {
 	}
 }
 
-func (p *SpannerProvider) Cleanup(ctx context.Context, db *LogicalDatabase) {
+func (p *SpannerProvider) Cleanup(_ context.Context, _ *LogicalDatabase) {
 	// TODO: figure out how to cleanup a spanner emulator db
 }
 

@@ -56,9 +56,8 @@ func CreateFromManifests(ctx context.Context, namespace, engine string, restConf
 		err := decoder.Decode(&u.Object)
 		if errors.Is(err, io.EOF) {
 			break
-		} else {
-			Expect(err).To(Succeed())
 		}
+		Expect(err).To(Succeed())
 		u.SetNamespace(namespace)
 		objs = append(objs, u)
 	}
