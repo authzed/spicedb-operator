@@ -46,6 +46,9 @@ type State struct {
 	Migration string `json:"migration,omitempty"`
 	Phase     string `json:"phase,omitempty"`
 	Digest    string `json:"digest,omitempty"`
+
+	// Deprecated releases can be updated from, but not to
+	Deprecated bool `json:"-"`
 }
 
 // UpdateGraph holds a graph of required update edges
