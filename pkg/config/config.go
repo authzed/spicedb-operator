@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -9,12 +10,14 @@ import (
 	"strings"
 
 	"github.com/authzed/controller-idioms/hash"
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/fatih/camelcase"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
@@ -366,8 +369,8 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	out := &Config{
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
-		Patches:         cluster.Spec.Patches,
 	}
+	out.Patches = fixDeploymentPatches(out.Name, cluster.Spec.Patches)
 
 	// Validate that patches apply cleanly ahead of time
 	totalAppliedPatches := 0
@@ -748,6 +751,64 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 		WithLabels(map[string]string{"app.kubernetes.io/instance": name}).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentSpiceDBLabelValue))
 	return d
+}
+
+// fixDeploymentPatches modifies any patches that could apply to the deployment
+// referencing the old container names and rewrites them to use the new
+// stable name
+func fixDeploymentPatches(name string, in []v1alpha1.Patch) []v1alpha1.Patch {
+	if in == nil {
+		return nil
+	}
+	patches := make([]v1alpha1.Patch, 0, len(in))
+	patches = append(patches, in...)
+	for i, p := range patches {
+		// not a deployment patch
+		if !(p.Kind == "Deployment" || p.Kind == wildcard) {
+			continue
+		}
+
+		// patch doesn't contain the old name
+		if !strings.Contains(string(p.Patch), name+"-spicedb") {
+			continue
+		}
+
+		// determine what kind of patch it is
+		decoder := utilyaml.NewYAMLOrJSONDecoder(bytes.NewReader(p.Patch), 100)
+		var json6902op jsonpatch.Operation
+		err := decoder.Decode(&json6902op)
+		if err != nil {
+			continue
+		}
+
+		// if there's an operation, it's a json6902 patch, and can't have
+		// used the old names
+		if json6902op.Kind() != "unknown" {
+			continue
+		}
+
+		// parse the patch
+		smpPatch, err := utilyaml.ToJSON(p.Patch)
+		if err != nil {
+			continue
+		}
+
+		// patch the patch
+		patchPatch, err := jsonpatch.DecodePatch([]byte(`[
+			{"op": "replace", "path": "/spec/template/spec/containers/0/name", "value": "spicedb"}
+		]`))
+		if err != nil {
+			continue
+		}
+		modified, err := patchPatch.Apply(smpPatch)
+		if err != nil {
+			continue
+		}
+
+		// update the stored patch
+		patches[i].Patch = modified
+	}
+	return patches
 }
 
 // toEnvVarName converts a key from the api object into an env var name.
