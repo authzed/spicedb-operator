@@ -4,6 +4,8 @@ go 1.19
 
 require (
 	github.com/authzed/spicedb-operator v0.0.0-00010101000000-000000000000
+	github.com/blang/semver/v4 v4.0.0
+	github.com/stretchr/testify v1.8.2
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -31,6 +33,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/exp v0.0.0-20220823124025-807a23277127 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1 // indirect
