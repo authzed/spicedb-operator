@@ -517,7 +517,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			BasicSpiceDBFunctionality()
 			ValidateNewGraphEdges("postgres")
 
-			Describe("there is a series of required migrations", func() {
+			Describe("there is a series of required migrations", Label("published"), func() {
 				BeforeEach(func() {
 					classConfig := map[string]any{
 						"skipReleaseCheck":             "true",
