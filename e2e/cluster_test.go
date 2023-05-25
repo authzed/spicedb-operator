@@ -281,6 +281,8 @@ var _ = Describe("SpiceDBClusters", func() {
 							"dispatchUpstreamCASecretName":   "spicedb-grpc-tls",
 							"serviceAccountName":             "spicedb-non-default",
 							"extraServiceAccountAnnotations": "authzed.com/e2e=true",
+							"datastoreConnpoolReadMinOpen":   1,
+							"datastoreConnpoolWriteMinOpen":  1,
 						}
 						for k, v := range db.ExtraConfig {
 							config[k] = v
@@ -336,11 +338,13 @@ var _ = Describe("SpiceDBClusters", func() {
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
 					config, err := json.Marshal(map[string]any{
-						"skipMigrations":  true,
-						"datastoreEngine": db.Engine,
-						"image":           image,
-						"envPrefix":       spicedbEnvPrefix,
-						"cmd":             spicedbCmd,
+						"skipMigrations":                true,
+						"datastoreEngine":               db.Engine,
+						"image":                         image,
+						"envPrefix":                     spicedbEnvPrefix,
+						"cmd":                           spicedbCmd,
+						"datastoreConnpoolReadMinOpen":  1,
+						"datastoreConnpoolWriteMinOpen": 1,
 					})
 					Expect(err).To(Succeed())
 					cluster.Spec.Config = config
@@ -378,11 +382,13 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 
 					config := map[string]any{
-						"skipReleaseCheck":  "true",
-						"telemetryEndpoint": "",
-						"datastoreEngine":   engine,
-						"envPrefix":         spicedbEnvPrefix,
-						"cmd":               spicedbCmd,
+						"skipReleaseCheck":              "true",
+						"telemetryEndpoint":             "",
+						"datastoreEngine":               engine,
+						"envPrefix":                     spicedbEnvPrefix,
+						"cmd":                           spicedbCmd,
+						"datastoreConnpoolReadMinOpen":  1,
+						"datastoreConnpoolWriteMinOpen": 1,
 					}
 					for k, v := range db.ExtraConfig {
 						config[k] = v
