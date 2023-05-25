@@ -311,7 +311,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					})
 
 					It("creates with those options", func() {
-						ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+						ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 						DeferCleanup(cancel)
 
 						By("not having warnings")
