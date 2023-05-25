@@ -234,12 +234,14 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 
 					config := map[string]any{
-						"skipReleaseCheck":  "true",
-						"telemetryEndpoint": "",
-						"datastoreEngine":   db.Engine,
-						"envPrefix":         spicedbEnvPrefix,
-						"image":             image,
-						"cmd":               spicedbCmd,
+						"skipReleaseCheck":              "true",
+						"telemetryEndpoint":             "",
+						"datastoreEngine":               db.Engine,
+						"datastoreConnpoolReadMinOpen":  1,
+						"datastoreConnpoolWriteMinOpen": 1,
+						"envPrefix":                     spicedbEnvPrefix,
+						"image":                         image,
+						"cmd":                           spicedbCmd,
 					}
 					for k, v := range db.ExtraConfig {
 						config[k] = v
