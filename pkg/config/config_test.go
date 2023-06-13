@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -1722,6 +1724,28 @@ func TestPatchesApplyToAllObjects(t *testing.T) {
 			require.True(t, bytes.Contains(afterBytes, []byte("via-patch")))
 		})
 	}
+}
+
+func GetConfig(fileName string) (cfg OperatorConfig) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	decoder := utilyaml.NewYAMLOrJSONDecoder(file, 100)
+	err = decoder.Decode(&cfg)
+	if err != nil {
+		panic(err)
+	}
+	return
+}
+
+func TestGraphDiffSanity(t *testing.T) {
+	proposedGraph := GetConfig("../../proposed-update-graph.yaml")
+	validatedGraph := GetConfig("../../validated-update-graph.yaml")
+	require.NotPanics(t, func() {
+		_ = proposedGraph.UpdateGraph.Difference(&validatedGraph.UpdateGraph)
+	})
 }
 
 func TestDeploymentContainerNameBackCompat(t *testing.T) {

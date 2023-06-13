@@ -44,6 +44,7 @@ func main() {
 
 func postgresChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.22.2", Tag: "v1.22.2", Migration: "add-gc-covering-index"},
 		{ID: "v1.21.0", Tag: "v1.21.0", Migration: "add-gc-covering-index"},
 		{ID: "v1.19.1", Tag: "v1.19.1", Migration: "add-gc-covering-index"},
 		{ID: "v1.18.0", Tag: "v1.18.0", Migration: "drop-bigserial-ids"},
@@ -71,6 +72,7 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transaction-timestamp-index"},
 	}
 	edgePatterns := map[string]string{
+		"v1.21.0":        ">=1.22.2",
 		"v1.19.1":        ">=1.21.0",
 		"v1.18.0":        ">=1.19.1",
 		"v1.17.0":        ">=1.18.0",
@@ -110,6 +112,7 @@ func postgresChannel() updates.Channel {
 
 func crdbChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.22.2", Tag: "v1.22.2", Migration: "add-caveats"},
 		{ID: "v1.21.0", Tag: "v1.21.0", Migration: "add-caveats"},
 		{ID: "v1.19.1", Tag: "v1.19.1", Migration: "add-caveats"},
 		{ID: "v1.18.0", Tag: "v1.18.0", Migration: "add-caveats"},
@@ -135,6 +138,7 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transactions-table"},
 	}
 	edgePatterns := map[string]string{
+		"v1.21.0": ">=1.22.2",
 		"v1.19.1": ">=1.21.0",
 		"v1.18.0": ">=1.19.1",
 		"v1.17.0": ">=1.18.0",
@@ -171,6 +175,7 @@ func crdbChannel() updates.Channel {
 
 func mysqlChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.22.2", Tag: "v1.22.2", Migration: "extend_object_id"},
 		{ID: "v1.21.0", Tag: "v1.21.0", Migration: "extend_object_id"},
 		{ID: "v1.19.1", Tag: "v1.19.1", Migration: "add_caveat"},
 		{ID: "v1.18.0", Tag: "v1.18.0", Migration: "add_caveat"},
@@ -191,6 +196,7 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id", Deprecated: true},
 	}
 	edgePatterns := map[string]string{
+		"v1.21.0": ">=1.22.2",
 		"v1.19.1": ">=1.21.0",
 		"v1.18.0": ">=1.19.1",
 		"v1.17.0": ">=1.18.0",
@@ -222,6 +228,9 @@ func mysqlChannel() updates.Channel {
 
 func spannerChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.22.2", Tag: "v1.22.2", Migration: "drop-changelog-table"},
+		{ID: "v1.22.2-phase2", Tag: "v1.22.2", Migration: "register-tuple-change-stream", Phase: "write-changelog-read-stream"},
+		{ID: "v1.22.2-phase1", Tag: "v1.22.2", Migration: "register-tuple-change-stream", Phase: "write-changelog-read-changelog"},
 		{ID: "v1.21.0", Tag: "v1.21.0", Migration: "add-caveats"},
 		{ID: "v1.19.1", Tag: "v1.19.1", Migration: "add-caveats"},
 		{ID: "v1.18.0", Tag: "v1.18.0", Migration: "add-caveats"},
@@ -240,21 +249,24 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.8.0", Tag: "v1.8.0", Migration: "add-metadata-and-counters"},
 	}
 	edgePatterns := map[string]string{
-		"v1.19.1": ">=1.21.0",
-		"v1.18.0": ">=1.19.1",
-		"v1.17.0": ">=1.18.0",
-		"v1.16.2": ">=1.17.0",
-		"v1.16.1": ">=1.16.2",
-		"v1.16.0": ">=1.16.2",
-		"v1.15.0": ">=1.16.2",
-		"v1.14.1": ">=1.15.0",
-		"v1.14.0": ">=1.14.1",
-		"v1.13.0": ">=1.14.1",
-		"v1.12.0": ">=1.13.0",
-		"v1.11.0": ">=1.12.0",
-		"v1.10.0": ">=1.11.0",
-		"v1.9.0":  ">=1.10.0",
-		"v1.8.0":  ">=1.9.0",
+		"v1.22.2-phase2": "1.22.2",
+		"v1.22.2-phase1": "1.22.2-phase2",
+		"v1.21.0":        "1.22.2-phase1",
+		"v1.19.1":        ">=1.21.0 <=1.22.2-phase1",
+		"v1.18.0":        ">=1.19.1 <=1.22.2-phase1",
+		"v1.17.0":        ">=1.18.0 <=1.22.2-phase1",
+		"v1.16.2":        ">=1.17.0 <=1.22.2-phase1",
+		"v1.16.1":        ">=1.16.2 <=1.22.2-phase1",
+		"v1.16.0":        ">=1.16.2 <=1.22.2-phase1",
+		"v1.15.0":        ">=1.16.2 <=1.22.2-phase1",
+		"v1.14.1":        ">=1.15.0 <=1.22.2-phase1",
+		"v1.14.0":        ">=1.14.1 <=1.22.2-phase1",
+		"v1.13.0":        ">=1.14.1 <=1.22.2-phase1",
+		"v1.12.0":        ">=1.13.0 <=1.22.2-phase1",
+		"v1.11.0":        ">=1.12.0 <=1.22.2-phase1",
+		"v1.10.0":        ">=1.11.0 <=1.22.2-phase1",
+		"v1.9.0":         ">=1.10.0 <=1.22.2-phase1",
+		"v1.8.0":         ">=1.9.0 <=1.22.2-phase1",
 	}
 	return updates.Channel{
 		Name: "stable",
@@ -269,6 +281,7 @@ func spannerChannel() updates.Channel {
 
 func memoryChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.22.2", Tag: "v1.22.2"},
 		{ID: "v1.21.0", Tag: "v1.21.0"},
 		{ID: "v1.19.1", Tag: "v1.19.1"},
 		{ID: "v1.18.0", Tag: "v1.18.0"},
