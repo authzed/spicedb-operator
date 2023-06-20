@@ -51,6 +51,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		mapper        meta.RESTMapper
 		testNamespace string
 		image         string
+		config        map[string]any
 		secret        *corev1.Secret
 		cluster       *v1alpha1.SpiceDBCluster
 
@@ -100,15 +101,14 @@ var _ = Describe("SpiceDBClusters", func() {
 			},
 		}
 
-		config := map[string]any{
+		config = map[string]any{
 			"envPrefix":         spicedbEnvPrefix,
 			"image":             image,
 			"cmd":               spicedbCmd,
 			"skipReleaseCheck":  "true",
 			"telemetryEndpoint": "",
 		}
-		jsonConfig, err := json.Marshal(config)
-		Expect(err).To(Succeed())
+
 		cluster = &v1alpha1.SpiceDBCluster{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       v1alpha1.SpiceDBClusterKind,
@@ -119,7 +119,6 @@ var _ = Describe("SpiceDBClusters", func() {
 				Namespace: testNamespace,
 			},
 			Spec: v1alpha1.ClusterSpec{
-				Config:    jsonConfig,
 				SecretRef: "spicedb",
 			},
 		}
@@ -136,6 +135,10 @@ var _ = Describe("SpiceDBClusters", func() {
 		// be modified by nested BeforeEach blocks.
 		_, err := kclient.CoreV1().Secrets(testNamespace).Create(ctx, secret, metav1.CreateOptions{})
 		Expect(err).To(Succeed())
+
+		jsonConfig, err := json.Marshal(config)
+		Expect(err).To(Succeed())
+		cluster.Spec.Config = jsonConfig
 		u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(cluster)
 		Expect(err).To(Succeed())
 		_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Create(ctx, &unstructured.Unstructured{Object: u}, metav1.CreateOptions{})
@@ -233,7 +236,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
 
-					config := map[string]any{
+					config = map[string]any{
 						"skipReleaseCheck":              "true",
 						"telemetryEndpoint":             "",
 						"datastoreEngine":               db.Engine,
@@ -246,10 +249,6 @@ var _ = Describe("SpiceDBClusters", func() {
 					for k, v := range db.ExtraConfig {
 						config[k] = v
 					}
-					jsonConfig, err := json.Marshal(config)
-					Expect(err).To(Succeed())
-
-					cluster.Spec.Config = jsonConfig
 				})
 
 				JustBeforeEach(func() {
@@ -271,7 +270,7 @@ var _ = Describe("SpiceDBClusters", func() {
 					BeforeEach(func() {
 						// this installs from the head of the current channel, skip validating image
 						image = ""
-						config := map[string]any{
+						config = map[string]any{
 							"skipReleaseCheck":               true,
 							"telemetryEndpoint":              "",
 							"datastoreEngine":                db.Engine,
@@ -287,9 +286,6 @@ var _ = Describe("SpiceDBClusters", func() {
 						for k, v := range db.ExtraConfig {
 							config[k] = v
 						}
-						jsonConfig, err := json.Marshal(config)
-						Expect(err).To(BeNil())
-						cluster.Spec.Config = jsonConfig
 						cluster.Spec.Patches = []v1alpha1.Patch{{
 							Kind: "Deployment",
 							Patch: json.RawMessage(`{
@@ -305,7 +301,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							ktypes.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace},
 							ktypes.NamespacedName{Name: "spicedb-grpc-tls", Namespace: cluster.Namespace},
 						)
-						_, err = kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
+						_, err := kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
 						Expect(err).To(Succeed())
 						DeferCleanup(kclient.CoreV1().Secrets(cluster.Namespace).Delete, ctx, tlsSecret.Name, metav1.DeleteOptions{})
 					})
@@ -329,6 +325,59 @@ var _ = Describe("SpiceDBClusters", func() {
 				})
 			})
 
+			When("a valid spicedb cluster with a pod error", func() {
+				BeforeEach(func() {
+					secret.StringData = map[string]string{
+						"datastore_uri":     db.DatastoreURI,
+						"preshared_key":     "testtesttesttest",
+						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
+					}
+					config = map[string]any{
+						"skipMigrations":                true,
+						"datastoreEngine":               db.Engine,
+						"image":                         image,
+						"envPrefix":                     spicedbEnvPrefix,
+						"cmd":                           "badcmd",
+						"datastoreConnpoolReadMinOpen":  "1",
+						"datastoreConnpoolWriteMinOpen": "1",
+					}
+					for k, v := range db.ExtraConfig {
+						config[k] = v
+					}
+				})
+
+				It("reports un-recovered pod errors on the status", func() {
+					var lastCluster *v1alpha1.SpiceDBCluster
+					var condition *metav1.Condition
+					Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: cluster.Name, Namespace: testNamespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
+						condition = c.FindStatusCondition(v1alpha1.ConditionTypeRolloutError)
+						logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
+						lastCluster = c
+						return condition == nil
+					})
+					Expect(condition).To(EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH: unknown`)))
+
+					By("fixing the config problem")
+					config["cmd"] = spicedbCmd
+					config["skipMigrations"] = "false"
+					jsonConfig, err := json.Marshal(config)
+					Expect(err).To(Succeed())
+					lastCluster.Spec.Config = jsonConfig
+					u, err := runtime.DefaultUnstructuredConverter.ToUnstructured(lastCluster)
+					Expect(err).To(Succeed())
+					_, err = client.Resource(v1alpha1ClusterGVR).Namespace(cluster.Namespace).Update(ctx, &unstructured.Unstructured{Object: u}, metav1.UpdateOptions{})
+					Expect(err).To(Succeed())
+
+					By("the condition should be removed")
+					Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: cluster.Name, Namespace: testNamespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
+						condition = c.FindStatusCondition(v1alpha1.ConditionTypeRolloutError)
+						logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
+						return condition != nil
+					})
+					Expect(condition).To(BeNil())
+				})
+			})
+
 			When("a valid SpiceDBCluster and skipped migrations", func() {
 				BeforeEach(func() {
 					secret.StringData = map[string]string{
@@ -337,17 +386,15 @@ var _ = Describe("SpiceDBClusters", func() {
 						"preshared_key":     "testtesttesttest",
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
-					config, err := json.Marshal(map[string]any{
+					config = map[string]any{
 						"skipMigrations":                true,
 						"datastoreEngine":               db.Engine,
 						"image":                         image,
 						"envPrefix":                     spicedbEnvPrefix,
 						"cmd":                           spicedbCmd,
-						"datastoreConnpoolReadMinOpen":  1,
-						"datastoreConnpoolWriteMinOpen": 1,
-					})
-					Expect(err).To(Succeed())
-					cluster.Spec.Config = config
+						"datastoreConnpoolReadMinOpen":  "1",
+						"datastoreConnpoolWriteMinOpen": "1",
+					}
 				})
 
 				It("Starts SpiceDB without migrating", func() {
@@ -381,7 +428,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						"migration_secrets": "kaitain-bootstrap-token=testtesttesttest,sharewith-bootstrap-token=testtesttesttest,thumper-bootstrap-token=testtesttesttest,metrics-proxy-token=testtesttesttest",
 					}
 
-					config := map[string]any{
+					config = map[string]any{
 						"skipReleaseCheck":              "true",
 						"telemetryEndpoint":             "",
 						"datastoreEngine":               engine,
@@ -400,10 +447,6 @@ var _ = Describe("SpiceDBClusters", func() {
 						}
 						config[k] = v
 					}
-					jsonConfig, err := json.Marshal(config)
-					Expect(err).To(Succeed())
-
-					cluster.Spec.Config = jsonConfig
 					cluster.Spec.Channel = channel
 					cluster.Spec.Version = from
 				})
@@ -527,7 +570,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 			Describe("there is a series of required migrations", Label("published"), func() {
 				BeforeEach(func() {
-					classConfig := map[string]any{
+					config = map[string]any{
 						"skipReleaseCheck":             "true",
 						"telemetryEndpoint":            "",
 						"logLevel":                     "debug",
@@ -535,10 +578,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						"tlsSecretName":                "spicedb-grpc-tls",
 						"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
 					}
-					jsonConfig, err := json.Marshal(classConfig)
-					Expect(err).To(BeNil())
 					cluster.Spec.Version = "v1.13.0"
-					cluster.Spec.Config = jsonConfig
 
 					secret.StringData = map[string]string{
 						"datastore_uri":     db.DatastoreURI,
@@ -550,7 +590,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						ktypes.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace},
 						ktypes.NamespacedName{Name: "spicedb-grpc-tls", Namespace: cluster.Namespace},
 					)
-					_, err = kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
+					_, err := kclient.CoreV1().Secrets(cluster.Namespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
 					Expect(err).To(Succeed())
 					DeferCleanup(kclient.CoreV1().Secrets(cluster.Namespace).Delete, ctx, tlsSecret.Name, metav1.DeleteOptions{})
 				})

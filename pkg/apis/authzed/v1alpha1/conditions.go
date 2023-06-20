@@ -22,6 +22,7 @@ const (
 	ConditionTypeConfigWarnings      = "ConfigurationWarning"
 	ConditionTypePreconditionsFailed = "PreconditionsFailed"
 	ConditionTypeRolling             = "RollingDeployment"
+	ConditionTypeRolloutError        = "RolloutError"
 
 	ConditionReasonMissingSecret = "MissingSecret"
 )
@@ -91,6 +92,16 @@ func NewRollingCondition(message string) metav1.Condition {
 		Type:               ConditionTypeRolling,
 		Status:             metav1.ConditionTrue,
 		Reason:             "WaitingForDeploymentAvailability",
+		LastTransitionTime: metav1.NewTime(time.Now()),
+		Message:            message,
+	}
+}
+
+func NewPodErrorCondition(message string) metav1.Condition {
+	return metav1.Condition{
+		Type:               ConditionTypeRolloutError,
+		Status:             metav1.ConditionTrue,
+		Reason:             "PodError",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 		Message:            message,
 	}

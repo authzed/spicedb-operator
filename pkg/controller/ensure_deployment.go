@@ -6,6 +6,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 
@@ -17,10 +18,11 @@ import (
 )
 
 type DeploymentHandler struct {
-	applyDeployment  func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
-	deleteDeployment func(ctx context.Context, nn types.NamespacedName) error
-	patchStatus      func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
-	next             handler.ContextHandler
+	applyDeployment   func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error)
+	deleteDeployment  func(ctx context.Context, nn types.NamespacedName) error
+	getDeploymentPods func(ctx context.Context) []*corev1.Pod
+	patchStatus       func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
+	next              handler.ContextHandler
 }
 
 func (m *DeploymentHandler) Handle(ctx context.Context) {
@@ -95,6 +97,23 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		return
 	}
 
+	// check if any pods have errors
+	if cachedDeployment.Status.ReadyReplicas != config.Replicas {
+		for _, p := range m.getDeploymentPods(ctx) {
+			for _, s := range p.Status.ContainerStatuses {
+				if s.LastTerminationState.Terminated != nil {
+					currentStatus.SetStatusCondition(v1alpha1.NewPodErrorCondition(s.LastTerminationState.Terminated.Message))
+					if err := m.patchStatus(ctx, currentStatus); err != nil {
+						QueueOps.RequeueAPIErr(ctx, err)
+						return
+					}
+					QueueOps.RequeueAfter(ctx, 2*time.Second)
+					return
+				}
+			}
+		}
+	}
+
 	// wait for deployment to be available
 	if cachedDeployment.Status.AvailableReplicas != config.Replicas ||
 		cachedDeployment.Status.ReadyReplicas != config.Replicas ||
@@ -116,8 +135,10 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	}
 
 	// deployment is finished rolling out, remove condition
-	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) {
+	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolling) ||
+		currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeRolloutError) {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeRolling)
+		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeRolloutError)
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
 			QueueOps.RequeueAPIErr(ctx, err)
 			return

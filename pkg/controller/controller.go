@@ -361,6 +361,15 @@ func (c *Controller) ensureDeployment(next ...handler.Handler) handler.Handler {
 			logr.FromContextOrDiscard(ctx).V(4).Info("deleting deployment", "namespace", nn.Namespace, "name", nn.Name)
 			return c.kclient.AppsV1().Deployments(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 		},
+		getDeploymentPods: func(ctx context.Context) []*corev1.Pod {
+			return component.NewIndexedComponent(
+				typed.IndexerFor[*corev1.Pod](c.Registry, typed.NewRegistryKey(DependentFactoryKey, corev1.SchemeGroupVersion.WithResource("pods"))),
+				metadata.OwningClusterIndex,
+				func(ctx context.Context) labels.Selector {
+					return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentSpiceDBLabelValue)
+				},
+			).List(ctx, CtxClusterNN.MustValue(ctx))
+		},
 		patchStatus: c.PatchStatus,
 		next:        handler.Handlers(next).MustOne(),
 	})
