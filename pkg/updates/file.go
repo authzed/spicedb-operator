@@ -348,6 +348,9 @@ func (g *UpdateGraph) Difference(other *UpdateGraph) *UpdateGraph {
 					idx := slices.IndexFunc(thisChannel.Nodes, func(state State) bool {
 						return state.ID == id
 					})
+					if idx < 0 {
+						panic(fmt.Sprintf("%s referenced in an edge for channel %s/%s, but not found in nodes for channel", id, thisChannel.Metadata[DatastoreMetadataKey], thisChannel.Name))
+					}
 					keepNodes = append(keepNodes, thisChannel.Nodes[idx])
 				}
 
