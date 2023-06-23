@@ -190,7 +190,7 @@ func StartOperator(rc *rest.Config) {
 	go func() {
 		defer GinkgoRecover()
 		options := run.RecommendedOptions()
-		options.DebugAddress = ":"
+		options.DebugAddress = "localhost:"
 		options.BootstrapCRDs = true
 		options.OperatorConfigPath = WriteConfig(GetConfig(ProposedGraphFile))
 		_ = options.Run(ctx, cmdutil.NewFactory(ClientGetter{config: rc}))

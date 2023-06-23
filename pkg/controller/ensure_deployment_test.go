@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
@@ -27,6 +28,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		migrationHash       string
 		secretHash          string
 		existingDeployments []*appsv1.Deployment
+		pods                []*corev1.Pod
 		currentStatus       *v1alpha1.SpiceDBCluster
 		replicas            int32
 
@@ -161,6 +163,94 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			expectNext:        nextKey,
 			expectStatus:      &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{}}},
 		},
+		{
+			name: "reports error on status if pod has an error",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolling,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "WaitingForDeploymentAvailability",
+				Message:            "Rolling deployment to latest version",
+			}}}},
+			existingDeployments: []*appsv1.Deployment{{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					metadata.SpiceDBConfigKey: "n5c7h5dfhb4hd7h5b6h689h577h576q",
+				}},
+				Status: appsv1.DeploymentStatus{
+					Replicas:          2,
+					UpdatedReplicas:   1,
+					AvailableReplicas: 1,
+					ReadyReplicas:     1,
+				},
+			}},
+			pods: []*corev1.Pod{{Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+				LastTerminationState: corev1.ContainerState{
+					Terminated: &corev1.ContainerStateTerminated{
+						Message: "pod error",
+					},
+				},
+			}}}}},
+			replicas:          2,
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			expectPatchStatus: true,
+			expectStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolling,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "WaitingForDeploymentAvailability",
+				Message:            "Rolling deployment to latest version",
+			}, {
+				Type:               v1alpha1.ConditionTypeRolloutError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "PodError",
+				Message:            "pod error",
+			}}}},
+			expectRequeueAfter: true,
+		},
+		{
+			name: "removes error status if all pods are healthy",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolling,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "WaitingForDeploymentAvailability",
+				Message:            "Rolling deployment to latest version",
+			}, {
+				Type:               v1alpha1.ConditionTypeRolloutError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "PodError",
+				Message:            "pod error",
+			}}}},
+			existingDeployments: []*appsv1.Deployment{{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					metadata.SpiceDBConfigKey: "n5c7h5dfhb4hd7h5b6h689h577h576q",
+				}},
+				Status: appsv1.DeploymentStatus{
+					Replicas:          2,
+					UpdatedReplicas:   2,
+					AvailableReplicas: 2,
+					ReadyReplicas:     2,
+				},
+			}},
+			// still shows a last error, but the error isn't bubbled up
+			// because ReadyReplicas matches the desired replicas
+			pods: []*corev1.Pod{{Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+				LastTerminationState: corev1.ContainerState{
+					Terminated: &corev1.ContainerStateTerminated{
+						Message: "pod error",
+					},
+				},
+			}}}}},
+			replicas:          2,
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			expectPatchStatus: true,
+			expectNext:        nextKey,
+			expectStatus:      &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -195,6 +285,9 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				deleteDeployment: func(ctx context.Context, nn types.NamespacedName) error {
 					deleteCalled = true
 					return nil
+				},
+				getDeploymentPods: func(ctx context.Context) []*corev1.Pod {
+					return tt.pods
 				},
 				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
