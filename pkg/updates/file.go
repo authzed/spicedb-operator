@@ -31,11 +31,47 @@ type Channel struct {
 	Nodes []State `json:"nodes,omitempty"`
 }
 
+// EqualIdentity determines if two channels represent the same stream of
+// updates by comparing their metadata.
 func (c Channel) EqualIdentity(other Channel) bool {
 	if c.Metadata == nil || other.Metadata == nil {
 		return false
 	}
 	return c.Name == other.Name && c.Metadata[DatastoreMetadataKey] == other.Metadata[DatastoreMetadataKey]
+}
+
+// Clone makes a copy of a channel
+func (c Channel) Clone() Channel {
+	return Channel{
+		Name:     c.Name,
+		Metadata: maps.Clone(c.Metadata),
+		Edges:    maps.Clone(c.Edges),
+		Nodes:    slices.Clone(c.Nodes),
+	}
+}
+
+// RemoveNodes nodes removes the specified nodes and any edges to or from those
+// nodes.
+func (c Channel) RemoveNodes(nodes []State) Channel {
+	for _, n := range nodes {
+		// remove edges to/from removed nodes
+		delete(c.Edges, n.ID)
+		for from, edges := range c.Edges {
+			for i, to := range edges {
+				if to == n.ID {
+					c.Edges[from] = slices.Delete(c.Edges[from], i, i+1)
+				}
+			}
+		}
+
+		// remove node from node list
+		idx := slices.Index(c.Nodes, n)
+		if idx < 0 {
+			continue
+		}
+		c.Nodes = slices.Delete(c.Nodes, idx, idx+1)
+	}
+	return c
 }
 
 // State is a "node" in the channel graph, indicating how to run at that

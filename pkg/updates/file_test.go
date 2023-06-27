@@ -558,15 +558,180 @@ func GraphEqual(t testing.TB, a, b *UpdateGraph) {
 		for _, bc := range b.Channels {
 			if ac.EqualIdentity(bc) {
 				equalCount++
-				require.ElementsMatch(t, ac.Nodes, bc.Nodes)
-				for source, edges := range ac.Edges {
-					require.ElementsMatch(t, edges, bc.Edges[source])
-				}
-				for source, edges := range bc.Edges {
-					require.ElementsMatch(t, edges, ac.Edges[source])
-				}
+				ChannelEqual(t, ac, bc)
 			}
 		}
 	}
 	require.Equal(t, len(a.Channels), equalCount)
+}
+
+func ChannelEqual(t testing.TB, ac, bc Channel) {
+	require.ElementsMatch(t, ac.Nodes, bc.Nodes)
+	for source, edges := range ac.Edges {
+		require.ElementsMatch(t, edges, bc.Edges[source])
+	}
+	for source, edges := range bc.Edges {
+		require.ElementsMatch(t, edges, ac.Edges[source])
+	}
+}
+
+func TestChannelRemoveNodes(t *testing.T) {
+	tests := []struct {
+		name         string
+		before, want Channel
+		removeNodes  []State
+	}{
+		{
+			name: "no difference",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+			removeNodes: []State{},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+		{
+			name: "remove node with no edges",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}, {ID: "C"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+			removeNodes: []State{{ID: "C"}},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+		{
+			name: "remove node with to edges",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}, {ID: "C"}},
+				Edges: map[string][]string{
+					"A": {"B", "C"},
+				},
+			},
+			removeNodes: []State{{ID: "C"}},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+		{
+			name: "remove node with from edges",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}, {ID: "C"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+					"C": {"B"},
+				},
+			},
+			removeNodes: []State{{ID: "C"}},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+		{
+			name: "remove node with from and to edges",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}, {ID: "C"}},
+				Edges: map[string][]string{
+					"A": {"B", "C"},
+					"C": {"B"},
+				},
+			},
+			removeNodes: []State{{ID: "C"}},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+		{
+			name: "remove node with many from and to edges",
+			before: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}, {ID: "C"}},
+				Edges: map[string][]string{
+					"A": {"B", "C"},
+					"B": {"C"},
+					"C": {"B", "A"},
+				},
+			},
+			removeNodes: []State{{ID: "C"}},
+			want: Channel{
+				Name:     "test",
+				Metadata: map[string]string{DatastoreMetadataKey: "test"},
+				Nodes:    []State{{ID: "A"}, {ID: "B"}},
+				Edges: map[string][]string{
+					"A": {"B"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ChannelEqual(t, tt.before.RemoveNodes(tt.removeNodes), tt.want)
+		})
+	}
+}
+
+func TestChannelClone(t *testing.T) {
+	before := Channel{
+		Name:     "test",
+		Metadata: map[string]string{DatastoreMetadataKey: "test"},
+		Nodes:    []State{{ID: "A"}, {ID: "B"}},
+		Edges: map[string][]string{
+			"A": {"B"},
+		},
+	}
+	want := Channel{
+		Name:     "test",
+		Metadata: map[string]string{DatastoreMetadataKey: "test"},
+		Nodes:    []State{{ID: "A"}, {ID: "B"}},
+		Edges: map[string][]string{
+			"A": {"B"},
+		},
+	}
+	cloned := before.Clone()
+	ChannelEqual(t, cloned, want)
+	before.Nodes = append(before.Nodes, State{ID: "C"})
+	require.NotEqual(t, before, want)
 }
