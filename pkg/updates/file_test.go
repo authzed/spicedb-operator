@@ -551,6 +551,8 @@ func TestUpdateGraphDifference(t *testing.T) {
 }
 
 func GraphEqual(t testing.TB, a, b *UpdateGraph) {
+	t.Helper()
+
 	require.Equal(t, len(a.Channels), len(b.Channels))
 
 	equalCount := 0
@@ -566,6 +568,8 @@ func GraphEqual(t testing.TB, a, b *UpdateGraph) {
 }
 
 func ChannelEqual(t testing.TB, ac, bc Channel) {
+	t.Helper()
+
 	require.ElementsMatch(t, ac.Nodes, bc.Nodes)
 	for source, edges := range ac.Edges {
 		require.ElementsMatch(t, edges, bc.Edges[source])
