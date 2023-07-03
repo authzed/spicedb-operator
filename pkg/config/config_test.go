@@ -145,6 +145,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -155,6 +156,84 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
+			},
+			wantPortCount: 4,
+		},
+		{
+			name: "override termination log",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+                        "terminationLogPath": "/alt/path"
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "cockroachdb",
+					DatastoreURI:       "uri",
+					TargetSpiceDBImage: "image:v1",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:           "info",
+					SkipMigrations:     false,
+					Name:               "test",
+					Namespace:          "test",
+					UID:                "1",
+					Replicas:           2,
+					PresharedKey:       "psk",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					ServiceAccountName: "test",
+					DispatchEnabled:    true,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/alt/path",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/alt/path",
 			},
 			wantPortCount: 4,
 		},
@@ -218,6 +297,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "memory",
 						"dispatchClusterEnabled": "false",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -226,6 +306,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_ENGINE=memory",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 3,
 		},
@@ -272,6 +353,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -282,6 +364,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -328,6 +411,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -338,6 +422,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -403,6 +488,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -413,6 +499,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -478,6 +565,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -488,6 +576,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -557,6 +646,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -567,6 +657,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -639,6 +730,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -649,6 +741,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -716,6 +809,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -726,6 +820,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -793,6 +888,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -803,6 +899,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -872,6 +969,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -882,6 +980,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -954,6 +1053,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -964,6 +1064,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1033,6 +1134,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -1043,6 +1145,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1114,6 +1217,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -1124,6 +1228,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1193,6 +1298,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -1203,6 +1309,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1271,6 +1378,7 @@ func TestNewConfig(t *testing.T) {
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "false",
+						"terminationLogPath":     "/dev/termination-log",
 					},
 				},
 			},
@@ -1280,6 +1388,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 3,
 		},
@@ -1351,6 +1460,7 @@ func TestNewConfig(t *testing.T) {
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
 						"dispatchClusterEnabled":  "true",
+						"terminationLogPath":      "/dev/termination-log",
 					},
 				},
 			},
@@ -1362,6 +1472,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1437,6 +1548,7 @@ func TestNewConfig(t *testing.T) {
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
 						"dispatchClusterEnabled":  "true",
+						"terminationLogPath":      "/dev/termination-log",
 					},
 				},
 			},
@@ -1448,6 +1560,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1527,6 +1640,7 @@ func TestNewConfig(t *testing.T) {
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
 						"dispatchClusterEnabled":  "true",
+						"terminationLogPath":      "/dev/termination-log",
 					},
 				},
 			},
@@ -1538,6 +1652,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
 				"SPICEDB_DATASTORE_MIGRATION_PHASE=phase1",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1605,6 +1720,7 @@ func TestNewConfig(t *testing.T) {
 						"datastoreEngine":             "spanner",
 						"dispatchClusterEnabled":      "true",
 						"datastoreSpannerCredentials": "/spanner-credentials/credentials.json",
+						"terminationLogPath":          "/dev/termination-log",
 					},
 				},
 			},
@@ -1616,6 +1732,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DATASTORE_ENGINE=spanner",
 				"SPICEDB_DATASTORE_SPANNER_CREDENTIALS=/spanner-credentials/credentials.json",
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
 			wantPortCount: 4,
 		},
@@ -1842,6 +1959,7 @@ spec:
 									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
 									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
 									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
+									applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
 								).
 								WithResources(applycorev1.ResourceRequirements().
 									WithRequests(corev1.ResourceList{
@@ -1951,6 +2069,7 @@ spec:
 									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
 									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
 									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
+									applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
 								).
 								WithResources(applycorev1.ResourceRequirements().
 									WithRequests(corev1.ResourceList{
