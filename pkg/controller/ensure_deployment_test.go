@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -206,6 +207,67 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				LastTransitionTime: now,
 				Reason:             "PodError",
 				Message:            "pod error",
+			}}}},
+			expectRequeueAfter: true,
+		},
+		{
+			name: "updates error message if newer pod has a different message",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolling,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "WaitingForDeploymentAvailability",
+				Message:            "Rolling deployment to latest version",
+			}}}},
+			existingDeployments: []*appsv1.Deployment{{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					metadata.SpiceDBConfigKey: "n5c7h5dfhb4hd7h5b6h689h577h576q",
+				}},
+				Status: appsv1.DeploymentStatus{
+					Replicas:          2,
+					UpdatedReplicas:   1,
+					AvailableReplicas: 1,
+					ReadyReplicas:     1,
+				},
+			}},
+			pods: []*corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{CreationTimestamp: metav1.NewTime(now.Add(1 * time.Hour))},
+					Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+						LastTerminationState: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								Message: "pod error",
+							},
+						},
+					}}},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{CreationTimestamp: now},
+					Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
+						LastTerminationState: corev1.ContainerState{
+							Terminated: &corev1.ContainerStateTerminated{
+								Message: "new pod error",
+							},
+						},
+					}}},
+				},
+			},
+			replicas:          2,
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			expectPatchStatus: true,
+			expectStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolling,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "WaitingForDeploymentAvailability",
+				Message:            "Rolling deployment to latest version",
+			}, {
+				Type:               v1alpha1.ConditionTypeRolloutError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             "PodError",
+				Message:            "new pod error",
 			}}}},
 			expectRequeueAfter: true,
 		},
