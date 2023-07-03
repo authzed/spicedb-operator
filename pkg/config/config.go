@@ -364,6 +364,11 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		}
 	}
 
+	// set the termination log path to the kube default
+	if len(passthroughConfig["terminationLogPath"]) == 0 {
+		passthroughConfig["terminationLogPath"] = "/dev/termination-log"
+	}
+
 	spiceConfig.Passthrough = passthroughConfig
 
 	out := &Config{
