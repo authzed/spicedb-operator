@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -99,6 +100,11 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 
 	// check if any pods have errors
 	if cachedDeployment.Status.ReadyReplicas != config.Replicas {
+		// sort pods by newest first
+		pods := m.getDeploymentPods(ctx)
+		sort.Slice(pods, func(i, j int) bool {
+			return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
+		})
 		for _, p := range m.getDeploymentPods(ctx) {
 			for _, s := range p.Status.ContainerStatuses {
 				if s.LastTerminationState.Terminated != nil {
