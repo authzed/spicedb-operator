@@ -418,6 +418,8 @@ func (c *Config) toEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 	// controller (dispatch address), has some direct effect on the cluster
 	// (tls), or lives in an external secret (preshared key).
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
+		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_POD_NAME").WithValueFrom(
+			applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_GRPC_PRESHARED_KEY").
 			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
