@@ -150,6 +150,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -227,6 +228,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -302,6 +304,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_ENGINE=memory",
@@ -358,6 +361,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -416,6 +420,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -493,6 +498,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -570,6 +576,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -651,6 +658,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -735,6 +743,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -814,6 +823,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -893,6 +903,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -974,6 +985,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1058,6 +1070,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1139,6 +1152,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1222,6 +1236,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1240,7 +1255,7 @@ func TestNewConfig(t *testing.T) {
 						"logLevel": "debug",
 						"migrationLogLevel": "info",
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"skipMigrations": "true"
 					}
 				`)},
 				globalConfig: OperatorConfig{
@@ -1303,6 +1318,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=debug",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1383,6 +1399,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=debug",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1465,6 +1482,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=debug",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1553,6 +1571,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=debug",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1645,6 +1664,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=debug",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1725,6 +1745,7 @@ func TestNewConfig(t *testing.T) {
 				},
 			},
 			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
 				"SPICEDB_LOG_LEVEL=info",
 				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
 				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
@@ -1783,8 +1804,16 @@ func envVarFromStrings(envs []string) []*applycorev1.EnvVarApplyConfiguration {
 		if value != "" {
 			valuePtr = &value
 		}
-		// hack for the sake of simplifying test fixtures
-		// if it's lowercase key, we assume it's a secret
+
+		if _, ref, ok := strings.Cut(value, "FIELD_REF="); ok {
+			valueFrom = &applycorev1.EnvVarSourceApplyConfiguration{
+				FieldRef: &applycorev1.ObjectFieldSelectorApplyConfiguration{
+					FieldPath: &ref,
+				},
+			}
+			valuePtr = nil
+		}
+
 		if _, ok := secrets[name]; ok {
 			localname := ""
 			valueFrom = &applycorev1.EnvVarSourceApplyConfiguration{
@@ -1885,7 +1914,7 @@ func TestDeploymentContainerNameBackCompat(t *testing.T) {
 					{
 						"logLevel": "debug",
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"skipMigrations": "true"
 					}
 				`),
 					Patches: []v1alpha1.Patch{{
@@ -1895,7 +1924,7 @@ spec:
   template:
     spec:
       containers:
-      - name: test-spicedb 
+      - name: test-spicedb
         resources:
           requests:
             memory: "64Mi"
@@ -1953,6 +1982,7 @@ spec:
 							applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
 								WithCommand("spicedb", "serve").
 								WithEnv(
+									applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
 									applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
 									applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
 									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
@@ -1995,7 +2025,7 @@ spec:
 					{
 						"logLevel": "debug",
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"skipMigrations": "true"
 					}
 				`),
 					Patches: []v1alpha1.Patch{{
@@ -2005,7 +2035,7 @@ spec:
   template:
     spec:
       containers:
-      - name: test-spicedb 
+      - name: test-spicedb
         resources:
           requests:
             memory: "64Mi"
@@ -2063,6 +2093,7 @@ spec:
 							applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
 								WithCommand("spicedb", "serve").
 								WithEnv(
+									applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
 									applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
 									applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
 									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
