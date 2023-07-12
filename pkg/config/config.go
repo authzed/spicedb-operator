@@ -36,6 +36,8 @@ const (
 	tlsVolume          = "tls"
 	dispatchTLSVolume  = "dispatch-tls"
 	telemetryTLSVolume = "telemetry-tls"
+	labelsVolume       = "podlabels"
+	annotationsVolume  = "podannotations"
 
 	DefaultTLSKeyFile = "/tls/tls.key"
 	DefaultTLSCrtFile = "/tls/tls.crt"
@@ -54,6 +56,8 @@ type key[V comparable] struct {
 
 var (
 	imageKey                          = newStringKey("image")
+	projectLabels                     = newBoolOrStringKey("projectLabels", true)
+	projectAnnotations                = newBoolOrStringKey("projectAnnotations", true)
 	tlsSecretNameKey                  = newStringKey("tlsSecretName")
 	dispatchCAKey                     = newStringKey("dispatchUpstreamCASecretName")
 	dispatchEnabledKey                = newBoolOrStringKey("dispatchEnabled", true)
@@ -151,6 +155,8 @@ type SpiceConfig struct {
 	ExtraPodAnnotations            map[string]string
 	ExtraServiceAccountAnnotations map[string]string
 	ServiceAccountName             string
+	ProjectLabels                  bool
+	ProjectAnnotations             bool
 	Passthrough                    map[string]string
 }
 
@@ -168,6 +174,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	passthroughConfig := make(map[string]string, 0)
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
+
 	spiceConfig := SpiceConfig{
 		Name:                         cluster.Name,
 		Namespace:                    cluster.Namespace,
@@ -193,6 +200,16 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	datastoreEngine := datastoreEngineKey.pop(config)
 	if len(datastoreEngine) == 0 {
 		errs = append(errs, fmt.Errorf("datastoreEngine is a required field"))
+	}
+
+	var err error
+	spiceConfig.ProjectLabels, err = projectLabels.pop(config)
+	if err != nil {
+		warnings = append(warnings, fmt.Errorf("defaulting to false: %w", err))
+	}
+	spiceConfig.ProjectAnnotations, err = projectAnnotations.pop(config)
+	if err != nil {
+		warnings = append(warnings, fmt.Errorf("defaulting to false: %w", err))
 	}
 
 	// if there's a required edge from the current image, that edge is taken
@@ -562,6 +579,27 @@ func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 			applycorev1.KeyToPath().WithKey(spannerCredsFileName).WithPath(spannerCredsFileName),
 		)))
 	}
+	if c.ProjectLabels {
+		volumes = append(volumes, applycorev1.Volume().WithName(labelsVolume).
+			WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+				applycorev1.DownwardAPIVolumeFile().
+					WithPath("labels").
+					WithFieldRef(applycorev1.ObjectFieldSelector().
+						WithFieldPath("metadata.labels"),
+					),
+			)))
+	}
+	if c.ProjectAnnotations {
+		volumes = append(volumes, applycorev1.Volume().WithName(annotationsVolume).
+			WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+				applycorev1.DownwardAPIVolumeFile().
+					WithPath("annotations").
+					WithFieldRef(applycorev1.ObjectFieldSelector().
+						WithFieldPath("metadata.annotations"),
+					),
+			)))
+	}
+
 	return volumes
 }
 
@@ -572,6 +610,12 @@ func (c *Config) jobVolumeMounts() []*applycorev1.VolumeMountApplyConfiguration 
 	}
 	if len(c.SpannerCredsSecretRef) > 0 {
 		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(spannerVolume).WithMountPath(spannerCredsPath).WithReadOnly(true))
+	}
+	if c.ProjectLabels {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"))
+	}
+	if c.ProjectAnnotations {
+		volumeMounts = append(volumeMounts, applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"))
 	}
 	return volumeMounts
 }

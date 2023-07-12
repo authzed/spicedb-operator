@@ -142,6 +142,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -219,6 +221,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -294,6 +298,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    false,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "memory",
 						"dispatchClusterEnabled": "false",
@@ -350,6 +356,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -408,6 +416,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -485,6 +495,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -562,6 +574,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -643,6 +657,8 @@ func TestNewConfig(t *testing.T) {
 					},
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -727,6 +743,8 @@ func TestNewConfig(t *testing.T) {
 					},
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -806,6 +824,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -885,6 +905,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -966,6 +988,8 @@ func TestNewConfig(t *testing.T) {
 					},
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1050,6 +1074,8 @@ func TestNewConfig(t *testing.T) {
 					},
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1130,7 +1156,9 @@ func TestNewConfig(t *testing.T) {
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},
-					DispatchEnabled: true,
+					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1213,7 +1241,9 @@ func TestNewConfig(t *testing.T) {
 					ExtraServiceAccountAnnotations: map[string]string{
 						"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com",
 					},
-					DispatchEnabled: true,
+					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1295,6 +1325,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "true",
@@ -1375,6 +1407,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    false,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":        "cockroachdb",
 						"dispatchClusterEnabled": "false",
@@ -1456,6 +1490,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1544,6 +1580,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1636,6 +1674,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":         "cockroachdb",
 						"datastoreMigrationPhase": "phase1",
@@ -1716,6 +1756,8 @@ func TestNewConfig(t *testing.T) {
 					SpiceDBCmd:         "spicedb",
 					ServiceAccountName: "test",
 					DispatchEnabled:    true,
+					ProjectLabels:      true,
+					ProjectAnnotations: true,
 					Passthrough: map[string]string{
 						"datastoreEngine":             "spanner",
 						"dispatchClusterEnabled":      "true",
@@ -1984,7 +2026,28 @@ spec:
 									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
 										WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
 								).
+								WithVolumeMounts(
+									applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
+									applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
+								).
 								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+						).WithVolumes(
+							applycorev1.Volume().WithName(labelsVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("labels").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.labels"),
+										),
+								)),
+							applycorev1.Volume().WithName(annotationsVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("annotations").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.annotations"),
+										),
+								)),
 						)))),
 		},
 		{
@@ -2094,7 +2157,28 @@ spec:
 									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
 										WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
 								).
+								WithVolumeMounts(
+									applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
+									applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
+								).
 								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+						).WithVolumes(
+							applycorev1.Volume().WithName(labelsVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("labels").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.labels"),
+										),
+								)),
+							applycorev1.Volume().WithName(annotationsVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("annotations").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.annotations"),
+										),
+								)),
 						)))),
 		},
 	}
