@@ -433,6 +433,165 @@ func TestComputeTarget(t *testing.T) {
 			},
 			expectedState: State{ID: "v1.0.0"},
 		},
+		{
+			name: "switching channel, current version is also in the target channel",
+			graph: &UpdateGraph{Channels: []Channel{
+				{
+					Name:     "rapid",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}, "v1.0.1": {"v1.0.2"}},
+					Nodes:    []State{{ID: "v1.0.2"}, {ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+				{
+					Name:     "regular",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+			}},
+			engine:    "cockroachdb",
+			channel:   "rapid",
+			version:   "v1.0.1",
+			baseImage: "ghcr.io/authzed/spicedb",
+			currentVersion: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+			},
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "rapid",
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
+		{
+			name: "switching channel, version is in target channel, not setting explicit version",
+			graph: &UpdateGraph{Channels: []Channel{
+				{
+					Name:     "rapid",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}, "v1.0.1": {"v1.0.2"}},
+					Nodes:    []State{{ID: "v1.0.2"}, {ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+				{
+					Name:     "regular",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+			}},
+			engine:    "cockroachdb",
+			channel:   "rapid",
+			baseImage: "ghcr.io/authzed/spicedb",
+			currentVersion: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+			},
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.2",
+				Channel: "rapid",
+			},
+			expectedState: State{ID: "v1.0.2"},
+		},
+		{
+			name: "switching channel and taking an update edge at the same time",
+			graph: &UpdateGraph{Channels: []Channel{
+				{
+					Name:     "rapid",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}, "v1.0.1": {"v1.0.2"}},
+					Nodes:    []State{{ID: "v1.0.2"}, {ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+				{
+					Name:     "regular",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+			}},
+			engine:    "cockroachdb",
+			channel:   "rapid",
+			version:   "v1.0.2",
+			baseImage: "ghcr.io/authzed/spicedb",
+			currentVersion: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+			},
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.2",
+				Channel: "rapid",
+			},
+			expectedState: State{ID: "v1.0.2"},
+		},
+		{
+			name: "switching channel, current version is not in the target channel",
+			graph: &UpdateGraph{Channels: []Channel{
+				{
+					Name:     "rapid",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.2"}},
+					Nodes:    []State{{ID: "v1.0.2"}, {ID: "v1.0.0"}},
+				},
+				{
+					Name:     "regular",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+			}},
+			engine:    "cockroachdb",
+			channel:   "rapid",
+			version:   "v1.0.1",
+			baseImage: "ghcr.io/authzed/spicedb",
+			currentVersion: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+			},
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{
+					v1alpha1.SpiceDBVersionAttributesNotInChannel,
+				},
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
+		{
+			name: "switching channel, not setting explicit version, version not in target channel",
+			graph: &UpdateGraph{Channels: []Channel{
+				{
+					Name:     "rapid",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.2"}},
+					Nodes:    []State{{ID: "v1.0.2"}, {ID: "v1.0.0"}},
+				},
+				{
+					Name:     "regular",
+					Metadata: map[string]string{"datastore": "cockroachdb"},
+					Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+				},
+			}},
+			engine:    "cockroachdb",
+			channel:   "rapid",
+			baseImage: "ghcr.io/authzed/spicedb",
+			currentVersion: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+			},
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "regular",
+				Attributes: []v1alpha1.SpiceDBVersionAttributes{
+					v1alpha1.SpiceDBVersionAttributesNotInChannel,
+				},
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
 	}
 
 	for _, tt := range table {

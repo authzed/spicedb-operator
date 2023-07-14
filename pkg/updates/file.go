@@ -218,7 +218,6 @@ func explodeImage(image string) (baseImage, tag, digest string) {
 
 // ComputeTarget determines the target update version and state given an update
 // graph and the proper context.
-// TODO: test that this does the right thing when switching channels
 func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, rolling bool) (baseImage string, target *v1alpha1.SpiceDBVersion, state State, err error) {
 	baseImage, tag, digest := explodeImage(image)
 
@@ -258,8 +257,14 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		}
 	}
 
-	target = &v1alpha1.SpiceDBVersion{
-		Channel: channel,
+	target = &v1alpha1.SpiceDBVersion{}
+	// Default to the currentVersion we're working towards.
+	if currentVersion != nil {
+		currentVersion.DeepCopyInto(target)
+	}
+
+	if len(channel) > 0 {
+		target.Channel = channel
 	}
 
 	// If version is explicit, and there's no current version yet, just install
@@ -268,11 +273,6 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		target.Name = state.ID
 		target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
 		return
-	}
-
-	// Default to the currentVersion we're working towards.
-	if currentVersion != nil {
-		currentVersion.DeepCopyInto(target)
 	}
 
 	// If version is explicit, and the explicit version matches the current
@@ -285,6 +285,20 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 	var currentState State
 	if currentVersion != nil {
 		currentState = updateSource.State(currentVersion.Name)
+
+		// If no current state, we're switching channels but the specified version
+		// isn't there, so we're stuck on the current version for now.
+		if len(currentState.ID) == 0 {
+			var source Source
+			source, err = g.SourceForChannel(engine, currentVersion.Channel)
+			if err != nil {
+				err = fmt.Errorf("error fetching update source: %w", err)
+				return
+			}
+			currentState = source.State(currentVersion.Name)
+			target.Channel = currentVersion.Channel
+			target.Attributes = append(target.Attributes, v1alpha1.SpiceDBVersionAttributesNotInChannel)
+		}
 	}
 
 	// If cluster is rolling, return the current state as reported by the status
@@ -318,7 +332,6 @@ func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, e
 		if len(targetVersion) == 0 {
 			// There's no next currentVersion, so use the current state.
 			state = currentState
-			target = currentVersion
 			return
 		}
 		if targetVersion != updateSource.NextVersionWithoutMigrations(currentVersion.Name) {

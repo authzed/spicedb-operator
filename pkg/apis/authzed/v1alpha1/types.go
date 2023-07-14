@@ -186,6 +186,7 @@ var (
 	SpiceDBVersionAttributesMigration            SpiceDBVersionAttributes = "migration"
 	SpiceDBVersionAttributesIncompatibleDispatch SpiceDBVersionAttributes = "incompatibleDispatch"
 	SpiceDBVersionAttributesLatest               SpiceDBVersionAttributes = "latest"
+	SpiceDBVersionAttributesNotInChannel         SpiceDBVersionAttributes = "notInDesiredChannel"
 )
 
 type SpiceDBVersion struct {
