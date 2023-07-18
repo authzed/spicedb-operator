@@ -99,7 +99,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	}
 
 	// check if any pods have errors
-	if cachedDeployment.Status.ReadyReplicas != config.Replicas {
+	if cachedDeployment.Status.UnavailableReplicas > 0 {
 		// sort pods by newest first
 		pods := m.getDeploymentPods(ctx)
 		sort.Slice(pods, func(i, j int) bool {
