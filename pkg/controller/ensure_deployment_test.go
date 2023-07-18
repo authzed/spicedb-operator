@@ -178,10 +178,11 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
 				}},
 				Status: appsv1.DeploymentStatus{
-					Replicas:          2,
-					UpdatedReplicas:   1,
-					AvailableReplicas: 1,
-					ReadyReplicas:     1,
+					Replicas:            2,
+					UpdatedReplicas:     1,
+					AvailableReplicas:   1,
+					ReadyReplicas:       1,
+					UnavailableReplicas: 1,
 				},
 			}},
 			pods: []*corev1.Pod{{Status: corev1.PodStatus{ContainerStatuses: []corev1.ContainerStatus{{
@@ -224,10 +225,11 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
 				}},
 				Status: appsv1.DeploymentStatus{
-					Replicas:          2,
-					UpdatedReplicas:   1,
-					AvailableReplicas: 1,
-					ReadyReplicas:     1,
+					Replicas:            2,
+					UpdatedReplicas:     1,
+					AvailableReplicas:   1,
+					ReadyReplicas:       1,
+					UnavailableReplicas: 1,
 				},
 			}},
 			pods: []*corev1.Pod{
