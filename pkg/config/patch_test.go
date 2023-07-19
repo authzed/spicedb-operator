@@ -25,6 +25,7 @@ func TestApplyPatches(t *testing.T) {
 type patchTestCase[K any] struct {
 	name        string
 	object      K
+	out         K
 	patches     []v1alpha1.Patch
 	wantErr     error
 	want        K
@@ -35,14 +36,14 @@ type patchTestCase[K any] struct {
 func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			count, patched, err := ApplyPatches(tt.object, tt.patches)
+			count, patched, err := ApplyPatches(tt.object, tt.out, tt.patches)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
 			require.Equal(t, tt.wantErr, err)
 			wantBytes, err := json.Marshal(tt.want)
 			require.NoError(t, err)
-			objectBytes, err := json.Marshal(tt.object)
+			objectBytes, err := json.Marshal(tt.out)
 			require.NoError(t, err)
 			require.JSONEq(t, string(wantBytes), string(objectBytes))
 			require.Equal(t, tt.wantPatched, patched)
@@ -55,6 +56,7 @@ var patchBasicTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]
 	{
 		name:   "does nothing if kind doesn't match",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "ServiceAccount",
 			Patch: json.RawMessage(`
@@ -69,6 +71,7 @@ metadata:
 	{
 		name:   "does nothing if kind is omittied",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Patch: json.RawMessage(`
 metadata:
@@ -82,6 +85,7 @@ metadata:
 	{
 		name:   "add two labels with separate patches",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{
 			{
 				Kind: "*",
@@ -106,6 +110,7 @@ metadata:
 	{
 		name:   "later patches have higher precedence",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{
 			{
 				Kind: "*",
@@ -133,6 +138,7 @@ var patchFormatTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration
 	{
 		name:   "add labels to unpatchedDeployment (smp, yaml)",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -148,6 +154,7 @@ metadata:
 	{
 		name:   "add labels to unpatchedDeployment (smp, json)",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`{
@@ -166,6 +173,7 @@ metadata:
 	{
 		name:   "add labels to unpatchedDeployment (JSON6902, yaml)",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -182,6 +190,7 @@ metadata:
 	{
 		name:   "add labels to unpatchedDeployment (JSON6902, json)",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind:  "Deployment",
 			Patch: json.RawMessage(`{"op": "add", "path": "/metadata/labels", "value":{"added":"via-patch"}}`),
@@ -195,9 +204,10 @@ metadata:
 		name: "add labels to unpatchedDeployment without affecting existing labels (JSON6902, json)",
 		object: applyappsv1.Deployment("test", "test").
 			WithLabels(map[string]string{"initial": "label"}),
+		out: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind:  "Deployment",
-			Patch: json.RawMessage(`{"op": "add", "path": "/metadata/labels", "value":{"added":"via-patch"}}`),
+			Patch: json.RawMessage(`{"op": "add", "path": "/metadata/labels/added", "value":"via-patch"}`),
 		}},
 		want: applyappsv1.Deployment("test", "test").WithLabels(
 			map[string]string{
@@ -212,6 +222,7 @@ metadata:
 		name: "add labels to unpatchedDeployment without affecting existing labels (smp, json)",
 		object: applyappsv1.Deployment("test", "test").
 			WithLabels(map[string]string{"initial": "label"}),
+		out: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`{
@@ -234,6 +245,7 @@ metadata:
 	{
 		name:   "add labels to unpatchedDeployment with a wildcard match (smp, yaml)",
 		object: applyappsv1.Deployment("test", "test"),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "*",
 			Patch: json.RawMessage(`
@@ -252,6 +264,7 @@ var schedulerPatchTests = []patchTestCase[*applyappsv1.DeploymentApplyConfigurat
 	{
 		name:   "specify tolerations",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -281,6 +294,7 @@ spec:
 	{
 		name:   "specify node selector",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -305,6 +319,7 @@ spec:
 	{
 		name:   "specify node name",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -328,6 +343,7 @@ spec:
 	{
 		name:   "specify node affinity",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -367,6 +383,7 @@ spec:
 	{
 		name:   "specify topology spread constraints",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -400,6 +417,7 @@ spec:
 	{
 		name:   "specify resource requests and limits",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -453,6 +471,7 @@ spec:
 					)),
 				),
 			),
+		out: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -488,6 +507,7 @@ var fileMountTests = []patchTestCase[*applyappsv1.DeploymentApplyConfiguration]{
 	{
 		name:   "mount a file from a configmap",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -543,6 +563,7 @@ spec:
 						)),
 				),
 			),
+		out: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -617,6 +638,7 @@ spec:
 						)),
 				),
 			),
+		out: applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -651,8 +673,7 @@ spec:
 						WithName("container").WithVolumeMounts(
 						applycorev1.VolumeMount().
 							WithName("config-volume").
-							WithMountPath("/etc/config").
-							WithReadOnly(true),
+							WithMountPath("/etc/config"),
 						applycorev1.VolumeMount().
 							WithName("initial").
 							WithReadOnly(true).
@@ -666,6 +687,7 @@ spec:
 	{
 		name:   "mount secret from aws with csi secret driver",
 		object: baseDeployment(),
+		out:    applyappsv1.Deployment("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "Deployment",
 			Patch: json.RawMessage(`
@@ -715,6 +737,7 @@ var workloadIdentityPatchTests = []patchTestCase[*applycorev1.ServiceAccountAppl
 	{
 		name:   "add annotations to a serviceaccount",
 		object: applycorev1.ServiceAccount("test", "test"),
+		out:    applycorev1.ServiceAccount("test", "test"),
 		patches: []v1alpha1.Patch{{
 			Kind: "ServiceAccount",
 			Patch: json.RawMessage(`

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	jsonpatch "github.com/evanphx/json-patch"
-	"k8s.io/apimachinery/pkg/util/errors"
+	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -20,7 +20,7 @@ const wildcard = "*"
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
 // that occurred.
-func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) {
+func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch) (int, bool, error) {
 	// marshal object to json for patching
 	encoded, err := json.Marshal(object)
 	if err != nil {
@@ -72,7 +72,7 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue
 				}
-				if err := json.Unmarshal(patched, object); err != nil {
+				if err := json.Unmarshal(patched, out); err != nil {
 					errs = append(errs, fmt.Errorf("error converting patched object for patch %d back to object: %w", i, err))
 					continue
 				}
@@ -84,7 +84,7 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 					errs = append(errs, fmt.Errorf("error applying patch %d to object: %w", i, err))
 					continue
 				}
-				if err := json.Unmarshal(patched, object); err != nil {
+				if err := json.Unmarshal(patched, out); err != nil {
 					errs = append(errs, fmt.Errorf("error converting patched object from patch %d back to object: %w", i, err))
 					continue
 				}
@@ -94,10 +94,14 @@ func ApplyPatches[K any](object K, patches []v1alpha1.Patch) (int, bool, error) 
 		}
 	}
 
+	if err := json.Unmarshal(encoded, out); err != nil {
+		errs = append(errs, fmt.Errorf("error converting back to object: %w", err))
+	}
+
 	diff := false
 	if count > 0 {
 		// return true if there were patches defined and the output bytes differ
 		diff = !bytes.Equal(encoded, initial)
 	}
-	return count, diff, errors.NewAggregate(errs)
+	return count, diff, kerrors.NewAggregate(errs)
 }
