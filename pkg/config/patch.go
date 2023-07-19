@@ -72,20 +72,12 @@ func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch) (int, bool, er
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue
 				}
-				if err := json.Unmarshal(patched, out); err != nil {
-					errs = append(errs, fmt.Errorf("error converting patched object for patch %d back to object: %w", i, err))
-					continue
-				}
 				encoded = patched
 			} else {
 				json6902patch := jsonpatch.Patch([]jsonpatch.Operation{json6902op})
 				patched, err := json6902patch.Apply(encoded)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error applying patch %d to object: %w", i, err))
-					continue
-				}
-				if err := json.Unmarshal(patched, out); err != nil {
-					errs = append(errs, fmt.Errorf("error converting patched object from patch %d back to object: %w", i, err))
 					continue
 				}
 				encoded = patched

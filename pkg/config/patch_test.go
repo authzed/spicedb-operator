@@ -731,6 +731,125 @@ spec:
 		wantPatched: true,
 		wantCount:   1,
 	},
+	{
+		name: "mount multiple volumes in multiple patches with multiple existing volumes, SMP",
+		object: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(
+							applycorev1.Volume().WithName("initial").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("existing")),
+							applycorev1.Volume().WithName("labels").
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("labels").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.labels"),
+										),
+								)),
+						).
+						WithContainers(applycorev1.Container().
+							WithName("container").WithVolumeMounts(
+							applycorev1.VolumeMount().
+								WithName("initial").
+								WithReadOnly(true).
+								WithMountPath("/etc/config/existing"),
+							applycorev1.VolumeMount().
+								WithName("labels").
+								WithMountPath("/etc/podlabels"),
+						),
+						)),
+				),
+			),
+		out: applyappsv1.Deployment("test", "test"),
+		patches: []v1alpha1.Patch{{
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+spec:
+  template:
+    spec:
+      volumes:
+      - name:  config-volume
+        configMap:
+          name: special-config
+      containers:
+      - name: container
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config
+`),
+		}, {
+			Kind: "Deployment",
+			Patch: json.RawMessage(`
+spec:
+  template:
+    spec:
+      volumes:
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: "spicedb-aws-secrets"
+      containers:
+      - name: container
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+`),
+		}},
+		want: applyappsv1.Deployment("test", "test").
+			WithSpec(applyappsv1.DeploymentSpec().
+				WithTemplate(applycorev1.PodTemplateSpec().
+					WithSpec(applycorev1.PodSpec().
+						WithVolumes(
+							applycorev1.Volume().
+								WithName("secrets-store-inline").
+								WithCSI(applycorev1.CSIVolumeSource().
+									WithDriver("secrets-store.csi.k8s.io").
+									WithReadOnly(true).
+									WithVolumeAttributes(map[string]string{"secretProviderClass": "spicedb-aws-secrets"})),
+							applycorev1.Volume().
+								WithName("config-volume").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("special-config")),
+							applycorev1.Volume().
+								WithName("initial").
+								WithConfigMap(applycorev1.ConfigMapVolumeSource().
+									WithName("existing")),
+							applycorev1.Volume().WithName("labels").
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("labels").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.labels"),
+										),
+								)),
+						).WithContainers(applycorev1.Container().
+						WithName("container").WithVolumeMounts(
+						applycorev1.VolumeMount().
+							WithName("secrets-store-inline").
+							WithMountPath("/mnt/secrets-store").
+							WithReadOnly(true),
+						applycorev1.VolumeMount().
+							WithName("config-volume").
+							WithMountPath("/etc/config"),
+						applycorev1.VolumeMount().
+							WithName("initial").
+							WithReadOnly(true).
+							WithMountPath("/etc/config/existing"),
+						applycorev1.VolumeMount().
+							WithName("labels").
+							WithMountPath("/etc/podlabels"),
+					))),
+				),
+			),
+		wantPatched: true,
+		wantCount:   2,
+	},
 }
 
 var workloadIdentityPatchTests = []patchTestCase[*applycorev1.ServiceAccountApplyConfiguration]{
