@@ -15,6 +15,7 @@ import (
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/magefile/mage/target"
+	"github.com/samber/lo"
 	kind "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/fs"
@@ -57,7 +58,7 @@ func (Test) E2e() error {
 		return err
 	}
 
-	if err := sh.RunWithV(map[string]string{
+	if err := runDirWithV("magefiles", map[string]string{
 		"PROVISION":            "true",
 		"SPICEDB_CMD":          os.Getenv("SPICEDB_CMD"),
 		"SPICEDB_ENV_PREFIX":   os.Getenv("SPICEDB_ENV_PREFIX"),
@@ -65,7 +66,7 @@ func (Test) E2e() error {
 		"IMAGES":               os.Getenv("IMAGES"),
 		"PROPOSED_GRAPH_FILE":  e2eProposedGraph,
 		"VALIDATED_GRAPH_FILE": e2eValidatedGraph,
-	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "e2e"); err != nil {
+	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e"); err != nil {
 		return err
 	}
 
@@ -107,7 +108,14 @@ func (g Gen) All() error {
 // Run kube api codegen
 func (Gen) Api() error {
 	fmt.Println("generating apis")
-	return sh.RunV("go", "generate", "./...")
+	if err := runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "object", "rbac:roleName=spicedb-operator-role", "paths=../pkg/apis/...", "output:crd:artifacts:config=../config/crds", "output:rbac:artifacts:config=../config/rbac"); err != nil {
+		return err
+	}
+	if err := runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "rbac:roleName=spicedb-operator", "paths=../pkg/...", "output:rbac:dir=../config/rbac"); err != nil {
+		return err
+	}
+	// generate an extra copy of the crd to embed for bootstrapping
+	return runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "paths=../pkg/apis/...", "output:crd:artifacts:config=../pkg/crds")
 }
 
 // Generate the update graph
@@ -172,4 +180,25 @@ func fileEqual(a, b string) (bool, error) {
 	}
 
 	return aHash.Sum64() == bHash.Sum64(), nil
+}
+
+// run a command in a directory
+func runDirV(dir string, cmd string, args ...string) error {
+	c := exec.Command(cmd, args...)
+	c.Dir = dir
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
+}
+
+// run a command in a directory
+func runDirWithV(dir string, env map[string]string, cmd string, args ...string) error {
+	c := exec.Command(cmd, args...)
+	c.Dir = dir
+	c.Env = append(os.Environ(), lo.MapToSlice(env, func(key string, value string) string {
+		return key + "=" + value
+	})...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
 }
