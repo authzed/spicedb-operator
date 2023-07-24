@@ -24,6 +24,7 @@ jobs:
       - name: "Go Format"
         # using this instead of the authzed/actions version because `.`
         # properly ignores counterfeiter codegen
+        working-directory: "magefiles"
         run: "go run mvdan.cc/gofumpt -w ."
       - name: "Codegen"
         uses: "magefile/mage-action@v2"
