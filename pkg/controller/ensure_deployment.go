@@ -30,7 +30,7 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	// TODO: unconditional status change can be a separate handler
 	currentStatus := CtxCluster.MustValue(ctx)
 	// remove migrating condition if present and set the current migration hash
-	if currentStatus.IsStatusConditionTrue(v1alpha1.ConditionTypeMigrating) ||
+	if currentStatus.FindStatusCondition(v1alpha1.ConditionTypeMigrating) != nil ||
 		currentStatus.Status.CurrentMigrationHash != currentStatus.Status.TargetMigrationHash {
 		currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeMigrating)
 		currentStatus.Status.CurrentMigrationHash = currentStatus.Status.TargetMigrationHash

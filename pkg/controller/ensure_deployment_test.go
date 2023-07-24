@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -308,6 +309,29 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 					},
 				},
 			}}}}},
+			replicas:          2,
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			expectPatchStatus: true,
+			expectNext:        nextKey,
+			expectStatus:      &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{}}},
+		},
+		{
+			name: "removes migrating failed status",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{
+				v1alpha1.NewMigrationFailedCondition("postgres", "head", fmt.Errorf("err")),
+			}}},
+			existingDeployments: []*appsv1.Deployment{{
+				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+				}},
+				Status: appsv1.DeploymentStatus{
+					Replicas:          2,
+					UpdatedReplicas:   2,
+					AvailableReplicas: 2,
+					ReadyReplicas:     2,
+				},
+			}},
 			replicas:          2,
 			migrationHash:     "testtesttesttest",
 			secretHash:        "secret",
