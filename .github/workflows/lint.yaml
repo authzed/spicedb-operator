@@ -11,7 +11,7 @@ on:  # yamllint disable-line rule:truthy
     types:
       - "checks_requested"
 env:
-  GO_VERSION: "~1.19"
+  GO_VERSION: "~1.20"
 jobs:
   go-lint:
     name: "Lint Go"
@@ -39,6 +39,12 @@ jobs:
       - uses: "authzed/actions/go-mod-tidy@main"
         with:
           working_directory: "./tools"
+      - uses: "authzed/actions/go-mod-tidy@main"
+        with:
+          working_directory: "./magefiles"
+      - uses: "authzed/actions/go-mod-tidy@main"
+        with:
+          working_directory: "./e2e"
       - uses: "authzed/actions/go-generate@main"
       - uses: "authzed/actions/golangci-lint@main"
 

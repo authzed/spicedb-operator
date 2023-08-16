@@ -62,7 +62,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n549h6bh675h699h697h86h5cchdfq",
+				metadata.SpiceDBConfigKey: "n59hb4h5f7h5b7h5dchddh79h67dq",
 			}}}},
 			expectNext: nextKey,
 		},
@@ -71,7 +71,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n549h6bh675h699h697h86h5cchdfq",
+				metadata.SpiceDBConfigKey: "n59hb4h5f7h5b7h5dchddh79h67dq",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
@@ -81,7 +81,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret1",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "n549h6bh675h699h697h86h5cchdfq",
+				metadata.SpiceDBConfigKey: "n59hb4h5f7h5b7h5dchddh79h67dq",
 			}}}},
 			expectApply:        true,
 			expectRequeueAfter: true,
@@ -116,7 +116,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -149,7 +149,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -176,7 +176,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:            2,
@@ -223,7 +223,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:            2,
@@ -291,7 +291,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -323,7 +323,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "n87h696h5dch65dh56h699h5d6h5dbq",
+					metadata.SpiceDBConfigKey: "n66bhc9h5c9h6fh8ch559h58bhb4q",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
