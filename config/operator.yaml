@@ -71,10 +71,6 @@ spec:
               drop:
                 - ALL
           terminationMessagePolicy: FallbackToLogsOnError
-          volumeMounts:
-            - mountPath: /tmp
-              name: scratch
-              subPath: tmp
       securityContext:
         runAsUser: 65532
         runAsGroup: 65532
@@ -82,10 +78,6 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: spicedb-operator
-      volumes:
-        - name: scratch
-          emptyDir:
-            sizeLimit: 512Mi
 ---
 apiVersion: v1
 kind: ServiceAccount
