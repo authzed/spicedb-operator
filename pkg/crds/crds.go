@@ -1,6 +1,7 @@
 package crds
 
 import (
+	"context"
 	"embed"
 
 	"k8s.io/client-go/rest"
@@ -11,6 +12,6 @@ import (
 //go:embed *.yaml
 var crdFS embed.FS
 
-func BootstrapCRD(restConfig *rest.Config) error {
-	return libbootstrap.CRD(restConfig, crdFS, ".")
+func BootstrapCRD(ctx context.Context, restConfig *rest.Config) error {
+	return libbootstrap.CRDs(ctx, restConfig, crdFS, ".")
 }

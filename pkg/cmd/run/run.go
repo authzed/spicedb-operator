@@ -117,7 +117,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 
 	if o.BootstrapCRDs {
 		logger.V(3).Info("bootstrapping CRDs")
-		if err := crds.BootstrapCRD(restConfig); err != nil {
+		if err := crds.BootstrapCRD(ctx, restConfig); err != nil {
 			return err
 		}
 	}
