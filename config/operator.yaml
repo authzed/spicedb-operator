@@ -59,6 +59,13 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 15
+          resources:
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
           securityContext:
             runAsUser: 65532
             runAsGroup: 65532
