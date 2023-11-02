@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/authzed/controller-idioms/adopt"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -11,9 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/utils/pointer"
-
-	"github.com/authzed/controller-idioms/adopt"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -38,7 +37,7 @@ const (
 
 var (
 	ApplyForceOwned          = metav1.ApplyOptions{FieldManager: FieldManager, Force: true}
-	PatchForceOwned          = metav1.PatchOptions{FieldManager: FieldManager, Force: pointer.Bool(true)}
+	PatchForceOwned          = metav1.PatchOptions{FieldManager: FieldManager, Force: ptr.To(true)}
 	ManagedDependentSelector = MustParseSelector(fmt.Sprintf("%s=%s", OperatorManagedLabelKey, OperatorManagedLabelValue))
 )
 

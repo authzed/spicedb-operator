@@ -42,7 +42,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
@@ -91,7 +91,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		kclient: kclient,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
-		klogr.New(),
+		textlogger.NewLogger(textlogger.NewConfig()),
 		v1alpha1.SpiceDBClusterResourceName,
 		v1alpha1ClusterGVR,
 		QueueOps,
@@ -100,7 +100,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		c.syncOwnedResource,
 	)
 
-	fileInformerFactory, err := fileinformer.NewFileInformerFactory(klogr.New())
+	fileInformerFactory, err := fileinformer.NewFileInformerFactory(textlogger.NewLogger(textlogger.NewConfig()))
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (c *Controller) loadConfig(path string) {
 		return
 	}
 
-	logger := klogr.New()
+	logger := textlogger.NewLogger(textlogger.NewConfig())
 	logger.V(3).Info("loading config", "path", path)
 
 	file, err := os.Open(path)
@@ -290,7 +290,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	logger := klogr.New().WithValues(
+	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(cluster).MarshalLog(),
@@ -325,7 +325,7 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 		return
 	}
 
-	logger := klogr.New().WithValues(
+	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(objMeta),
