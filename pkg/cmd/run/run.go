@@ -18,7 +18,7 @@ import (
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/term"
 	ctrlmanageropts "k8s.io/controller-manager/options"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
 	"github.com/authzed/controller-idioms/manager"
@@ -103,7 +103,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
-	logger := klogr.New()
+	logger := textlogger.NewLogger(textlogger.NewConfig())
 
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
