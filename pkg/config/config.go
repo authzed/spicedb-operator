@@ -60,6 +60,7 @@ var (
 	projectAnnotations                = newBoolOrStringKey("projectAnnotations", true)
 	tlsSecretNameKey                  = newStringKey("tlsSecretName")
 	dispatchCAKey                     = newStringKey("dispatchUpstreamCASecretName")
+	dispatchCAFilePathKey             = newKey("dispatchUpstreamCAFilePath", "tls.crt")
 	dispatchEnabledKey                = newBoolOrStringKey("dispatchEnabled", true)
 	telemetryCAKey                    = newStringKey("telemetryCASecretName")
 	envPrefixKey                      = newKey("envPrefix", "SPICEDB")
@@ -149,6 +150,7 @@ type SpiceConfig struct {
 	TLSSecretName                  string
 	DispatchEnabled                bool
 	DispatchUpstreamCASecretName   string
+	DispatchUpstreamCASecretPath   string
 	TelemetryTLSCASecretName       string
 	SecretName                     string
 	ExtraPodLabels                 map[string]string
@@ -182,6 +184,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		TLSSecretName:                tlsSecretNameKey.pop(config),
 		ServiceAccountName:           serviceAccountNameKey.pop(config),
 		DispatchUpstreamCASecretName: dispatchCAKey.pop(config),
+		DispatchUpstreamCASecretPath: dispatchCAFilePathKey.pop(config),
 		TelemetryTLSCASecretName:     telemetryCAKey.pop(config),
 		EnvPrefix:                    envPrefixKey.pop(config),
 		SpiceDBCmd:                   spiceDBCmdKey.pop(config),
@@ -347,7 +350,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	}
 
 	if len(spiceConfig.DispatchUpstreamCASecretName) > 0 && spiceConfig.DispatchEnabled {
-		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/tls.crt"
+		passthroughConfig["dispatchUpstreamCAPath"] = "/dispatch-tls/" + spiceConfig.DispatchUpstreamCASecretPath
 	}
 
 	if len(spiceConfig.TelemetryTLSCASecretName) > 0 {
