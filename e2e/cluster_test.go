@@ -278,6 +278,7 @@ var _ = Describe("SpiceDBClusters", func() {
 							"cmd":                            spicedbCmd,
 							"tlsSecretName":                  "spicedb-grpc-tls",
 							"dispatchUpstreamCASecretName":   "spicedb-grpc-tls",
+							"dispatchUpstreamCAFilePath":     "ca.crt",
 							"serviceAccountName":             "spicedb-non-default",
 							"extraServiceAccountAnnotations": "authzed.com/e2e=true",
 							"datastoreConnpoolReadMinOpen":   1,
@@ -577,6 +578,7 @@ var _ = Describe("SpiceDBClusters", func() {
 						"datastoreEngine":              "postgres",
 						"tlsSecretName":                "spicedb-grpc-tls",
 						"dispatchUpstreamCASecretName": "spicedb-grpc-tls",
+						"dispatchUpstreamCAFilePath":   "ca.crt",
 					}
 					cluster.Spec.Version = "v1.13.0"
 
