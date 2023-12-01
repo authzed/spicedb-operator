@@ -13,11 +13,11 @@ require (
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/atomic v1.11.0
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
-	k8s.io/api v0.28.3
-	k8s.io/apimachinery v0.28.3
+	k8s.io/api v0.28.4
+	k8s.io/apimachinery v0.28.4
 	k8s.io/apiserver v0.28.3
-	k8s.io/cli-runtime v0.28.3
-	k8s.io/client-go v0.28.3
+	k8s.io/cli-runtime v0.28.4
+	k8s.io/client-go v0.28.4
 	k8s.io/component-base v0.28.3
 	k8s.io/controller-manager v0.28.3
 	k8s.io/klog/v2 v2.110.1
