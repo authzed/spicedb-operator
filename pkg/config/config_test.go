@@ -162,7 +162,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "override termination log",
@@ -243,7 +243,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/alt/path",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "memory",
@@ -320,7 +320,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 3,
+			wantPortCount: 4,
 		},
 		{
 			name: "set image with tag explicitly",
@@ -382,7 +382,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set image with digest explicitly",
@@ -444,7 +444,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set replicas as int",
@@ -525,7 +525,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set replicas as string",
@@ -606,7 +606,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra labels as string",
@@ -691,7 +691,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra labels as map",
@@ -779,7 +779,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "skip migrations bool",
@@ -862,7 +862,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "skip migrations string",
@@ -945,7 +945,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra annotations as string",
@@ -1030,7 +1030,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra annotations as map",
@@ -1118,7 +1118,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra service account with annotations as string",
@@ -1203,7 +1203,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set extra service account with annotations as map",
@@ -1290,7 +1290,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set different migration and spicedb log level",
@@ -1375,7 +1375,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "disable dispatch",
@@ -1458,7 +1458,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 3,
+			wantPortCount: 4,
 		},
 		{
 			name: "update graph pushes the current version forward",
@@ -1546,7 +1546,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "explicit channel and version, updates to the next in the channel",
@@ -1638,7 +1638,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "explicit channel and version, doesn't update past the explicit version",
@@ -1734,7 +1734,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 		{
 			name: "set spanner credentials",
@@ -1818,7 +1818,7 @@ func TestNewConfig(t *testing.T) {
 				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
 				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
 			},
-			wantPortCount: 4,
+			wantPortCount: 5,
 		},
 	}
 	for _, tt := range tests {
@@ -2065,6 +2065,7 @@ spec:
 									})).
 								WithPorts(
 									applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+									applycorev1.ContainerPort().WithContainerPort(50052).WithName("readonly-grpc"),
 									applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
 									applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
 									applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
@@ -2197,6 +2198,7 @@ spec:
 									})).
 								WithPorts(
 									applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+									applycorev1.ContainerPort().WithContainerPort(50052).WithName("readonly-grpc"),
 									applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
 									applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
 									applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
