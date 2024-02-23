@@ -98,7 +98,7 @@ func (m *MemorySource) Subgraph(head string) (Source, error) {
 		}
 	}
 
-	return newMemorySourceFromValidatedNodes(nodeSet, edges, orderedNodes)
+	return &MemorySource{Nodes: nodeSet, Edges: edges, OrderedNodes: orderedNodes}, nil
 }
 
 func (m *MemorySource) validateAllNodesPathToHead() error {
