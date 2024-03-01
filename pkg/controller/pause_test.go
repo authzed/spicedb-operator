@@ -107,7 +107,7 @@ func TestPauseHandler(t *testing.T) {
 			ctx = CtxCluster.WithValue(ctx, tt.cluster)
 			ctx = CtxCluster.WithValue(ctx, tt.cluster)
 			var called handler.Key
-			NewPauseHandler(func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+			NewPauseHandler(func(_ context.Context, patch *v1alpha1.SpiceDBCluster) error {
 				patchCalled = true
 
 				if tt.patchError != nil {
@@ -123,7 +123,7 @@ func TestPauseHandler(t *testing.T) {
 				}), "conditions not equal:\na: %#v\nb: %#v", tt.expectConditions, patch.Status.Conditions)
 
 				return nil
-			}, handler.ContextHandlerFunc(func(ctx context.Context) {
+			}, handler.ContextHandlerFunc(func(_ context.Context) {
 				called = nextKey
 			})).Handle(ctx)
 

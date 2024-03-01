@@ -108,9 +108,9 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 	if len(configFilePath) > 0 {
 		inf := fileInformerFactory.ForResource(fileinformer.FileGroupVersion.WithResource(configFilePath)).Informer()
 		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.loadConfig(configFilePath) },
-			UpdateFunc: func(_, obj interface{}) { c.loadConfig(configFilePath) },
-			DeleteFunc: func(obj interface{}) { c.loadConfig(configFilePath) },
+			AddFunc:    func(_ any) { c.loadConfig(configFilePath) },
+			UpdateFunc: func(_, _ any) { c.loadConfig(configFilePath) },
+			DeleteFunc: func(_ any) { c.loadConfig(configFilePath) },
 		}); err != nil {
 			return nil, err
 		}
@@ -126,8 +126,8 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		nil,
 	)
 	if _, err := ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
-		UpdateFunc: func(_, obj interface{}) { c.enqueue(v1alpha1ClusterGVR, obj) },
+		AddFunc:    func(obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
+		UpdateFunc: func(_, obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
 		// Delete is not used right now, we rely on ownerrefs to clean up
 	}); err != nil {
 		return nil, err
@@ -158,9 +158,9 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 			return nil, err
 		}
 		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj interface{}) { c.syncExternalResource(obj) },
-			UpdateFunc: func(_, obj interface{}) { c.syncExternalResource(obj) },
-			DeleteFunc: func(obj interface{}) { c.syncExternalResource(obj) },
+			AddFunc:    func(obj any) { c.syncExternalResource(obj) },
+			UpdateFunc: func(_, obj any) { c.syncExternalResource(obj) },
+			DeleteFunc: func(obj any) { c.syncExternalResource(obj) },
 		}); err != nil {
 			return nil, err
 		}
@@ -447,7 +447,7 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 				QueueOps.RequeueAPIErr(ctx, err)
 			}
 			// keep checking to see if the secret is added
-			QueueOps.Requeue(ctx)
+			QueueOps.RequeueErr(ctx, err)
 		},
 		typed.IndexerFor[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey, secretsGVR)),
 		func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {

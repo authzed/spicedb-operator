@@ -102,14 +102,14 @@ func TestRunMigrationHandler(t *testing.T) {
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
 
 			h := &MigrationRunHandler{
-				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+				patchStatus: func(_ context.Context, _ *v1alpha1.SpiceDBCluster) error {
 					return nil
 				},
-				applyJob: func(ctx context.Context, job *applybatchv1.JobApplyConfiguration) error {
+				applyJob: func(_ context.Context, _ *applybatchv1.JobApplyConfiguration) error {
 					applyCalled = true
 					return tt.jobApplyErr
 				},
-				deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
+				deleteJob: func(_ context.Context, _ types.NamespacedName) error {
 					deleteCalled = true
 					return tt.jobDeleteErr
 				},

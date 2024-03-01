@@ -115,13 +115,13 @@ func TestCheckMigrationsHandler(t *testing.T) {
 			var called handler.Key
 			h := &MigrationCheckHandler{
 				recorder: recorder,
-				nextDeploymentHandler: handler.ContextHandlerFunc(func(ctx context.Context) {
+				nextDeploymentHandler: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = HandlerDeploymentKey
 				}),
-				nextWaitForJobHandler: handler.ContextHandlerFunc(func(ctx context.Context) {
+				nextWaitForJobHandler: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = HandlerWaitForMigrationsKey
 				}),
-				nextMigrationRunHandler: handler.ContextHandlerFunc(func(ctx context.Context) {
+				nextMigrationRunHandler: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = HandlerMigrationRunKey
 				}),
 			}

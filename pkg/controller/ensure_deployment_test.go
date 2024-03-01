@@ -366,22 +366,22 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 
 			var called handler.Key
 			h := &DeploymentHandler{
-				applyDeployment: func(ctx context.Context, dep *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
+				applyDeployment: func(_ context.Context, _ *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 					applyCalled = true
 					return nil, nil
 				},
-				deleteDeployment: func(ctx context.Context, nn types.NamespacedName) error {
+				deleteDeployment: func(_ context.Context, _ types.NamespacedName) error {
 					deleteCalled = true
 					return nil
 				},
-				getDeploymentPods: func(ctx context.Context) []*corev1.Pod {
+				getDeploymentPods: func(_ context.Context) []*corev1.Pod {
 					return tt.pods
 				},
-				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+				patchStatus: func(_ context.Context, _ *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
 				},
-				next: handler.ContextHandlerFunc(func(ctx context.Context) {
+				next: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = nextKey
 				}),
 			}
