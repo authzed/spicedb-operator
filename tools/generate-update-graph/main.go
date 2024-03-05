@@ -44,7 +44,7 @@ func main() {
 
 func postgresChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.29.2", Tag: "v1.29.2", Migration: "add-rel-by-alive-resource-relation-subject"},
+		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "add-rel-by-alive-resource-relation-subject"},
 		{ID: "v1.26.0", Tag: "v1.26.0", Migration: "add-rel-by-alive-resource-relation-subject"},
 		{ID: "v1.25.0", Tag: "v1.25.0", Migration: "add-gc-covering-index"},
 		{ID: "v1.24.0", Tag: "v1.24.0", Migration: "add-gc-covering-index"},
@@ -77,7 +77,7 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transaction-timestamp-index"},
 	}
 	edgePatterns := map[string]string{
-		"v1.26.0":        ">=1.29.2",
+		"v1.26.0":        ">=1.29.5",
 		"v1.25.0":        ">=1.26.0",
 		"v1.24.0":        ">=1.25.0",
 		"v1.23.1":        ">=1.24.0",
@@ -122,7 +122,7 @@ func postgresChannel() updates.Channel {
 
 func crdbChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.29.2", Tag: "v1.29.2", Migration: "add-caveats"},
+		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "add-caveats"},
 		{ID: "v1.26.0", Tag: "v1.26.0", Migration: "add-caveats"},
 		{ID: "v1.25.0", Tag: "v1.25.0", Migration: "add-caveats"},
 		{ID: "v1.24.0", Tag: "v1.24.0", Migration: "add-caveats"},
@@ -153,7 +153,7 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transactions-table"},
 	}
 	edgePatterns := map[string]string{
-		"v1.26.0": ">=1.29.2",
+		"v1.26.0": ">=1.29.5",
 		"v1.25.0": ">=1.26.0",
 		"v1.24.0": ">=1.25.0",
 		"v1.23.1": ">=1.24.0",
@@ -195,7 +195,7 @@ func crdbChannel() updates.Channel {
 
 func mysqlChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.29.2", Tag: "v1.29.2", Migration: "watch_api_relation_tuple_index"},
+		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "watch_api_relation_tuple_index"},
 		{ID: "v1.26.0", Tag: "v1.26.0", Migration: "longblob_definitions"},
 		{ID: "v1.25.0", Tag: "v1.25.0", Migration: "longblob_definitions"},
 		{ID: "v1.24.0", Tag: "v1.24.0", Migration: "extend_object_id"},
@@ -221,7 +221,7 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id", Deprecated: true},
 	}
 	edgePatterns := map[string]string{
-		"v1.26.0": ">=1.29.2",
+		"v1.26.0": ">=1.29.5",
 		"v1.25.0": ">=1.26.0",
 		"v1.24.0": ">=1.25.0",
 		"v1.23.1": ">=1.24.0",
@@ -258,8 +258,8 @@ func mysqlChannel() updates.Channel {
 
 func spannerChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.29.2", Tag: "v1.29.2", Migration: "delete-older-changestreams"},
-		{ID: "v1.29.2-phase1", Tag: "v1.29.2", Migration: "register-combined-change-stream"},
+		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "delete-older-changestreams"},
+		{ID: "v1.29.5-phase1", Tag: "v1.29.5", Migration: "register-combined-change-stream"},
 		{ID: "v1.26.0", Tag: "v1.26.0", Migration: "drop-changelog-table"},
 		{ID: "v1.25.0", Tag: "v1.25.0", Migration: "drop-changelog-table"},
 		{ID: "v1.24.0", Tag: "v1.24.0", Migration: "drop-changelog-table"},
@@ -285,12 +285,12 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.8.0", Tag: "v1.8.0", Migration: "add-metadata-and-counters"},
 	}
 	edgePatterns := map[string]string{
-		"v1.29.2-phase1": "1.29.2",
-		"v1.26.0":        "1.29.2-phase1",
-		"v1.25.0":        ">=1.26.0 <=1.29.2-phase1",
-		"v1.24.0":        ">=1.25.0 <=1.29.2-phase1",
-		"v1.23.1":        ">=1.24.0 <=1.29.2-phase1",
-		"v1.22.2":        ">=1.23.1 <=1.29.2-phase1",
+		"v1.29.5-phase1": "1.29.5",
+		"v1.26.0":        "1.29.5-phase1",
+		"v1.25.0":        ">=1.26.0 <=1.29.5-phase1",
+		"v1.24.0":        ">=1.25.0 <=1.29.5-phase1",
+		"v1.23.1":        ">=1.24.0 <=1.29.5-phase1",
+		"v1.22.2":        ">=1.23.1 <=1.29.5-phase1",
 		"v1.22.2-phase2": "1.22.2",
 		"v1.22.2-phase1": "1.22.2-phase2",
 		"v1.21.0":        "1.22.2-phase1",
@@ -323,7 +323,7 @@ func spannerChannel() updates.Channel {
 
 func memoryChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.29.2", Tag: "v1.29.2"},
+		{ID: "v1.29.5", Tag: "v1.29.5"},
 		{ID: "v1.26.0", Tag: "v1.26.0"},
 		{ID: "v1.25.0", Tag: "v1.25.0"},
 		{ID: "v1.24.0", Tag: "v1.24.0"},
