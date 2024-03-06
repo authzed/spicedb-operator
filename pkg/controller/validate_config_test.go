@@ -243,12 +243,12 @@ func TestValidateConfigHandler(t *testing.T) {
 			})
 			var called handler.Key
 			h := &ValidateConfigHandler{
-				patchStatus: func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+				patchStatus: func(_ context.Context, _ *v1alpha1.SpiceDBCluster) error {
 					patchCalled = true
 					return nil
 				},
 				recorder: recorder,
-				next: handler.ContextHandlerFunc(func(ctx context.Context) {
+				next: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = nextKey
 				}),
 			}

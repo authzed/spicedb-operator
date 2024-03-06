@@ -61,7 +61,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 		Use:                   "run [flags]",
 		DisableFlagsInUseLine: true,
 		Short:                 "run SpiceDB operator",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			ctx := genericapiserver.SetupSignalContext()
 			cmdutil.CheckErr(o.Validate())
 			cmdutil.CheckErr(o.Run(ctx, f))

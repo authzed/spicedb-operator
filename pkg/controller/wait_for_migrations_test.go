@@ -66,10 +66,10 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 			var called handler.Key
 			h := &WaitForMigrationsHandler{
 				recorder: recorder,
-				nextSelfPause: handler.ContextHandlerFunc(func(ctx context.Context) {
+				nextSelfPause: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = HandlerSelfPauseKey
 				}),
-				nextDeploymentHandler: handler.ContextHandlerFunc(func(ctx context.Context) {
+				nextDeploymentHandler: handler.ContextHandlerFunc(func(_ context.Context) {
 					called = HandlerDeploymentKey
 				}),
 			}

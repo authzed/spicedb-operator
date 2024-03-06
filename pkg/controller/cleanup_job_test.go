@@ -159,17 +159,17 @@ func TestCleanupJobsHandler(t *testing.T) {
 			deletedPods := make([]string, 0)
 			deletedJobs := make([]string, 0)
 			h := &JobCleanupHandler{
-				getJobs: func(ctx context.Context) []*batchv1.Job {
+				getJobs: func(_ context.Context) []*batchv1.Job {
 					return tt.existingJobs
 				},
-				getJobPods: func(ctx context.Context) []*corev1.Pod {
+				getJobPods: func(_ context.Context) []*corev1.Pod {
 					return tt.existingJobPods
 				},
-				deletePod: func(ctx context.Context, nn types.NamespacedName) error {
+				deletePod: func(_ context.Context, nn types.NamespacedName) error {
 					deletedPods = append(deletedPods, nn.Name)
 					return nil
 				},
-				deleteJob: func(ctx context.Context, nn types.NamespacedName) error {
+				deleteJob: func(_ context.Context, nn types.NamespacedName) error {
 					deletedJobs = append(deletedJobs, nn.Name)
 					return nil
 				},
