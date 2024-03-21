@@ -19,8 +19,8 @@ jobs:
       codechange: "${{ steps.filter.outputs.codechange }}"
       graphchange: "${{ steps.graph-filter.outputs.graphchange }}"
     steps:
-      - uses: "actions/checkout@v2"
-      - uses: "dorny/paths-filter@v2"
+      - uses: "actions/checkout@v4"
+      - uses: "dorny/paths-filter@v3"
         id: "filter"
         with:
           filters: |
@@ -33,7 +33,7 @@ jobs:
               - "pkg/**"
               - "e2e/**"
               - "internal/**"
-      - uses: "dorny/paths-filter@v2"
+      - uses: "dorny/paths-filter@v3"
         id: "graph-filter"
         with:
           filters: |
@@ -46,7 +46,7 @@ jobs:
     name: "Build Binary"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v4"
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -59,7 +59,7 @@ jobs:
     name: "Build Container Image"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v4"
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -77,16 +77,16 @@ jobs:
     name: "Unit Tests"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v4"
         with:
           submodules: true
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
-      - uses: "docker/setup-qemu-action@v2"
-      - uses: "docker/setup-buildx-action@v2"
+      - uses: "docker/setup-qemu-action@v3"
+      - uses: "docker/setup-buildx-action@v3"
       - name: "Run Unit Tests"
-        uses: "magefile/mage-action@v2"
+        uses: "magefile/mage-action@v3"
         with:
           version: "latest"
           args: "test:unit"
@@ -98,7 +98,7 @@ jobs:
     name: "E2E Tests"
     runs-on: "ubuntu-latest-8-cores"
     steps:
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v4"
         if: |
           needs.paths-filter.outputs.graphchange == 'true'
         with:
@@ -106,7 +106,7 @@ jobs:
           token: "${{ secrets.AUTHZED_BOT_PAT }}"
           repository: "${{ github.event.pull_request.head.repo.full_name }}"
           ref: "${{ github.event.pull_request.head.ref }}"
-      - uses: "actions/checkout@v3"
+      - uses: "actions/checkout@v4"
         if: |
           needs.paths-filter.outputs.graphchange == 'false'
         with:
@@ -114,17 +114,17 @@ jobs:
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
-      - uses: "docker/setup-qemu-action@v2"
-      - uses: "docker/setup-buildx-action@v2"
+      - uses: "docker/setup-qemu-action@v3"
+      - uses: "docker/setup-buildx-action@v3"
       - name: "Run E2E Tests"
-        uses: "magefile/mage-action@v2"
+        uses: "magefile/mage-action@v3"
         with:
           version: "latest"
           args: "test:e2e"
       - name: "Check if validated update graph has changed"
         if: |
           needs.paths-filter.outputs.graphchange == 'true'
-        uses: "tj-actions/verify-changed-files@v13"
+        uses: "tj-actions/verify-changed-files@v19"
         id: "verify-changed-graph"
         with:
           files: |
@@ -139,7 +139,7 @@ jobs:
           default_author: "github_actor"
           message: "update validated graph after successful tests"
           pathspec_error_handling: "exitImmediately"
-      - uses: "actions/upload-artifact@v2"
+      - uses: "actions/upload-artifact@v4"
         if: "always()"
         # this upload step is really flaky, don't fail the job if it fails
         continue-on-error: true
