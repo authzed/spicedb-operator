@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go build ./cmd/...
 
-FROM alpine:3.19.1
+FROM cgr.dev/chainguard/static:latest
 
 COPY --from=builder /go/src/app/validated-update-graph.yaml /opt/operator/config.yaml
 COPY --from=builder /go/src/app/spicedb-operator /usr/local/bin/spicedb-operator
