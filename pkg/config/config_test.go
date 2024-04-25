@@ -2083,6 +2083,14 @@ spec:
 								).
 								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
 						).WithVolumes(
+							applycorev1.Volume().WithName(podNameVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("name").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.name"),
+										),
+								)),
 							applycorev1.Volume().WithName(labelsVolume).
 								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
 									applycorev1.DownwardAPIVolumeFile().
@@ -2215,6 +2223,14 @@ spec:
 								).
 								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
 						).WithVolumes(
+							applycorev1.Volume().WithName(podNameVolume).
+								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+									applycorev1.DownwardAPIVolumeFile().
+										WithPath("name").
+										WithFieldRef(applycorev1.ObjectFieldSelector().
+											WithFieldPath("metadata.name"),
+										),
+								)),
 							applycorev1.Volume().WithName(labelsVolume).
 								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
 									applycorev1.DownwardAPIVolumeFile().
