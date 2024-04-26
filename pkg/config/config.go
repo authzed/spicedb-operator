@@ -38,6 +38,7 @@ const (
 	telemetryTLSVolume = "telemetry-tls"
 	labelsVolume       = "podlabels"
 	annotationsVolume  = "podannotations"
+	podNameVolume      = "podname"
 
 	DefaultTLSKeyFile = "/tls/tls.key"
 	DefaultTLSCrtFile = "/tls/tls.crt"
@@ -576,6 +577,15 @@ func (c *Config) servicePorts() []*applycorev1.ServicePortApplyConfiguration {
 
 func (c *Config) jobVolumes() []*applycorev1.VolumeApplyConfiguration {
 	volumes := make([]*applycorev1.VolumeApplyConfiguration, 0)
+	volumes = append(volumes, applycorev1.Volume().WithName(podNameVolume).
+		WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+			applycorev1.DownwardAPIVolumeFile().
+				WithPath("name").
+				WithFieldRef(applycorev1.ObjectFieldSelector().
+					WithFieldPath("metadata.name"),
+				),
+		)))
+
 	if len(c.DatastoreTLSSecretName) > 0 {
 		volumes = append(volumes, applycorev1.Volume().WithName(dbTLSVolume).WithSecret(applycorev1.SecretVolumeSource().WithDefaultMode(420).WithSecretName(c.DatastoreTLSSecretName)))
 	}
