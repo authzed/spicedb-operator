@@ -26,7 +26,7 @@ jobs:
           filters: |
             codechange:
               - ".github/workflows/build-test.yaml"
-              - "Dockerfile"
+              - "Dockerfile.openshift"
               - "go.mod"
               - "go.sum"
               - "cmd/**"
@@ -66,7 +66,8 @@ jobs:
       - uses: "authzed/actions/docker-build@main"
         with:
           push: false
-          tags: "authzed/spicedb-operator:ci"
+          file: "Dockerfile.openshift"
+          tags: "spicedb-operator:ci"
           buildx: false
           qemu: false
 
@@ -96,7 +97,7 @@ jobs:
     if: |
       needs.paths-filter.outputs.codechange == 'true' ||  needs.paths-filter.outputs.graphchange == 'true'
     name: "E2E Tests"
-    runs-on: "ubuntu-latest-8-cores"
+    runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
         if: |
