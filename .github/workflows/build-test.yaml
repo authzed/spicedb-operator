@@ -10,8 +10,6 @@ on:  # yamllint disable-line rule:truthy
   pull_request:
     branches:
       - "*"
-env:
-  GO_VERSION: "~1.20"
 jobs:
   paths-filter:
     runs-on: "ubuntu-latest"
@@ -48,8 +46,6 @@ jobs:
     steps:
       - uses: "actions/checkout@v4"
       - uses: "authzed/actions/setup-go@main"
-        with:
-          go-version: "${{ env.GO_VERSION }}"
       - uses: "authzed/actions/go-build@main"
 
   image-build:
@@ -61,8 +57,6 @@ jobs:
     steps:
       - uses: "actions/checkout@v4"
       - uses: "authzed/actions/setup-go@main"
-        with:
-          go-version: "${{ env.GO_VERSION }}"
       - uses: "authzed/actions/docker-build@main"
         with:
           push: false
@@ -81,8 +75,6 @@ jobs:
         with:
           submodules: true
       - uses: "authzed/actions/setup-go@main"
-        with:
-          go-version: "${{ env.GO_VERSION }}"
       - uses: "docker/setup-qemu-action@v3"
       - uses: "docker/setup-buildx-action@v3"
       - name: "Run Unit Tests"
@@ -112,8 +104,6 @@ jobs:
         with:
           submodules: true
       - uses: "authzed/actions/setup-go@main"
-        with:
-          go-version: "${{ env.GO_VERSION }}"
       - uses: "docker/setup-qemu-action@v3"
       - uses: "docker/setup-buildx-action@v3"
       - name: "Run E2E Tests"
