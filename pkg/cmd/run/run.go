@@ -42,14 +42,17 @@ type Options struct {
 	BootstrapCRDs         bool
 	BootstrapSpicedbsPath string
 	OperatorConfigPath    string
+
+	MetricNamespace string
 }
 
 // RecommendedOptions builds a new options config with default values
 func RecommendedOptions() *Options {
 	return &Options{
-		ConfigFlags:  genericclioptions.NewConfigFlags(true),
-		DebugFlags:   ctrlmanageropts.RecommendedDebuggingOptions(),
-		DebugAddress: ":8080",
+		ConfigFlags:     genericclioptions.NewConfigFlags(true),
+		DebugFlags:      ctrlmanageropts.RecommendedDebuggingOptions(),
+		DebugAddress:    ":8080",
+		MetricNamespace: "spicedb_operator",
 	}
 }
 
@@ -147,7 +150,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	controllers = append(controllers, ctrl)
 
 	// register with metrics collector
-	spiceDBClusterMetrics := ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster]("spicedb_operator", "clusters", v1alpha1.SpiceDBClusterResourceName)
+	spiceDBClusterMetrics := ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster](o.MetricNamespace, "clusters", v1alpha1.SpiceDBClusterResourceName)
 	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](registry, typed.NewRegistryKey(controller.OwnedFactoryKey, v1alpha1ClusterGVR))
 	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
 		return lister.List(labels.Everything())
