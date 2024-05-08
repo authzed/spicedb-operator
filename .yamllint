@@ -2,6 +2,7 @@
 ---
 ignore: |
   config/
+  deploy/
   proposed-update-graph.yaml
   validated-update-graph.yaml
   e2e/

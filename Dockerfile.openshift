@@ -1,0 +1,21 @@
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1161 AS builder
+ARG TARGETARCH
+USER root
+RUN microdnf install -y tar gzip make which
+# install platform specific go version
+RUN curl -O -J  https://dl.google.com/go/go1.22.0.linux-${TARGETARCH}.tar.gz
+RUN tar -C /usr/local -xzf go1.22.0.linux-${TARGETARCH}.tar.gz
+RUN ln -s /usr/local/go/bin/go /usr/local/bin/go
+
+WORKDIR /go/src/app
+ENV CGO_ENABLED=0
+
+COPY go.mod go.sum ./
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go build ./cmd/...
+
+FROM cgr.dev/chainguard/static:latest
+
+COPY --from=builder /go/src/app/validated-update-graph.yaml /opt/operator/config.yaml
+COPY --from=builder /go/src/app/spicedb-operator /usr/local/bin/spicedb-operator
+ENTRYPOINT ["spicedb-operator"]
