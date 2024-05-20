@@ -14,7 +14,7 @@ COPY go.mod go.sum ./
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod go build ./cmd/...
 
-FROM cgr.dev/chainguard/static:latest
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1161
 
 COPY --from=builder /go/src/app/validated-update-graph.yaml /opt/operator/config.yaml
 COPY --from=builder /go/src/app/spicedb-operator /usr/local/bin/spicedb-operator
