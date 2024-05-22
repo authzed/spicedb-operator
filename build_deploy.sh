@@ -1,6 +1,6 @@
 set -exv
 
-IMAGE="quay.io/cloudservices/spicedb-operator"
+IMAGE="quay.io/cloudservices/kessel-spicedb-operator"
 IMAGE_TAG=$(git rev-parse --short=7 HEAD)
 GIT_COMMIT=$(git rev-parse --short HEAD)
 
