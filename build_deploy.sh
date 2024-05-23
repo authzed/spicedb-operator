@@ -1,6 +1,6 @@
 set -exv
 
-IMAGE="quay.io/cloudservices/spicedb-operator"
+IMAGE="quay.io/cloudservices/kessel-spicedb-operator"
 IMAGE_TAG=$(git rev-parse --short=7 HEAD)
 GIT_COMMIT=$(git rev-parse --short HEAD)
 
@@ -18,5 +18,5 @@ DOCKER_CONF="$PWD/.docker"
 mkdir -p "$DOCKER_CONF"
 docker --config="$DOCKER_CONF" login -u="$QUAY_USER" -p="$QUAY_TOKEN" quay.io
 docker --config="$DOCKER_CONF" login -u="$RH_REGISTRY_USER" -p="$RH_REGISTRY_TOKEN" registry.redhat.io
-docker --config="$DOCKER_CONF" build --build-arg GIT_COMMIT=$GIT_COMMIT --no-cache -t "${IMAGE}:${IMAGE_TAG}" .
+docker --config="$DOCKER_CONF" build --build-arg GIT_COMMIT=$GIT_COMMIT --no-cache -t "${IMAGE}:${IMAGE_TAG}" . -f ./Dockerfile.openshift
 docker --config="$DOCKER_CONF" push "${IMAGE}:${IMAGE_TAG}"
