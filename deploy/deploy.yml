@@ -527,7 +527,7 @@ objects:
           - --crd=false
           - --config
           - /opt/operator/config.yaml
-          image: ghcr.io/authzed/spicedb-operator:v1.14.1
+          image: quay.io/cloudservices/kessel-spicedb-operator:c85ae2c
           livenessProbe:
             httpGet:
               path: /healthz
@@ -563,16 +563,12 @@ objects:
               drop:
               - ALL
             readOnlyRootFilesystem: true
-            runAsGroup: 
             runAsNonRoot: true
-            runAsUser: 
             seccompProfile:
               type: RuntimeDefault
           terminationMessagePolicy: FallbackToLogsOnError
         securityContext:
-          runAsGroup: 
           runAsNonRoot: true
-          runAsUser: 
           seccompProfile:
             type: RuntimeDefault
         serviceAccountName: spicedb-operator
