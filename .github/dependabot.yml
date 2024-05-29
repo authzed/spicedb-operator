@@ -4,7 +4,7 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "daily"
     labels:
       - "area/dependencies"
     groups:
@@ -13,7 +13,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "daily"
     labels:
       - "area/dependencies"
     groups:
@@ -22,7 +22,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "daily"
     groups:
       actions-version:
         patterns: ["*"]
