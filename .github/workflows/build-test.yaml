@@ -125,7 +125,7 @@ jobs:
       - name: "Check if validated update graph has changed"
         if: |
           needs.paths-filter.outputs.graphchange == 'true'
-        uses: "tj-actions/verify-changed-files@v19"
+        uses: "tj-actions/verify-changed-files@v20"
         id: "verify-changed-graph"
         with:
           files: |
