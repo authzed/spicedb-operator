@@ -527,7 +527,7 @@ objects:
           - --crd=false
           - --config
           - /opt/operator/config.yaml
-          image: quay.io/cloudservices/kessel-spicedb-operator:3c7804d
+          image: quay.io/cloudservices/kessel-spicedb-operator:22b4a49
           livenessProbe:
             httpGet:
               path: /healthz
