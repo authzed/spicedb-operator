@@ -1,0 +1,49 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# The default values used in the docker build commands are the root
+# directory '.' and the dockerfile name of 'Dockerfile'. If there is
+# a need to change these do so in your local workflow template (this file) and
+# change them there. HINT: Look at the bottom of this file.
+
+# This workflow checks out code, builds an image, performs a container image
+# vulnerability scan with Anchore's Grype tool, and generates an
+# SBOM via Anchore's Syft tool
+
+# For more information on Anchore's container image scanning tool Grype, see
+# https://github.com/anchore/grype
+
+# For more information about the Anchore SBOM tool, Syft, see
+# https://github.com/anchore/syft
+
+name: "ConsoleDot Platform Security Scan"
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: ["main", "master"]
+
+jobs:
+  PlatSec-Security-Workflow:
+    uses: "RedHatInsights/platform-security-gh-workflow/.github/workflows/platsec-security-scan-reusable-workflow.yml@master"
+    ## The optional parameters below are used if you are using something other than the
+    ## the defaults of root '.' for the path and 'Dockerfile' for the Dockerfile name.
+    ## Additionally, if you have a Dockerfile you use as your BASE_IMG or you need to
+    ## use '--build-arg', those can be define below as well.
+
+    with:
+    #   dockerbuild_path: './buildtest'
+    #   dockerfile_path: './test'
+      dockerfile_name: 'Dockerfile.openshift'
+    #   base_image_build: true
+    #   base_dockerbuild_path: './testbuild.base'
+    #   base_dockerfile_path: './test'
+    #   base_dockerfile_name: 'Dockerfile.base'
+    #   build_arg: '--build-arg BASE_IMAGE="localbuild/baseimage:latest"'
+    #   only_fixed: true
+    #   fail_on_vulns: true
+    #   severity_fail_cutoff: high
