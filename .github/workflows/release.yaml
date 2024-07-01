@@ -44,7 +44,7 @@ jobs:
         with:
           kustomize_build_dir: "release/config"
           kustomize_output_file: "release/bundle.yaml"
-      - uses: "goreleaser/goreleaser-action@v5"
+      - uses: "goreleaser/goreleaser-action@v6"
         with:
           distribution: "goreleaser-pro"
           version: "latest"
