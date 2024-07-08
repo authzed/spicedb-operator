@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/fluxcd/cli-utils/pkg/kstatus/polling"
 	"github.com/fluxcd/pkg/ssa"
 	//revive:disable:dot-imports convention is dot-import
 	. "github.com/onsi/ginkgo/v2"
@@ -16,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/cli-utils/pkg/kstatus/polling"
 	crClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 

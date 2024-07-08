@@ -251,19 +251,11 @@ func ConfigureApiserver() {
 	Expect(err).To(Succeed())
 	log := zapr.NewLogger(zapLog)
 
-	// no darwin arm builds yet
-	// see: https://github.com/kubernetes-sigs/kubebuilder/pull/2516
-
-	arch := runtime.GOARCH
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
-		arch = "amd64"
-	}
 	e := &env.Env{
 		Log: log,
-		Client: &remote.Client{
-			Log:    log,
-			Bucket: "kubebuilder-tools",
-			Server: "storage.googleapis.com",
+		Client: &remote.HTTPClient{
+			Log:      log,
+			IndexURL: remote.DefaultIndexURL,
 		},
 		Version: versions.Spec{
 			Selector:    versions.TildeSelector{},
@@ -274,14 +266,14 @@ func ConfigureApiserver() {
 		Platform: versions.PlatformItem{
 			Platform: versions.Platform{
 				OS:   runtime.GOOS,
-				Arch: arch,
+				Arch: runtime.GOARCH,
 			},
 		},
 		FS:    afero.Afero{Fs: afero.NewOsFs()},
 		Store: store.NewAt("../testbin"),
 		Out:   os.Stdout,
 	}
-	e.Version, err = versions.FromExpr("~1.22.1")
+	e.Version, err = versions.FromExpr("~1.30")
 	Expect(err).To(Succeed())
 
 	workflows.Use{

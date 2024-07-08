@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/controller-idioms/handler"
 	"github.com/authzed/controller-idioms/hash"
@@ -19,6 +20,7 @@ const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
 	recorder    record.EventRecorder
+	resources   openapi.Resources
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
 }
@@ -28,7 +30,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 	secret := CtxSecret.Value(ctx)
 	operatorConfig := CtxOperatorConfig.MustValue(ctx)
 
-	validatedConfig, warning, err := config.NewConfig(cluster, operatorConfig, secret)
+	validatedConfig, warning, err := config.NewConfig(cluster, operatorConfig, secret, c.resources)
 	if err != nil {
 		failedCondition := v1alpha1.NewInvalidConfigCondition(CtxSecretHash.Value(ctx), err)
 		if existing := cluster.FindStatusCondition(v1alpha1.ConditionValidatingFailed); existing != nil && existing.Message == failedCondition.Message {

@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
@@ -34,9 +36,11 @@ type patchTestCase[K any] struct {
 }
 
 func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
+	// https://github.com/kubernetes/kubernetes/blob/v1.30.2/api/openapi-spec/swagger.json
+	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.30.2.json"))
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			count, patched, err := ApplyPatches(tt.object, tt.out, tt.patches)
+			count, patched, err := ApplyPatches(tt.object, tt.out, tt.patches, resources)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
