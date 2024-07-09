@@ -140,7 +140,9 @@ func (c ClientGetter) ToRESTMapper() (meta.RESTMapper, error) {
 	}
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(dclient)
-	expander := restmapper.NewShortcutExpander(mapper, dclient)
+	expander := restmapper.NewShortcutExpander(mapper, dclient, func(s string) {
+		GinkgoWriter.Println(s)
+	})
 	return expander, nil
 }
 

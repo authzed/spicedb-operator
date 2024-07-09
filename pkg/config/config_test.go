@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -49,6 +51,7 @@ func TestToEnvVarName(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
+	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
 		status       v1alpha1.ClusterStatus
@@ -1833,7 +1836,10 @@ func TestNewConfig(t *testing.T) {
 				Spec:   tt.args.cluster,
 				Status: tt.args.status,
 			}
-			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret)
+			if tt.want != nil {
+				tt.want.Resources = resources
+			}
+			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret, resources)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.Equal(t, tt.want, got)
@@ -1958,6 +1964,7 @@ func TestGraphDiffSanity(t *testing.T) {
 }
 
 func TestDeploymentContainerNameBackCompat(t *testing.T) {
+	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
 		status       v1alpha1.ClusterStatus
@@ -2262,7 +2269,7 @@ spec:
 				Spec:   tt.args.cluster,
 				Status: tt.args.status,
 			}
-			got, _, err := NewConfig(cluster, &global, tt.args.secret)
+			got, _, err := NewConfig(cluster, &global, tt.args.secret, resources)
 			require.NoError(t, err)
 
 			wantDep, err := json.Marshal(tt.wantDeployment)

@@ -6,10 +6,12 @@ import (
 	"fmt"
 
 	jsonpatch "github.com/evanphx/json-patch"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
@@ -20,7 +22,7 @@ const wildcard = "*"
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
 // that occurred.
-func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch) (int, bool, error) {
+func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resources openapi.Resources) (int, bool, error) {
 	// marshal object to json for patching
 	encoded, err := json.Marshal(object)
 	if err != nil {
@@ -67,7 +69,13 @@ func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch) (int, bool, er
 					errs = append(errs, fmt.Errorf("error converting patch %d to json: %w", i, err))
 					continue
 				}
-				patched, err := strategicpatch.StrategicMergePatch(encoded, jsonPatch, object)
+				gv, err := schema.ParseGroupVersion(*typeMeta.APIVersion)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
+					continue
+				}
+				gvkSchema := resources.LookupResource(gv.WithKind(*typeMeta.Kind))
+				patched, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(encoded, jsonPatch, strategicpatch.NewPatchMetaFromOpenAPI(gvkSchema))
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue

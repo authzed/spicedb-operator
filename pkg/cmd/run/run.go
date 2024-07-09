@@ -125,6 +125,11 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		}
 	}
 
+	resources, err := f.OpenAPISchema()
+	if err != nil {
+		return err
+	}
+
 	registry := typed.NewRegistry()
 	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
 	broadcaster := record.NewBroadcaster()
@@ -143,7 +148,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, o.OperatorConfigPath, broadcaster)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster)
 	if err != nil {
 		return err
 	}

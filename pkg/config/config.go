@@ -23,6 +23,7 @@ import (
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
+	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -117,7 +118,8 @@ func (r RawConfig) Pop(key string) string {
 type Config struct {
 	MigrationConfig
 	SpiceConfig
-	Patches []v1alpha1.Patch
+	Patches   []v1alpha1.Patch
+	Resources openapi.Resources
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -164,7 +166,7 @@ type SpiceConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secret are sane
-func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret) (*Config, Warning, error) {
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret, resources openapi.Resources) (*Config, Warning, error) {
 	if cluster.Spec.Config == nil {
 		return nil, nil, fmt.Errorf("couldn't parse empty config")
 	}
@@ -174,7 +176,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		return nil, nil, fmt.Errorf("couldn't parse config: %w", err)
 	}
 
-	passthroughConfig := make(map[string]string, 0)
+	passthroughConfig := make(map[string]string)
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
 
@@ -395,6 +397,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	out := &Config{
 		MigrationConfig: migrationConfig,
 		SpiceConfig:     spiceConfig,
+		Resources:       resources,
 	}
 	out.Patches = fixDeploymentPatches(out.Name, cluster.Spec.Patches)
 
@@ -408,7 +411,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		out.unpatchedMigrationJob(hash.Object("")),
 		out.unpatchedDeployment(hash.Object(""), hash.Object("")),
 	} {
-		applied, diff, err := ApplyPatches(obj, obj, out.Patches)
+		applied, diff, err := ApplyPatches(obj, obj, out.Patches, resources)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -488,7 +491,7 @@ func (c *Config) unpatchedServiceAccount() *applycorev1.ServiceAccountApplyConfi
 
 func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration {
 	sa := applycorev1.ServiceAccount(c.ServiceAccountName, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedServiceAccount(), sa, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedServiceAccount(), sa, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
@@ -510,7 +513,7 @@ func (c *Config) unpatchedRole() *applyrbacv1.RoleApplyConfiguration {
 
 func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	role := applyrbacv1.Role(c.Name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedRole(), role, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedRole(), role, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	role.WithName(c.Name).WithNamespace(c.Namespace).
@@ -533,7 +536,7 @@ func (c *Config) unpatchedRoleBinding() *applyrbacv1.RoleBindingApplyConfigurati
 
 func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	rb := applyrbacv1.RoleBinding(c.Name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedRoleBinding(), rb, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedRoleBinding(), rb, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	rb.WithName(c.Name).WithNamespace(c.Namespace).
@@ -553,7 +556,7 @@ func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
 
 func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	s := applycorev1.Service(c.Name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedService(), s, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedService(), s, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	s.WithName(c.Name).WithNamespace(c.Namespace).
@@ -688,7 +691,7 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 
 func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	j := applybatchv1.Job(c.jobName(migrationHash), c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedMigrationJob(migrationHash), j, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedMigrationJob(migrationHash), j, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := c.jobName(migrationHash)
@@ -766,7 +769,7 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 			WithReplicas(c.Replicas).
 			WithStrategy(applyappsv1.DeploymentStrategy().
 				WithType(appsv1.RollingUpdateDeploymentStrategyType).
-				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
+				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt32(0)))).
 			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": name})).
 			WithTemplate(applycorev1.PodTemplateSpec().
 				WithAnnotations(map[string]string{
@@ -798,7 +801,7 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	name := deploymentName(c.Name)
 	d := applyappsv1.Deployment(name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedDeployment(migrationHash, secretHash), d, c.Patches)
+	_, _, _ = ApplyPatches(c.unpatchedDeployment(migrationHash, secretHash), d, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
 	d.WithName(name).WithNamespace(c.Namespace).WithOwnerReferences(c.ownerRef()).
