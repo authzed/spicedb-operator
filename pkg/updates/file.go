@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jzelinskie/stringz"
+	"github.com/samber/lo"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -45,8 +46,10 @@ func (c Channel) Clone() Channel {
 	return Channel{
 		Name:     c.Name,
 		Metadata: maps.Clone(c.Metadata),
-		Edges:    maps.Clone(c.Edges),
-		Nodes:    slices.Clone(c.Nodes),
+		Edges: lo.MapEntries(c.Edges, func(k string, v []string) (string, []string) {
+			return k, slices.Clone(v)
+		}),
+		Nodes: slices.Clone(c.Nodes),
 	}
 }
 

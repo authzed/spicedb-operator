@@ -11,6 +11,7 @@ require (
 	github.com/fatih/camelcase v1.0.0
 	github.com/go-logr/logr v1.4.2
 	github.com/jzelinskie/stringz v0.0.3
+	github.com/samber/lo v1.44.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/atomic v1.11.0
