@@ -44,6 +44,8 @@ func main() {
 
 func postgresChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.33.1", Tag: "v1.33.1", Migration: "add-rel-by-alive-resource-relation-subject"},
+		{ID: "v1.32.0", Tag: "v1.32.0", Migration: "add-rel-by-alive-resource-relation-subject"},
 		{ID: "v1.31.0", Tag: "v1.31.0", Migration: "add-rel-by-alive-resource-relation-subject"},
 		{ID: "v1.30.0", Tag: "v1.30.0", Migration: "add-rel-by-alive-resource-relation-subject"},
 		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "add-rel-by-alive-resource-relation-subject"},
@@ -79,6 +81,8 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transaction-timestamp-index"},
 	}
 	edgePatterns := map[string]string{
+		"v1.32.0":        ">=1.33.1",
+		"v1.31.0":        ">=1.32.0",
 		"v1.30.0":        ">=1.31.0",
 		"v1.29.5":        ">=1.30.0",
 		"v1.26.0":        ">=1.29.5",
@@ -126,6 +130,8 @@ func postgresChannel() updates.Channel {
 
 func crdbChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.33.1", Tag: "v1.33.1", Migration: "remove-stats-table"},
+		{ID: "v1.32.0", Tag: "v1.32.0", Migration: "remove-stats-table"},
 		{ID: "v1.31.0", Tag: "v1.31.0", Migration: "remove-stats-table"},
 		{ID: "v1.30.0", Tag: "v1.30.0", Migration: "remove-stats-table"},
 		{ID: "v1.30.0-phase1", Tag: "v1.30.0", Migration: "add-caveats"},
@@ -160,6 +166,8 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transactions-table"},
 	}
 	edgePatterns := map[string]string{
+		"v1.32.0":        ">=1.33.1",
+		"v1.31.0":        ">=1.32.0",
 		"v1.30.0":        ">=1.31.0",
 		"v1.30.0-phase1": "1.30.0",
 		"v1.29.5":        "1.30.0-phase1",
@@ -205,6 +213,8 @@ func crdbChannel() updates.Channel {
 
 func mysqlChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.33.1", Tag: "v1.33.1", Migration: "watch_api_relation_tuple_index"},
+		{ID: "v1.32.0", Tag: "v1.32.0", Migration: "watch_api_relation_tuple_index"},
 		{ID: "v1.31.0", Tag: "v1.31.0", Migration: "watch_api_relation_tuple_index"},
 		{ID: "v1.30.0", Tag: "v1.30.0", Migration: "watch_api_relation_tuple_index"},
 		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "watch_api_relation_tuple_index"},
@@ -233,6 +243,8 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id", Deprecated: true},
 	}
 	edgePatterns := map[string]string{
+		"v1.32.0": ">=1.33.1",
+		"v1.31.0": ">=1.32.0",
 		"v1.30.0": ">=1.31.0",
 		"v1.29.5": ">=1.30.0",
 		"v1.26.0": ">=1.29.5",
@@ -272,6 +284,8 @@ func mysqlChannel() updates.Channel {
 
 func spannerChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.33.1", Tag: "v1.33.1", Migration: "delete-older-changestreams"},
+		{ID: "v1.32.0", Tag: "v1.32.0", Migration: "delete-older-changestreams"},
 		{ID: "v1.31.0", Tag: "v1.31.0", Migration: "delete-older-changestreams"},
 		{ID: "v1.30.0", Tag: "v1.30.0", Migration: "delete-older-changestreams"},
 		{ID: "v1.29.5", Tag: "v1.29.5", Migration: "delete-older-changestreams"},
@@ -301,6 +315,8 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.8.0", Tag: "v1.8.0", Migration: "add-metadata-and-counters"},
 	}
 	edgePatterns := map[string]string{
+		"v1.32.0":        ">=1.33.1",
+		"v1.31.0":        ">=1.32.0",
 		"v1.30.0":        ">=1.31.0",
 		"v1.29.5":        ">=1.30.0",
 		"v1.29.5-phase1": "1.29.5",
@@ -341,6 +357,8 @@ func spannerChannel() updates.Channel {
 
 func memoryChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.33.1", Tag: "v1.33.1"},
+		{ID: "v1.32.0", Tag: "v1.32.0"},
 		{ID: "v1.31.0", Tag: "v1.31.0"},
 		{ID: "v1.30.0", Tag: "v1.30.0"},
 		{ID: "v1.29.5", Tag: "v1.29.5"},
