@@ -121,7 +121,7 @@ Continuous integration enforces that `go mod tidy` has been run.
 ### Regenerating `proposed-update-graph.yaml`
 
 The update graph can be regenerated whenever there is a new spicedb release.
-CI will validate all new edges when there are changes to `proposed-update-graph.yaml` and will copy them into `validated-update-graph.yaml` if successful.
+CI will validate all new edges when there are changes to `proposed-update-graph.yaml` and will copy them into `config/update-graph.yaml` if successful.
 
 ```go
 mage gen:graph

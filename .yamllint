@@ -3,7 +3,6 @@
 ignore: |
   config/
   proposed-update-graph.yaml
-  validated-update-graph.yaml
   e2e/
   examples
   pkg/crds
