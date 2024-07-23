@@ -7,3 +7,10 @@ resources:
 images:
   - name: ghcr.io/authzed/spicedb-operator
     newTag: latest
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: update-graph
+    namespace: spicedb-operator
+    files:
+      - update-graph.yaml
