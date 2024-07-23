@@ -29,13 +29,18 @@ spec:
         app: spicedb-operator
         app.kubernetes.io/instance: spicedb-operator
     spec:
+      volumes:
+        - configMap:
+            defaultMode: 420
+            name: update-graph
+          name: config
       containers:
         - args:
           - run
           - -v=4
           - --crd=false
           - --config
-          - /opt/operator/config.yaml
+          - /opt/operator/update-graph.yaml
           image: ghcr.io/authzed/spicedb-operator:latest
           livenessProbe:
             httpGet:
@@ -46,6 +51,10 @@ spec:
             periodSeconds: 10
             successThreshold: 1
             timeoutSeconds: 15
+          volumeMounts:
+            - mountPath: /opt/operator
+              name: config
+              readOnly: true
           name: spicedb-operator
           ports:
             - containerPort: 8080
