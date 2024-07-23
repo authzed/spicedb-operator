@@ -1,4 +1,5 @@
 ---
+version: 2
 builds:
   - id: "spicedb-operator"
     main: "./cmd/spicedb-operator"
