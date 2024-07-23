@@ -42,6 +42,7 @@ jobs:
       - name: "Build release bundle.yaml"
         uses: "karancode/kustomize-github-action@master"
         with:
+          token: "${{ github.token }}"
           kustomize_build_dir: "release/config"
           kustomize_output_file: "release/bundle.yaml"
       - uses: "goreleaser/goreleaser-action@v6"
