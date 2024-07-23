@@ -1957,7 +1957,7 @@ func GetConfig(fileName string) (cfg OperatorConfig) {
 
 func TestGraphDiffSanity(t *testing.T) {
 	proposedGraph := GetConfig("../../proposed-update-graph.yaml")
-	validatedGraph := GetConfig("../../validated-update-graph.yaml")
+	validatedGraph := GetConfig("../../config/update-graph.yaml")
 	require.NotPanics(t, func() {
 		_ = proposedGraph.UpdateGraph.Difference(&validatedGraph.UpdateGraph)
 	})

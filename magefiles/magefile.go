@@ -37,7 +37,7 @@ func (Test) Unit() error {
 
 const (
 	DefaultProposedGraphFile  = "proposed-update-graph.yaml"
-	DefaultValidatedGraphFile = "validated-update-graph.yaml"
+	DefaultValidatedGraphFile = "config/update-graph.yaml"
 )
 
 // Runs the end-to-end tests in a kind cluster

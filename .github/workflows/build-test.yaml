@@ -128,7 +128,7 @@ jobs:
         id: "verify-changed-graph"
         with:
           files: |
-            validated-update-graph.yaml
+            config/update-graph.yaml
       - name: "Commit validated update graph"
         uses: "EndBug/add-and-commit@v9"
         if: |

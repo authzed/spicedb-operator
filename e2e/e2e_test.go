@@ -74,7 +74,7 @@ var (
 	archives           = strings.FieldsFunc(os.Getenv("ARCHIVES"), listsep)
 	images             = strings.FieldsFunc(os.Getenv("IMAGES"), listsep)
 	ProposedGraphFile  = stringz.DefaultEmpty(os.Getenv("PROPOSED_GRAPH_FILE"), "../proposed-update-graph.yaml")
-	ValidatedGraphFile = stringz.DefaultEmpty(os.Getenv("VALIDATED_GRAPH_FILE"), "../validated-update-graph.yaml")
+	ValidatedGraphFile = stringz.DefaultEmpty(os.Getenv("VALIDATED_GRAPH_FILE"), "../config/update-graph.yaml")
 	graphExtraConfig   = strings.FieldsFunc(os.Getenv("GRAPH_EXTRA_CONFIG"), listsep)
 
 	restConfig *rest.Config
