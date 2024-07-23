@@ -66,6 +66,7 @@ jobs:
       - uses: "authzed/actions/markdown-lint@main"
 
   codeql:
+    if: "${{ github.event_name == 'pull_request' }}"
     name: "Analyze with CodeQL"
     runs-on: "ubuntu-latest-8-cores"
     permissions:
