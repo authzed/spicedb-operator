@@ -1,6 +1,7 @@
 ---
 builds:
-  - main: "./cmd/spicedb-operator"
+  - id: "spicedb-operator"
+    main: "./cmd/spicedb-operator"
     env:
       - "CGO_ENABLED=0"
     goos:
@@ -14,49 +15,58 @@ builds:
     ldflags:
       - "-s -w"
       - "-X github.com/jzelinskie/cobrautil.Version={{ .Version }}"
-dockers:
-  # AMD64
-  - image_templates:
-      - &amd_image_quay "quay.io/authzed/spicedb-operator:v{{ .Version }}-amd64"
-      - &amd_image_gh "ghcr.io/authzed/spicedb-operator:v{{ .Version }}-amd64"
-      - &amd_image_dh "authzed/spicedb-operator:v{{ .Version }}-amd64"
-    dockerfile: &dockerfile "Dockerfile.release"
-    goos: "linux"
-    goarch: "amd64"
-    use: "buildx"
-    build_flag_templates:
-      - "--platform=linux/amd64"
-    extra_files:
-      - "validated-update-graph.yaml"
-  # ARM64
-  - image_templates:
-      - &arm_image_quay "quay.io/authzed/spicedb-operator:v{{ .Version }}-arm64"
-      - &arm_image_gh "ghcr.io/authzed/spicedb-operator:v{{ .Version }}-arm64"
-      - &arm_image_dh "authzed/spicedb-operator:v{{ .Version }}-arm64"
-    dockerfile: *dockerfile
-    goos: "linux"
-    goarch: "arm64"
-    use: "buildx"
-    build_flag_templates:
-      - "--platform=linux/arm64"
-    extra_files:
-      - "validated-update-graph.yaml"
-docker_manifests:
-  # Quay
-  - name_template: "quay.io/authzed/spicedb-operator:v{{ .Version }}"
-    image_templates: [*amd_image_quay, *arm_image_quay]
-  - name_template: "quay.io/authzed/spicedb-operator:latest"
-    image_templates: [*amd_image_quay, *arm_image_quay]
-  # GitHub Registry
-  - name_template: "ghcr.io/authzed/spicedb-operator:v{{ .Version }}"
-    image_templates: [*amd_image_gh, *arm_image_gh]
-  - name_template: "ghcr.io/authzed/spicedb-operator:latest"
-    image_templates: [*amd_image_gh, *arm_image_gh]
-  # Docker Hub
-  - name_template: "authzed/spicedb-operator:v{{ .Version }}"
-    image_templates: [*amd_image_dh, *arm_image_dh]
-  - name_template: "authzed/spicedb-operator:latest"
-    image_templates: [*amd_image_dh, *arm_image_dh]
+kos:
+  - id: "spicedb-operator-ghcr"
+    build: "spicedb-operator"
+    bare: true
+    repository: "ghcr.io/authzed/spicedb-operator"
+    preserve_import_paths: false
+    platforms:
+      - "linux/amd64"
+      - "linux/arm64"
+    tags:
+      - "latest"
+      - "v{{ .Version }}"
+    creation_time: '{{.CommitTimestamp}}'
+    ko_data_creation_time: '{{.CommitTimestamp}}'
+    sbom: "spdx"
+    ldflags:
+      - "-s -w"
+      - "-X github.com/jzelinskie/cobrautil.Version={{ .Version }}"
+  - id: "spicedb-operator-quay"
+    build: "spicedb-operator"
+    bare: true
+    base_image: "cgr.dev/chainguard/static"
+    repository: "quay.io/authzed/spicedb-operator"
+    platforms:
+      - "linux/amd64"
+      - "linux/arm64"
+    tags:
+      - "latest"
+      - "v{{ .Version }}"
+    creation_time: '{{.CommitTimestamp}}'
+    ko_data_creation_time: '{{.CommitTimestamp}}'
+    sbom: "spdx"
+    ldflags:
+      - "-s -w"
+      - "-X github.com/jzelinskie/cobrautil.Version={{ .Version }}"
+  - id: "spicedb-operator-dockerhub"
+    build: "spicedb-operator"
+    bare: true
+    base_image: "cgr.dev/chainguard/static"
+    repository: "authzed/spicedb-operator"
+    platforms:
+      - "linux/amd64"
+      - "linux/arm64"
+    tags:
+      - "latest"
+      - "v{{ .Version }}"
+    creation_time: '{{.CommitTimestamp}}'
+    ko_data_creation_time: '{{.CommitTimestamp}}'
+    sbom: "spdx"
+    ldflags:
+      - "-s -w"
+      - "-X github.com/jzelinskie/cobrautil.Version={{ .Version }}"
 checksum:
   name_template: "checksums.txt"
 snapshot:
