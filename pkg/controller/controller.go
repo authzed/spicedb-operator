@@ -36,6 +36,7 @@ import (
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
@@ -87,7 +88,7 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath string, broadcaster record.EventBroadcaster) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	c := Controller{
 		client:    dclient,
 		kclient:   kclient,
@@ -121,60 +122,85 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		logr.FromContextOrDiscard(ctx).V(3).Info("no operator configuration provided", "path", configFilePath)
 	}
 
-	ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
-		OwnedFactoryKey,
-		dclient,
-		0,
-		metav1.NamespaceAll,
-		nil,
-	)
-	if _, err := ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
-		UpdateFunc: func(_, obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
-		// Delete is not used right now, we rely on ownerrefs to clean up
-	}); err != nil {
-		return nil, err
+	// If no namespaces are provided, watch all namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{metav1.NamespaceAll}
 	}
 
-	externalInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
-		DependentFactoryKey,
-		dclient,
-		0,
-		metav1.NamespaceAll,
-		func(options *metav1.ListOptions) {
-			options.LabelSelector = metadata.ManagedDependentSelector.String()
-		},
-	)
-
-	for _, gvr := range []schema.GroupVersionResource{
-		appsv1.SchemeGroupVersion.WithResource("deployments"),
-		corev1.SchemeGroupVersion.WithResource("secrets"),
-		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
-		corev1.SchemeGroupVersion.WithResource("services"),
-		corev1.SchemeGroupVersion.WithResource("pods"),
-		batchv1.SchemeGroupVersion.WithResource("jobs"),
-		rbacv1.SchemeGroupVersion.WithResource("roles"),
-		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
-	} {
-		inf := externalInformerFactory.ForResource(gvr).Informer()
-		if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
-			return nil, err
-		}
-		if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    func(obj any) { c.syncExternalResource(obj) },
-			UpdateFunc: func(_, obj any) { c.syncExternalResource(obj) },
-			DeleteFunc: func(obj any) { c.syncExternalResource(obj) },
+	ownedInformerFactories := make([]dynamicinformer.DynamicSharedInformerFactory, 0, len(namespaces))
+	for _, ns := range namespaces {
+		ownedInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+			OwnedFactoryKey,
+			dclient,
+			0,
+			ns,
+			nil,
+		)
+		if _, err := ownedInformerFactory.ForResource(v1alpha1ClusterGVR).Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
+			UpdateFunc: func(_, obj any) { c.enqueue(v1alpha1ClusterGVR, obj) },
+			// Delete is not used right now, we rely on ownerrefs to clean up
 		}); err != nil {
 			return nil, err
 		}
+		ownedInformerFactories = append(ownedInformerFactories, ownedInformerFactory)
 	}
 
+	externalInformerFactories := make([]dynamicinformer.DynamicSharedInformerFactory, 0, len(namespaces))
+	for _, ns := range namespaces {
+		externalInformerFactory := registry.MustNewFilteredDynamicSharedInformerFactory(
+			DependentFactoryKey,
+			dclient,
+			0,
+			metav1.NamespaceAll,
+			func(options *metav1.ListOptions) {
+				options.LabelSelector = metadata.ManagedDependentSelector.String()
+			},
+		)
+
+		for _, gvr := range []schema.GroupVersionResource{
+			appsv1.SchemeGroupVersion.WithResource("deployments"),
+			corev1.SchemeGroupVersion.WithResource("secrets"),
+			corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
+			corev1.SchemeGroupVersion.WithResource("services"),
+			corev1.SchemeGroupVersion.WithResource("pods"),
+			batchv1.SchemeGroupVersion.WithResource("jobs"),
+			rbacv1.SchemeGroupVersion.WithResource("roles"),
+			rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+		} {
+			inf := externalInformerFactory.ForResource(gvr).Informer()
+			if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
+				return nil, err
+			}
+			if _, err := inf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+				AddFunc:    func(obj any) { c.syncExternalResource(obj) },
+				UpdateFunc: func(_, obj any) { c.syncExternalResource(obj) },
+				DeleteFunc: func(obj any) { c.syncExternalResource(obj) },
+			}); err != nil {
+				return nil, err
+			}
+		}
+	externalInformerFactories = append(externalInformerFactories, externalInformerFactory)
+
 	// start informers
-	ownedInformerFactory.Start(ctx.Done())
-	externalInformerFactory.Start(ctx.Done())
+	for _, ownedInformerFactory := range ownedInformerFactories {
+		ownedInformerFactory.Start(ctx.Done())
+	}
+
+	for _, externalInformerFactory := range externalInformerFactories {
+		externalInformerFactory.Start(ctx.Done())
+	}
+
 	fileInformerFactory.Start(ctx.Done())
-	ownedInformerFactory.WaitForCacheSync(ctx.Done())
-	externalInformerFactory.WaitForCacheSync(ctx.Done())
+
+	// wait for caches to sync
+	for _, ownedInformerFactory := range ownedInformerFactories {
+		ownedInformerFactory.WaitForCacheSync(ctx.Done())
+	}
+
+	for _, externalInformerFactory := range externalInformerFactories {
+		externalInformerFactory.WaitForCacheSync(ctx.Done())
+	}
 	fileInformerFactory.WaitForCacheSync(ctx.Done())
 
 	// Build mainHandler handler

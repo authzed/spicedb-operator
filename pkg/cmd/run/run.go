@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,6 +45,8 @@ type Options struct {
 	OperatorConfigPath    string
 
 	MetricNamespace string
+
+	WatchNamespaces string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -75,6 +78,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	bootstrapFlags := namedFlagSets.FlagSet("bootstrap")
 	bootstrapFlags.BoolVar(&o.BootstrapCRDs, "crd", true, "if set, the operator will attempt to install/update the CRDs before starting up.")
 	bootstrapFlags.StringVar(&o.BootstrapSpicedbsPath, "bootstrap-spicedbs", "", "set a path to a config file for spicedbs to load on start up.")
+	bootstrapFlags.StringVar(&o.WatchNamespaces, "watch-namespaces", "", "set a comma-separated list of namespaces to watch for CRDs.")
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
 	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
@@ -148,7 +152,11 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster)
+	namespaces := []string{}
+	if len(o.WatchNamespaces) > 0 {
+		namespaces = strings.Split(o.WatchNamespaces, ",")
+	}
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster, namespaces)
 	if err != nil {
 		return err
 	}
