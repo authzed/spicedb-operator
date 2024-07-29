@@ -152,7 +152,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 			DependentFactoryKey,
 			dclient,
 			0,
-			metav1.NamespaceAll,
+			ns,
 			func(options *metav1.ListOptions) {
 				options.LabelSelector = metadata.ManagedDependentSelector.String()
 			},
@@ -180,7 +180,8 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 				return nil, err
 			}
 		}
-	externalInformerFactories = append(externalInformerFactories, externalInformerFactory)
+		externalInformerFactories = append(externalInformerFactories, externalInformerFactory)
+	}
 
 	// start informers
 	for _, ownedInformerFactory := range ownedInformerFactories {
