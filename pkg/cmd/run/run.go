@@ -2,7 +2,6 @@ package run
 
 import (
 	"context"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/labels"
@@ -46,7 +45,7 @@ type Options struct {
 
 	MetricNamespace string
 
-	WatchNamespaces string
+	WatchNamespaces []string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -78,11 +77,12 @@ func NewCmdRun(o *Options) *cobra.Command {
 	bootstrapFlags := namedFlagSets.FlagSet("bootstrap")
 	bootstrapFlags.BoolVar(&o.BootstrapCRDs, "crd", true, "if set, the operator will attempt to install/update the CRDs before starting up.")
 	bootstrapFlags.StringVar(&o.BootstrapSpicedbsPath, "bootstrap-spicedbs", "", "set a path to a config file for spicedbs to load on start up.")
-	bootstrapFlags.StringVar(&o.WatchNamespaces, "watch-namespaces", "", "set a comma-separated list of namespaces to watch for CRDs.")
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
-	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
 	o.DebugFlags.AddFlags(debugFlags)
+	kubernetesFlags := namedFlagSets.FlagSet("kubernetes")
+	kubernetesFlags.StringSliceVar(&o.WatchNamespaces, "watch-namespaces", []string{}, "set a comma-separated list of namespaces to watch for CRDs.")
+	o.ConfigFlags.AddFlags(kubernetesFlags)
 	globalFlags := namedFlagSets.FlagSet("global")
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
 	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
@@ -152,11 +152,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	namespaces := []string{}
-	if len(o.WatchNamespaces) > 0 {
-		namespaces = strings.Split(o.WatchNamespaces, ",")
-	}
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster, namespaces)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}
