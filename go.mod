@@ -11,20 +11,20 @@ require (
 	github.com/fatih/camelcase v1.0.0
 	github.com/go-logr/logr v1.4.2
 	github.com/jzelinskie/stringz v0.0.3
-	github.com/samber/lo v1.44.0
+	github.com/samber/lo v1.46.0
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
-	k8s.io/api v0.30.2
-	k8s.io/apimachinery v0.30.2
-	k8s.io/apiserver v0.30.2
-	k8s.io/cli-runtime v0.30.2
-	k8s.io/client-go v0.30.2
-	k8s.io/component-base v0.30.2
-	k8s.io/controller-manager v0.30.2
+	k8s.io/api v0.30.3
+	k8s.io/apimachinery v0.30.3
+	k8s.io/apiserver v0.30.3
+	k8s.io/cli-runtime v0.30.3
+	k8s.io/client-go v0.30.3
+	k8s.io/component-base v0.30.3
+	k8s.io/controller-manager v0.30.3
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubectl v0.30.2
+	k8s.io/kubectl v0.30.3
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 )
 
