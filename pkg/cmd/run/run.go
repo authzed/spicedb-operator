@@ -44,6 +44,8 @@ type Options struct {
 	OperatorConfigPath    string
 
 	MetricNamespace string
+
+	WatchNamespaces []string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -77,8 +79,10 @@ func NewCmdRun(o *Options) *cobra.Command {
 	bootstrapFlags.StringVar(&o.BootstrapSpicedbsPath, "bootstrap-spicedbs", "", "set a path to a config file for spicedbs to load on start up.")
 	debugFlags := namedFlagSets.FlagSet("debug")
 	debugFlags.StringVar(&o.DebugAddress, "debug-address", o.DebugAddress, "address where debug information is served (/healthz, /metrics/, /debug/pprof, etc)")
-	o.ConfigFlags.AddFlags(namedFlagSets.FlagSet("kubernetes"))
 	o.DebugFlags.AddFlags(debugFlags)
+	kubernetesFlags := namedFlagSets.FlagSet("kubernetes")
+	kubernetesFlags.StringSliceVar(&o.WatchNamespaces, "watch-namespaces", []string{}, "set a comma-separated list of namespaces to watch for CRDs.")
+	o.ConfigFlags.AddFlags(kubernetesFlags)
 	globalFlags := namedFlagSets.FlagSet("global")
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
 	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
@@ -148,7 +152,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}
