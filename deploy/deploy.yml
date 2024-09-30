@@ -527,7 +527,7 @@ objects:
           - --crd=false
           - --config
           - /opt/operator/config.yaml
-          image: quay.io/cloudservices/kessel-spicedb-operator:22b4a49
+          image: ${IMAGE}:${IMAGE_TAG}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -572,3 +572,9 @@ objects:
           seccompProfile:
             type: RuntimeDefault
         serviceAccountName: spicedb-operator
+parameters:
+  - name: IMAGE
+    value: quay.io/cloudservices/kessel-spicedb-operator
+  - name: IMAGE_TAG
+    required: true
+    value: latest
