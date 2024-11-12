@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -160,10 +161,16 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 
 	// register with metrics collector
 	spiceDBClusterMetrics := ctrlmetrics.NewConditionStatusCollector[*v1alpha1.SpiceDBCluster](o.MetricNamespace, "clusters", v1alpha1.SpiceDBClusterResourceName)
-	lister := typed.ListerFor[*v1alpha1.SpiceDBCluster](registry, typed.NewRegistryKey(controller.OwnedFactoryKey, v1alpha1ClusterGVR))
-	spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
-		return lister.List(labels.Everything())
-	})
+
+	if len(o.WatchNamespaces) == 0 {
+		o.WatchNamespaces = []string{corev1.NamespaceAll}
+	}
+	for _, n := range o.WatchNamespaces {
+		lister := typed.MustListerForKey[*v1alpha1.SpiceDBCluster](registry, typed.NewRegistryKey(controller.OwnedFactoryKey(n), v1alpha1ClusterGVR))
+		spiceDBClusterMetrics.AddListerBuilder(func() ([]*v1alpha1.SpiceDBCluster, error) {
+			return lister.List(labels.Everything())
+		})
+	}
 	legacyregistry.CustomMustRegister(spiceDBClusterMetrics)
 
 	if ctx.Err() != nil {
