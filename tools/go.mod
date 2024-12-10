@@ -1,8 +1,8 @@
 module tools
 
-go 1.22.0
+go 1.23.0
 
-toolchain go1.22.4
+toolchain go1.23.4
 
 require (
 	github.com/authzed/spicedb-operator v0.0.0-00010101000000-000000000000
