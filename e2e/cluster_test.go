@@ -356,7 +356,13 @@ var _ = Describe("SpiceDBClusters", func() {
 						lastCluster = c
 						return condition == nil
 					})
-					Expect(condition).To(EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH: unknown`)))
+					Expect(condition).To(
+						// different kube versions return different messages, this matches either
+						Or(
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH: unknown`)),
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH: unknown`)),
+						),
+					)
 
 					By("fixing the config problem")
 					config["cmd"] = spicedbCmd

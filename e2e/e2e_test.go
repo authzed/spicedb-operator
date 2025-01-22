@@ -43,6 +43,7 @@ import (
 	"k8s.io/utils/pointer"
 	clientconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/env"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/remote"
 	"sigs.k8s.io/controller-runtime/tools/setup-envtest/store"
@@ -84,6 +85,7 @@ var (
 
 func init() {
 	klog.InitFlags(nil)
+	log.SetLogger(klog.NewKlogr())
 
 	// Default operator logs to --v=4 and write to GinkgoWriter
 	if verbosity := flag.CommandLine.Lookup("v"); verbosity.Value.String() == "" {
@@ -273,7 +275,7 @@ func ConfigureApiserver() {
 		Store: store.NewAt("../testbin"),
 		Out:   os.Stdout,
 	}
-	e.Version, err = versions.FromExpr("~1.30")
+	e.Version, err = versions.FromExpr("~1.32")
 	Expect(err).To(Succeed())
 
 	workflows.Use{
