@@ -179,7 +179,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 
 	mgr := manager.NewManager(o.DebugFlags.DebuggingConfiguration, o.DebugAddress, broadcaster, eventSink)
 
-	return mgr.Start(ctx, controllers...)
+	return mgr.Start(ctx, make(chan struct{}, 1), controllers...)
 }
 
 // DisableClientRateLimits removes rate limiting against the apiserver; we
