@@ -66,7 +66,7 @@ func (Test) E2e() error {
 		"IMAGES":               os.Getenv("IMAGES"),
 		"PROPOSED_GRAPH_FILE":  e2eProposedGraph,
 		"VALIDATED_GRAPH_FILE": e2eValidatedGraph,
-	}, "go", "run", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e"); err != nil {
+	}, "go", "tool", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e"); err != nil {
 		return err
 	}
 
@@ -108,14 +108,14 @@ func (g Gen) All() error {
 // Run kube api codegen
 func (Gen) Api() error {
 	fmt.Println("generating apis")
-	if err := runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "object", "rbac:roleName=spicedb-operator-role", "paths=../pkg/apis/...", "output:crd:artifacts:config=../config/crds", "output:rbac:artifacts:config=../config/rbac"); err != nil {
+	if err := runDirV("magefiles", "go", "tool", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "object", "rbac:roleName=spicedb-operator-role", "paths=../pkg/apis/...", "output:crd:artifacts:config=../config/crds", "output:rbac:artifacts:config=../config/rbac"); err != nil {
 		return err
 	}
-	if err := runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "rbac:roleName=spicedb-operator", "paths=../pkg/...", "output:rbac:dir=../config/rbac"); err != nil {
+	if err := runDirV("magefiles", "go", "tool", "sigs.k8s.io/controller-tools/cmd/controller-gen", "rbac:roleName=spicedb-operator", "paths=../pkg/...", "output:rbac:dir=../config/rbac"); err != nil {
 		return err
 	}
 	// generate an extra copy of the crd to embed for bootstrapping
-	return runDirV("magefiles", "go", "run", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "paths=../pkg/apis/...", "output:crd:artifacts:config=../pkg/crds")
+	return runDirV("magefiles", "go", "tool", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "paths=../pkg/apis/...", "output:crd:artifacts:config=../pkg/crds")
 }
 
 // Generate the update graph
