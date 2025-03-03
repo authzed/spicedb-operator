@@ -153,9 +153,11 @@ require (
 )
 
 tool (
+	github.com/magefile/mage
 	github.com/maxbrunsfeld/counterfeiter/v6
 	github.com/onsi/ginkgo/v2/ginkgo
 	k8s.io/code-generator/cmd/client-gen
 	mvdan.cc/gofumpt
 	sigs.k8s.io/controller-tools/cmd/controller-gen
+	sigs.k8s.io/kind
 )
