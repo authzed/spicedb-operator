@@ -2,10 +2,10 @@ module github.com/authzed/spicedb-operator
 
 go 1.23.0
 
-toolchain go1.24.0
+toolchain go1.24.1
 
 require (
-	github.com/authzed/controller-idioms v0.10.1-0.20250118143209-5257c6322607
+	github.com/authzed/controller-idioms v0.11.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/fatih/camelcase v1.0.0
@@ -17,15 +17,15 @@ require (
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-	k8s.io/api v0.32.2
-	k8s.io/apimachinery v0.32.2
-	k8s.io/apiserver v0.32.2
-	k8s.io/cli-runtime v0.32.2
-	k8s.io/client-go v0.32.2
-	k8s.io/component-base v0.32.2
-	k8s.io/controller-manager v0.32.2
+	k8s.io/api v0.32.3
+	k8s.io/apimachinery v0.32.3
+	k8s.io/apiserver v0.32.3
+	k8s.io/cli-runtime v0.32.3
+	k8s.io/client-go v0.32.3
+	k8s.io/component-base v0.32.3
+	k8s.io/controller-manager v0.32.3
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubectl v0.32.2
+	k8s.io/kubectl v0.32.3
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	sigs.k8s.io/kind v0.27.0
 )
