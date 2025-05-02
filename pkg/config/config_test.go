@@ -20,14 +20,21 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
+	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
+	"k8s.io/utils/ptr"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
+
+func newFakeResources() *openapitesting.FakeResources {
+	return openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
+}
 
 func TestToEnvVarName(t *testing.T) {
 	tests := []struct {
@@ -51,7 +58,7 @@ func TestToEnvVarName(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
-	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
+	resources := newFakeResources()
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
 		status       v1alpha1.ClusterStatus
@@ -1963,33 +1970,27 @@ func TestGraphDiffSanity(t *testing.T) {
 	})
 }
 
-func TestDeploymentContainerNameBackCompat(t *testing.T) {
-	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
-	type args struct {
-		cluster      v1alpha1.ClusterSpec
-		status       v1alpha1.ClusterStatus
-		globalConfig OperatorConfig
-		secret       *corev1.Secret
-	}
+func TestDeployment(t *testing.T) {
+	resources := newFakeResources()
 	tests := []struct {
 		name           string
-		args           args
+		cluster        v1alpha1.ClusterSpec
+		secret         *corev1.Secret
 		wantDeployment *applyappsv1.DeploymentApplyConfiguration
 	}{
 		{
-			name: "smp patch with old name",
-			args: args{
-				cluster: v1alpha1.ClusterSpec{
-					Config: json.RawMessage(`
+			name: "container name back compat: smp patch with old name",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": "true"
 					}
 				`),
-					Patches: []v1alpha1.Patch{{
-						Kind: "Deployment",
-						Patch: json.RawMessage(`
+				Patches: []v1alpha1.Patch{{
+					Kind: "Deployment",
+					Patch: json.RawMessage(`
 spec:
   template:
     spec:
@@ -2003,133 +2004,37 @@ spec:
             memory: "128Mi"
             cpu: "500m"
 `),
-					}},
-				},
-				globalConfig: OperatorConfig{
-					ImageName: "image",
-					UpdateGraph: updates.UpdateGraph{
-						Channels: []updates.Channel{
-							{
-								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
-							},
-						},
-					},
-				},
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantDeployment: applyappsv1.Deployment("test-spicedb", "test").
-				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
-				WithAnnotations(map[string]string{
-					metadata.SpiceDBMigrationRequirementsKey: "1",
-				}).
-				WithOwnerReferences(applymetav1.OwnerReference().
-					WithName("test").
-					WithKind(v1alpha1.SpiceDBClusterKind).
-					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-					WithUID("1")).
-				WithSpec(applyappsv1.DeploymentSpec().
-					WithReplicas(2).
-					WithStrategy(applyappsv1.DeploymentStrategy().
-						WithType(appsv1.RollingUpdateDeploymentStrategyType).
-						WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
-					WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"})).
-					WithTemplate(applycorev1.PodTemplateSpec().
-						WithAnnotations(map[string]string{
-							metadata.SpiceDBSecretRequirementsKey: "2",
-							metadata.SpiceDBTargetMigrationKey:    "head",
-						}).
-						WithLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"}).
-						WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
-						WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").WithContainers(
-							applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
-								WithCommand("spicedb", "serve").
-								WithEnv(
-									applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
-									applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
-									applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
-									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
-									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
-									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
-									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
-									applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
-								).
-								WithResources(applycorev1.ResourceRequirements().
-									WithRequests(corev1.ResourceList{
-										corev1.ResourceMemory: resource.MustParse("64Mi"),
-										corev1.ResourceCPU:    resource.MustParse("250m"),
-									}).
-									WithLimits(corev1.ResourceList{
-										corev1.ResourceMemory: resource.MustParse("128Mi"),
-										corev1.ResourceCPU:    resource.MustParse("500m"),
-									})).
-								WithPorts(
-									applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-									applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-									applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-									applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-								).
-								WithLivenessProbe(
-									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
-										WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-								).
-								WithReadinessProbe(
-									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
-										WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-								).
-								WithVolumeMounts(
-									applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
-									applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
-								).
-								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-						).WithVolumes(
-							applycorev1.Volume().WithName(podNameVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("name").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.name"),
-										),
-								)),
-							applycorev1.Volume().WithName(labelsVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("labels").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.labels"),
-										),
-								)),
-							applycorev1.Volume().WithName(annotationsVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("annotations").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.annotations"),
-										),
-								)),
-						)))),
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(func(dep *applyappsv1.DeploymentApplyConfiguration) {
+				dep.Spec.Template.Spec.Containers[0].WithResources(applycorev1.ResourceRequirements().
+					WithRequests(corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("64Mi"),
+						corev1.ResourceCPU:    resource.MustParse("250m"),
+					}).
+					WithLimits(corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+						corev1.ResourceCPU:    resource.MustParse("500m"),
+					}))
+			}),
 		},
 		{
-			name: "smp wildcard patch with old name",
-			args: args{
-				cluster: v1alpha1.ClusterSpec{
-					Config: json.RawMessage(`
+			name: "container name back compat: smp wildcard patch with old name",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": "true"
 					}
 				`),
-					Patches: []v1alpha1.Patch{{
-						Kind: "*",
-						Patch: json.RawMessage(`
+				Patches: []v1alpha1.Patch{{
+					Kind: "*",
+					Patch: json.RawMessage(`
 spec:
   template:
     spec:
@@ -2143,133 +2048,131 @@ spec:
             memory: "128Mi"
             cpu: "500m"
 `),
-					}},
-				},
-				globalConfig: OperatorConfig{
-					ImageName: "image",
-					UpdateGraph: updates.UpdateGraph{
-						Channels: []updates.Channel{
-							{
-								Name:     "cockroachdb",
-								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
-								Nodes: []updates.State{
-									{ID: "v1", Tag: "v1"},
-								},
-								Edges: map[string][]string{"v1": {}},
-							},
-						},
-					},
-				},
-				secret: &corev1.Secret{Data: map[string][]byte{
-					"datastore_uri": []byte("uri"),
-					"preshared_key": []byte("psk"),
 				}},
 			},
-			wantDeployment: applyappsv1.Deployment("test-spicedb", "test").
-				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
-				WithAnnotations(map[string]string{
-					metadata.SpiceDBMigrationRequirementsKey: "1",
-				}).
-				WithOwnerReferences(applymetav1.OwnerReference().
-					WithName("test").
-					WithKind(v1alpha1.SpiceDBClusterKind).
-					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
-					WithUID("1")).
-				WithSpec(applyappsv1.DeploymentSpec().
-					WithReplicas(2).
-					WithStrategy(applyappsv1.DeploymentStrategy().
-						WithType(appsv1.RollingUpdateDeploymentStrategyType).
-						WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
-					WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"})).
-					WithTemplate(applycorev1.PodTemplateSpec().
-						WithAnnotations(map[string]string{
-							metadata.SpiceDBSecretRequirementsKey: "2",
-							metadata.SpiceDBTargetMigrationKey:    "head",
-						}).
-						WithLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"}).
-						WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
-						WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").WithContainers(
-							applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
-								WithCommand("spicedb", "serve").
-								WithEnv(
-									applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
-									applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
-									applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
-									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
-									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
-									applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
-									applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
-									applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
-								).
-								WithResources(applycorev1.ResourceRequirements().
-									WithRequests(corev1.ResourceList{
-										corev1.ResourceMemory: resource.MustParse("64Mi"),
-										corev1.ResourceCPU:    resource.MustParse("250m"),
-									}).
-									WithLimits(corev1.ResourceList{
-										corev1.ResourceMemory: resource.MustParse("128Mi"),
-										corev1.ResourceCPU:    resource.MustParse("500m"),
-									})).
-								WithPorts(
-									applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-									applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-									applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-									applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-								).
-								WithLivenessProbe(
-									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
-										WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-								).
-								WithReadinessProbe(
-									applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
-										WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
-								).
-								WithVolumeMounts(
-									applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
-									applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
-								).
-								WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-						).WithVolumes(
-							applycorev1.Volume().WithName(podNameVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("name").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.name"),
-										),
-								)),
-							applycorev1.Volume().WithName(labelsVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("labels").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.labels"),
-										),
-								)),
-							applycorev1.Volume().WithName(annotationsVolume).
-								WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-									applycorev1.DownwardAPIVolumeFile().
-										WithPath("annotations").
-										WithFieldRef(applycorev1.ObjectFieldSelector().
-											WithFieldPath("metadata.annotations"),
-										),
-								)),
-						)))),
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(func(dep *applyappsv1.DeploymentApplyConfiguration) {
+				dep.Spec.Template.Spec.Containers[0].WithResources(applycorev1.ResourceRequirements().
+					WithRequests(corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("64Mi"),
+						corev1.ResourceCPU:    resource.MustParse("250m"),
+					}).
+					WithLimits(corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+						corev1.ResourceCPU:    resource.MustParse("500m"),
+					}))
+			}),
+		},
+		{
+			name: "patch preserves required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Deployment",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(),
+		},
+		{
+			name: "patch would create invalid deployment: missing selector",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Deployment",
+					Patch: json.RawMessage(`
+      spec:
+        selector: null
+`),
+				}},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(),
+		},
+		{
+			name: "patch would create invalid deployment: missing spec",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Deployment",
+					Patch: json.RawMessage(`
+      spec: null
+`),
+				}},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(),
+		},
+		{
+			name: "patch would create invalid deployment: missing template",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Deployment",
+					Patch: json.RawMessage(`
+      spec: 
+        template: null
+`),
+				}},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantDeployment: expectedDeployment(),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			global := tt.args.globalConfig.Copy()
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test",
 					Namespace: "test",
 					UID:       types.UID("1"),
 				},
-				Spec:   tt.args.cluster,
-				Status: tt.args.status,
+				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, &global, tt.args.secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), tt.secret, resources)
 			require.NoError(t, err)
 
 			wantDep, err := json.Marshal(tt.wantDeployment)
@@ -2280,4 +2183,568 @@ spec:
 			require.JSONEq(t, string(wantDep), string(gotDep))
 		})
 	}
+}
+
+func TestMigrationJob(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name    string
+		cluster v1alpha1.ClusterSpec
+		wantJob *applybatchv1.JobApplyConfiguration
+	}{
+		{
+			name: "patch preserves required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Job",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantJob: expectedJob(),
+		},
+		{
+			name: "patch would create invalid job: missing template",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Job",
+					Patch: json.RawMessage(`
+      spec: 
+        template: null
+`),
+				}},
+			},
+			wantJob: expectedJob(),
+		},
+		{
+			name: "patch would create invalid job: missing spec",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Job",
+					Patch: json.RawMessage(`
+      spec: null
+`),
+				}},
+			},
+			wantJob: expectedJob(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantJob, err := json.Marshal(tt.wantJob)
+			require.NoError(t, err)
+			gotJob, err := json.Marshal(got.MigrationJob("1"))
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantJob), string(gotJob))
+		})
+	}
+}
+
+func TestService(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name        string
+		cluster     v1alpha1.ClusterSpec
+		wantService *applycorev1.ServiceApplyConfiguration
+	}{
+		{
+			name: "patches preserve required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Service",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantService: applycorev1.Service("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(applycorev1.ServiceSpec().
+					WithSelector(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
+					WithPorts(
+						applycorev1.ServicePort().WithName("grpc").WithPort(50051),
+						applycorev1.ServicePort().WithName("gateway").WithPort(8443),
+						applycorev1.ServicePort().WithName("metrics").WithPort(9090),
+						applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
+					),
+				),
+		},
+		{
+			name: "patch would create invalid service: missing spec",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb",
+						"skipMigrations": "true"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Service",
+					Patch: json.RawMessage(`
+      spec: null
+`),
+				}},
+			},
+			wantService: applycorev1.Service("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(applycorev1.ServiceSpec().
+					WithSelector(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
+					WithPorts(
+						applycorev1.ServicePort().WithName("grpc").WithPort(50051),
+						applycorev1.ServicePort().WithName("gateway").WithPort(8443),
+						applycorev1.ServicePort().WithName("metrics").WithPort(9090),
+						applycorev1.ServicePort().WithName("dispatch").WithPort(50053),
+					),
+				),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantService, err := json.Marshal(tt.wantService)
+			require.NoError(t, err)
+			gotService, err := json.Marshal(got.Service())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantService), string(gotService))
+		})
+	}
+}
+
+func TestRole(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name     string
+		cluster  v1alpha1.ClusterSpec
+		wantRole *applyrbacv1.RoleApplyConfiguration
+	}{
+		{
+			name: "patches preserve required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "Role",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantRole: applyrbacv1.Role("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentRoleLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithRules(
+					applyrbacv1.PolicyRule().
+						WithAPIGroups("").
+						WithResources("endpoints").
+						WithVerbs("get", "list", "watch"),
+				),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantRole, err := json.Marshal(tt.wantRole)
+			require.NoError(t, err)
+			gotRole, err := json.Marshal(got.Role())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantRole), string(gotRole))
+		})
+	}
+}
+
+func TestRoleBinding(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name            string
+		cluster         v1alpha1.ClusterSpec
+		wantRoleBinding *applyrbacv1.RoleBindingApplyConfiguration
+	}{
+		{
+			name: "patches preserve required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "RoleBinding",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantRoleBinding: applyrbacv1.RoleBinding("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentRoleBindingLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithRoleRef(applyrbacv1.RoleRef().
+					WithKind("Role").
+					WithName("test"),
+				).WithSubjects(applyrbacv1.Subject().
+				WithNamespace("test").
+				WithKind("ServiceAccount").WithName("test"),
+			),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantRoleBinding, err := json.Marshal(tt.wantRoleBinding)
+			require.NoError(t, err)
+			gotRoleBinding, err := json.Marshal(got.RoleBinding())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantRoleBinding), string(gotRoleBinding))
+		})
+	}
+}
+
+func TestServiceAccount(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name               string
+		cluster            v1alpha1.ClusterSpec
+		wantServiceAccount *applycorev1.ServiceAccountApplyConfiguration
+	}{
+		{
+			name: "patches preserve required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "ServiceAccount",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantServiceAccount: applycorev1.ServiceAccount("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceAccountLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantServiceAccount, err := json.Marshal(tt.wantServiceAccount)
+			require.NoError(t, err)
+			gotServiceAccount, err := json.Marshal(got.ServiceAccount())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantServiceAccount), string(gotServiceAccount))
+		})
+	}
+}
+
+func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfiguration)) *applyappsv1.DeploymentApplyConfiguration {
+	base := applyappsv1.Deployment("test-spicedb", "test").
+		WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
+		WithAnnotations(map[string]string{
+			metadata.SpiceDBMigrationRequirementsKey: "1",
+		}).
+		WithOwnerReferences(applymetav1.OwnerReference().
+			WithName("test").
+			WithKind(v1alpha1.SpiceDBClusterKind).
+			WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+			WithUID("1")).
+		WithSpec(applyappsv1.DeploymentSpec().
+			WithReplicas(2).
+			WithStrategy(applyappsv1.DeploymentStrategy().
+				WithType(appsv1.RollingUpdateDeploymentStrategyType).
+				WithRollingUpdate(applyappsv1.RollingUpdateDeployment().WithMaxUnavailable(intstr.FromInt(0)))).
+			WithSelector(applymetav1.LabelSelector().WithMatchLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"})).
+			WithTemplate(applycorev1.PodTemplateSpec().
+				WithAnnotations(map[string]string{
+					metadata.SpiceDBSecretRequirementsKey: "2",
+					metadata.SpiceDBTargetMigrationKey:    "to-v1",
+				}).
+				WithLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"}).
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
+				WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").WithContainers(
+					applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
+						WithCommand("spicedb", "serve").
+						WithEnv(
+							applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
+							applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
+							applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
+							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
+							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
+							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
+							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
+							applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
+						).
+						WithPorts(
+							applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+							applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
+							applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
+							applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
+						).
+						WithLivenessProbe(
+							applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
+								WithInitialDelaySeconds(60).WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+						).
+						WithReadinessProbe(
+							applycorev1.Probe().WithExec(applycorev1.ExecAction().WithCommand("grpc_health_probe", "-v", "-addr=localhost:50051")).
+								WithFailureThreshold(5).WithPeriodSeconds(10).WithTimeoutSeconds(5),
+						).
+						WithVolumeMounts(
+							applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
+							applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
+						).
+						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+				).WithVolumes(
+					applycorev1.Volume().WithName(podNameVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("name").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.name"),
+								),
+						)),
+					applycorev1.Volume().WithName(labelsVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("labels").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.labels"),
+								),
+						)),
+					applycorev1.Volume().WithName(annotationsVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("annotations").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.annotations"),
+								),
+						)),
+				))))
+	for _, f := range apply {
+		f(base)
+	}
+	return base
+}
+
+func expectedJob(apply ...func(dep *applybatchv1.JobApplyConfiguration)) *applybatchv1.JobApplyConfiguration {
+	base := applybatchv1.Job("test-migrate-1", "test").
+		WithLabels(metadata.LabelsForComponent("test", metadata.ComponentMigrationJobLabelValue)).
+		WithAnnotations(map[string]string{
+			metadata.SpiceDBMigrationRequirementsKey: "1",
+		}).
+		WithOwnerReferences(applymetav1.OwnerReference().
+			WithName("test").
+			WithKind(v1alpha1.SpiceDBClusterKind).
+			WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+			WithUID("1")).
+		WithSpec(applybatchv1.JobSpec().WithTemplate(
+			applycorev1.PodTemplateSpec().WithLabels(
+				metadata.LabelsForComponent("test", metadata.ComponentMigrationJobLabelValue),
+			).WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").
+				WithContainers(
+					applycorev1.Container().
+						WithName("migrate").
+						WithImage("image:v1").
+						WithCommand("spicedb", "migrate", "to-v1").
+						WithVolumeMounts(
+							applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
+							applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
+						).
+						WithEnv(
+							applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
+							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
+							applycorev1.EnvVar().WithName("SPICEDB_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("migration_secrets").WithOptional(true))),
+							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
+							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
+							applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
+						).
+						WithPorts(
+							applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+							applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
+							applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
+							applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
+						).
+						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+				).WithVolumes(
+				applycorev1.Volume().WithName(podNameVolume).
+					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+						applycorev1.DownwardAPIVolumeFile().
+							WithPath("name").
+							WithFieldRef(applycorev1.ObjectFieldSelector().
+								WithFieldPath("metadata.name"),
+							),
+					)),
+				applycorev1.Volume().WithName(labelsVolume).
+					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+						applycorev1.DownwardAPIVolumeFile().
+							WithPath("labels").
+							WithFieldRef(applycorev1.ObjectFieldSelector().
+								WithFieldPath("metadata.labels"),
+							),
+					)),
+				applycorev1.Volume().WithName(annotationsVolume).
+					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+						applycorev1.DownwardAPIVolumeFile().
+							WithPath("annotations").
+							WithFieldRef(applycorev1.ObjectFieldSelector().
+								WithFieldPath("metadata.annotations"),
+							),
+					)),
+			).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
+	for _, f := range apply {
+		f(base)
+	}
+	return base
+}
+
+var testGlobalConfig = OperatorConfig{
+	ImageName: "image",
+	UpdateGraph: updates.UpdateGraph{
+		Channels: []updates.Channel{
+			{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+				Nodes: []updates.State{
+					{ID: "v1", Tag: "v1", Migration: "to-v1"},
+				},
+				Edges: map[string][]string{"v1": {}},
+			},
+		},
+	},
 }

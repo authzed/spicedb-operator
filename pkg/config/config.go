@@ -494,10 +494,9 @@ func (c *Config) ServiceAccount() *applycorev1.ServiceAccountApplyConfiguration 
 	_, _, _ = ApplyPatches(c.unpatchedServiceAccount(), sa, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
-	sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
+	return sa.WithName(c.ServiceAccountName).WithNamespace(c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentServiceAccountLabel)).
 		WithOwnerReferences(c.ownerRef())
-	return sa
 }
 
 func (c *Config) unpatchedRole() *applyrbacv1.RoleApplyConfiguration {
@@ -516,10 +515,9 @@ func (c *Config) Role() *applyrbacv1.RoleApplyConfiguration {
 	_, _, _ = ApplyPatches(c.unpatchedRole(), role, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
-	role.WithName(c.Name).WithNamespace(c.Namespace).
+	return role.WithName(c.Name).WithNamespace(c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleLabel)).
 		WithOwnerReferences(c.ownerRef())
-	return role
 }
 
 func (c *Config) unpatchedRoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
@@ -539,10 +537,9 @@ func (c *Config) RoleBinding() *applyrbacv1.RoleBindingApplyConfiguration {
 	_, _, _ = ApplyPatches(c.unpatchedRoleBinding(), rb, c.Patches, c.Resources)
 
 	// ensure patches don't overwrite anything critical for operator function
-	rb.WithName(c.Name).WithNamespace(c.Namespace).
+	return rb.WithName(c.Name).WithNamespace(c.Namespace).
 		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentRoleBindingLabel)).
 		WithOwnerReferences(c.ownerRef())
-	return rb
 }
 
 func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
@@ -556,7 +553,13 @@ func (c *Config) unpatchedService() *applycorev1.ServiceApplyConfiguration {
 
 func (c *Config) Service() *applycorev1.ServiceApplyConfiguration {
 	s := applycorev1.Service(c.Name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedService(), s, c.Patches, c.Resources)
+	unpatched := c.unpatchedService()
+	_, _, _ = ApplyPatches(unpatched, s, c.Patches, c.Resources)
+
+	// not allowed to patch out the spec
+	if s.Spec == nil {
+		s.Spec = unpatched.Spec
+	}
 
 	// ensure patches don't overwrite anything critical for operator function
 	s.WithName(c.Name).WithNamespace(c.Namespace).
@@ -691,7 +694,18 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 
 func (c *Config) MigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	j := applybatchv1.Job(c.jobName(migrationHash), c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedMigrationJob(migrationHash), j, c.Patches, c.Resources)
+	unpatched := c.unpatchedMigrationJob(migrationHash)
+	_, _, _ = ApplyPatches(unpatched, j, c.Patches, c.Resources)
+
+	// not allowed to patch out the spec
+	if j.Spec == nil {
+		j.Spec = unpatched.Spec
+	}
+
+	// not allowed to patch out the template
+	if j.Spec.Template == nil {
+		j.Spec.Template = unpatched.Spec.Template
+	}
 
 	// ensure patches don't overwrite anything critical for operator function
 	name := c.jobName(migrationHash)
@@ -801,7 +815,23 @@ func (c *Config) unpatchedDeployment(migrationHash, secretHash string) *applyapp
 func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.DeploymentApplyConfiguration {
 	name := deploymentName(c.Name)
 	d := applyappsv1.Deployment(name, c.Namespace)
-	_, _, _ = ApplyPatches(c.unpatchedDeployment(migrationHash, secretHash), d, c.Patches, c.Resources)
+	unpatched := c.unpatchedDeployment(migrationHash, secretHash)
+	_, _, _ = ApplyPatches(unpatched, d, c.Patches, c.Resources)
+
+	// not allowed to patch out the spec
+	if d.Spec == nil {
+		d.Spec = unpatched.Spec
+	}
+
+	// not allowed to patch out the selector
+	if d.Spec.Selector == nil {
+		d.Spec.Selector = unpatched.Spec.Selector
+	}
+
+	// not allowed to patch out the template
+	if d.Spec.Template == nil {
+		d.Spec.Template = unpatched.Spec.Template
+	}
 
 	// ensure patches don't overwrite anything critical for operator function
 	d.WithName(name).WithNamespace(c.Namespace).WithOwnerReferences(c.ownerRef()).
