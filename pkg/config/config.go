@@ -861,7 +861,7 @@ func fixDeploymentPatches(name string, in []v1alpha1.Patch) []v1alpha1.Patch {
 	patches = append(patches, in...)
 	for i, p := range patches {
 		// not a deployment patch
-		if !(p.Kind == "Deployment" || p.Kind == wildcard) {
+		if p.Kind != "Deployment" && p.Kind != wildcard {
 			continue
 		}
 

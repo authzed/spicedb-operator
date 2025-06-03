@@ -41,14 +41,14 @@ type SpiceDBCluster struct {
 }
 
 func (c *SpiceDBCluster) WithAnnotations(entries map[string]string) *SpiceDBCluster {
-	annotations := c.ObjectMeta.GetAnnotations()
+	annotations := c.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
 	for k, v := range entries {
 		annotations[k] = v
 	}
-	c.ObjectMeta.SetAnnotations(annotations)
+	c.SetAnnotations(annotations)
 	return c
 }
 
