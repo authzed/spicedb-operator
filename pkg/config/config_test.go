@@ -1966,7 +1966,7 @@ func TestGraphDiffSanity(t *testing.T) {
 	proposedGraph := GetConfig("../../proposed-update-graph.yaml")
 	validatedGraph := GetConfig("../../config/update-graph.yaml")
 	require.NotPanics(t, func() {
-		_ = proposedGraph.UpdateGraph.Difference(&validatedGraph.UpdateGraph)
+		_ = proposedGraph.Difference(&validatedGraph.UpdateGraph)
 	})
 }
 

@@ -71,7 +71,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		Conditions:           *cluster.GetStatusConditions(),
 	}
 	if version := validatedConfig.SpiceDBVersion; version != nil {
-		computedStatus.AvailableVersions, err = operatorConfig.UpdateGraph.AvailableVersions(validatedConfig.DatastoreEngine, *version)
+		computedStatus.AvailableVersions, err = operatorConfig.AvailableVersions(validatedConfig.DatastoreEngine, *version)
 		if err != nil {
 			QueueOps.RequeueErr(ctx, err)
 			return
