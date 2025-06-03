@@ -23,6 +23,7 @@ import (
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	applypolicyv1 "k8s.io/client-go/applyconfigurations/policy/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
 	"k8s.io/utils/ptr"
@@ -2570,6 +2571,97 @@ metadata:
 			require.NoError(t, err)
 
 			require.JSONEq(t, string(wantServiceAccount), string(gotServiceAccount))
+		})
+	}
+}
+
+func TestPDB(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name    string
+		cluster v1alpha1.ClusterSpec
+		wantPDB *applypolicyv1.PodDisruptionBudgetApplyConfiguration
+	}{
+		{
+			name: "pdb sets minavailable to replicas - 1",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"replicas": 5,
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+			},
+			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(
+					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
+						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
+							"app.kubernetes.io/instance": "test-spicedb",
+						}),
+					).WithMinAvailable(intstr.FromInt32(4))),
+		},
+		{
+			name: "patches preserve required fields",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+				Patches: []v1alpha1.Patch{{
+					Kind: "PodDisruptionBudget",
+					Patch: json.RawMessage(`
+metadata:
+  labels: null
+`),
+				}},
+			},
+			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(
+					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
+						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
+							"app.kubernetes.io/instance": "test-spicedb",
+						}),
+					).WithMinAvailable(intstr.FromInt32(1))),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantPDB, err := json.Marshal(tt.wantPDB)
+			require.NoError(t, err)
+			gotPDB, err := json.Marshal(got.PodDisruptionBudget())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantPDB), string(gotPDB))
 		})
 	}
 }

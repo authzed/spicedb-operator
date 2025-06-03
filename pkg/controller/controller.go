@@ -25,6 +25,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,6 +37,7 @@ import (
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	applypolicyv1 "k8s.io/client-go/applyconfigurations/policy/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -57,6 +59,7 @@ import (
 // +kubebuilder:rbac:groups="authzed.com",resources=spicedbclusters/status,verbs=get;watch;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups="",resources=jobs,verbs=get;list;watch;create;update;patch;delete
@@ -182,6 +185,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 			batchv1.SchemeGroupVersion.WithResource("jobs"),
 			rbacv1.SchemeGroupVersion.WithResource("roles"),
 			rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+			policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
 		} {
 			inf := externalInformerFactory.ForResource(gvr).Informer()
 			if err := inf.AddIndexers(cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta}); err != nil {
@@ -226,6 +230,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 
 	deploymentHandlerChain := chain(
 		c.ensureDeployment,
+		c.ensurePDB,
 		c.cleanupJob,
 	).Handler(HandlerDeploymentKey)
 
@@ -425,6 +430,64 @@ func (c *Controller) ensureDeployment(next ...handler.Handler) handler.Handler {
 		patchStatus: c.PatchStatus,
 		next:        handler.Handlers(next).MustOne(),
 	})
+}
+
+func (c *Controller) ensurePDB(next ...handler.Handler) handler.Handler {
+	applyPDB := func(ctx context.Context, apply *applypolicyv1.PodDisruptionBudgetApplyConfiguration) (*policyv1.PodDisruptionBudget, error) {
+		logr.FromContextOrDiscard(ctx).V(4).Info("applying pdb", "namespace", *apply.Namespace, "name", *apply.Name)
+		return c.kclient.PolicyV1().PodDisruptionBudgets(*apply.Namespace).Apply(ctx, apply, metadata.ApplyForceOwned)
+	}
+	deletePDB := func(ctx context.Context, nn types.NamespacedName) error {
+		logr.FromContextOrDiscard(ctx).V(4).Info("deleting pdb", "namespace", nn.Namespace, "name", nn.Name)
+		return c.kclient.PolicyV1().PodDisruptionBudgets(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
+	}
+	return handler.NewHandlerFromFunc(func(ctx context.Context) {
+		cfg := CtxConfig.MustValue(ctx)
+		if cfg.Replicas < 2 {
+			// PDBs are only needed for clusters with more than 1 replica
+			handler.Handlers(next).MustOne().Handle(ctx)
+			return
+		}
+
+		// look up the index to find PDBs owned by the cluster
+		ownedPDBIndexer := typed.MustIndexerForKey[*policyv1.PodDisruptionBudget](
+			c.Registry,
+			typed.NewRegistryKey(
+				DependentFactoryKey(CtxCacheNamespace.Value(ctx)),
+				policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
+			),
+		)
+
+		// define the PDB "component" - the object that we want to ensure exists
+		// and is owned by the cluster
+		pdbComponent := component.NewIndexedComponent(
+			ownedPDBIndexer,
+			metadata.OwningClusterIndex,
+			func(ctx context.Context) labels.Selector {
+				return metadata.SelectorForComponent(CtxClusterNN.MustValue(ctx).Name, metadata.ComponentPDBLabel)
+			},
+		)
+
+		// build the handler that ensures the PDB with the proper definition
+		// exists and run it
+		component.NewEnsureComponentByHash(
+			component.NewHashableComponent(pdbComponent, hash.NewObjectHash(), "authzed.com/controller-component-hash"),
+			CtxClusterNN,
+			QueueOps,
+			applyPDB,
+			deletePDB,
+			func(_ context.Context) *applypolicyv1.PodDisruptionBudgetApplyConfiguration {
+				return cfg.PodDisruptionBudget()
+			},
+		).Handle(ctx)
+
+		// if the context is canceled, the sub-handler wants to stop processing
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return
+		}
+
+		handler.Handlers(next).MustOne().Handle(ctx)
+	}, "ensurePDB")
 }
 
 func (c *Controller) cleanupJob(...handler.Handler) handler.Handler {

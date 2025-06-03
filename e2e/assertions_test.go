@@ -16,6 +16,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
@@ -57,6 +58,24 @@ func AssertServiceAccountFunc(ctx context.Context, namespace string, kclient kub
 			for k, v := range annotations {
 				g.Expect(serviceAccounts.Items[0].GetAnnotations()).To(HaveKeyWithValue(k, v))
 			}
+		}).Should(Succeed())
+	}
+}
+
+func AssertPDBFunc(ctx context.Context, namespace string, kclient kubernetes.Interface) func(name string, owner string) {
+	return func(name string, owner string) {
+		ctx, cancel := context.WithCancel(ctx)
+		DeferCleanup(cancel)
+
+		var pdbs *policyv1.PodDisruptionBudgetList
+		Eventually(func(g Gomega) {
+			var err error
+			pdbs, err = kclient.PolicyV1().PodDisruptionBudgets(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentPDBLabel, metadata.OwnerLabelKey, owner),
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(pdbs.Items)).To(Equal(1))
+			g.Expect(pdbs.Items[0].GetName()).To(Equal(name))
 		}).Should(Succeed())
 	}
 }
