@@ -22,6 +22,7 @@ import (
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	applypolicyv1 "k8s.io/client-go/applyconfigurations/policy/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/kubectl/pkg/util/openapi"
 
@@ -850,6 +851,31 @@ func (c *Config) Deployment(migrationHash, secretHash string) *applyappsv1.Deplo
 	return d
 }
 
+func (c *Config) PodDisruptionBudget() *applypolicyv1.PodDisruptionBudgetApplyConfiguration {
+	name := pdbName(c.Name)
+	d := applypolicyv1.PodDisruptionBudget(name, c.Namespace)
+	unpatched := c.unpatchedPDB()
+	_, _, _ = ApplyPatches(unpatched, d, c.Patches, c.Resources)
+
+	// ensure patches don't overwrite anything critical for operator function
+	d.WithName(name).WithNamespace(c.Namespace).WithOwnerReferences(c.ownerRef()).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentPDBLabel))
+	d.Spec.Selector.WithMatchLabels(map[string]string{"app.kubernetes.io/instance": deploymentName(c.Name)})
+	return d
+}
+
+func (c *Config) unpatchedPDB() *applypolicyv1.PodDisruptionBudgetApplyConfiguration {
+	return applypolicyv1.PodDisruptionBudget(pdbName(c.Name), c.Namespace).
+		WithLabels(metadata.LabelsForComponent(c.Name, metadata.ComponentPDBLabel)).
+		WithSpec(applypolicyv1.PodDisruptionBudgetSpec().
+			WithSelector(applymetav1.LabelSelector().WithMatchLabels(
+				map[string]string{"app.kubernetes.io/instance": deploymentName(c.Name)},
+			)).
+			// only allow one pod to be unavailable at a time
+			WithMinAvailable(intstr.FromInt32(c.Replicas - 1)),
+		)
+}
+
 // fixDeploymentPatches modifies any patches that could apply to the deployment
 // referencing the old container names and rewrites them to use the new
 // stable name
@@ -921,5 +947,10 @@ func toEnvVarName(prefix string, key string) string {
 
 // deploymentName returns the name of the unpatchedDeployment given a SpiceDBCluster name
 func deploymentName(name string) string {
+	return fmt.Sprintf("%s-spicedb", name)
+}
+
+// pdbName returns the name of the unpatchedPDB given a SpiceDBCluster name
+func pdbName(name string) string {
 	return fmt.Sprintf("%s-spicedb", name)
 }

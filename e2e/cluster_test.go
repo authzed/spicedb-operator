@@ -61,6 +61,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		AssertMigrationJobCleanup      func(owner string)
 		AssertServiceAccount           func(name string, annotations map[string]string, owner string)
+		AssertPDB                      func(name, owner string)
 		AssertHealthySpiceDBCluster    func(image, owner string, logMatcher types.GomegaMatcher)
 		AssertDependentResourceCleanup func(owner, secretName string)
 		AssertMigrationsCompleted      func(image, migration, phase, name, datastoreEngine string)
@@ -125,6 +126,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 		AssertMigrationJobCleanup = AssertMigrationJobCleanupFunc(ctx, testNamespace, kclient)
 		AssertServiceAccount = AssertServiceAccountFunc(ctx, testNamespace, kclient)
+		AssertPDB = AssertPDBFunc(ctx, testNamespace, kclient)
 		AssertHealthySpiceDBCluster = AssertHealthySpiceDBClusterFunc(ctx, testNamespace, kclient)
 		AssertDependentResourceCleanup = AssertDependentResourceCleanupFunc(ctx, testNamespace, kclient)
 		AssertMigrationsCompleted = AssertMigrationsCompletedFunc(ctx, testNamespace, kclient, client)
@@ -322,6 +324,7 @@ var _ = Describe("SpiceDBClusters", func() {
 
 						By("creating the serviceaccount")
 						AssertServiceAccount("spicedb-non-default", map[string]string{"authzed.com/e2e": "true"}, cluster.Name)
+						AssertPDB(cluster.Name+"-spicedb", cluster.Name)
 					})
 				})
 			})
