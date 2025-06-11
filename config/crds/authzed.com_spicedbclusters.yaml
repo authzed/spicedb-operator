@@ -71,6 +71,12 @@ spec:
           spec:
             description: ClusterSpec holds the desired state of the cluster.
             properties:
+              baseImage:
+                description: |-
+                  BaseImage specifies the base container image to use for SpiceDB.
+                  If not specified, will fall back to the operator's --base-image flag,
+                  then to the imageName defined in the update graph.
+                type: string
               channel:
                 description: |-
                   Channel is a defined series of updates that operator should follow.

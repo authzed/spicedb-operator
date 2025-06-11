@@ -223,7 +223,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
 
-	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, image, cluster.Spec.Version, cluster.Spec.Channel, datastoreEngine, cluster.Status.CurrentVersion, cluster.RolloutInProgress())
+	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, cluster.Spec.BaseImage, image, cluster.Spec.Version, cluster.Spec.Channel, datastoreEngine, cluster.Status.CurrentVersion, cluster.RolloutInProgress())
 	if err != nil {
 		errs = append(errs, err)
 	}

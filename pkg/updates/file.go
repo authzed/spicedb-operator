@@ -1,10 +1,10 @@
 package updates
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 
-	"github.com/jzelinskie/stringz"
 	"github.com/samber/lo"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
@@ -221,19 +221,21 @@ func explodeImage(image string) (baseImage, tag, digest string) {
 
 // ComputeTarget determines the target update version and state given an update
 // graph and the proper context.
-func (g *UpdateGraph) ComputeTarget(defaultBaseImage, image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, rolling bool) (baseImage string, target *v1alpha1.SpiceDBVersion, state State, err error) {
-	baseImage, tag, digest := explodeImage(image)
+func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, version, channel, engine string, currentVersion *v1alpha1.SpiceDBVersion, rolling bool) (baseImage string, target *v1alpha1.SpiceDBVersion, state State, err error) {
+	explodedBaseImage, tag, digest := explodeImage(image)
 
-	// If digest or tag are set, don't use an update graph.
+	// If digest or tag are set in the image config, use that image as-is
 	if len(digest) > 0 || len(tag) > 0 {
 		state = State{Tag: tag, Digest: digest}
+		baseImage = explodedBaseImage
 		return
 	}
 
-	// Fallback to the default base image if none is set.
-	baseImage = stringz.DefaultEmpty(baseImage, defaultBaseImage)
+	// The base image in the .spec.config.image field takes precedence over the
+	// .spec.baseImage field, which takes precedence over the global base image.
+	baseImage = cmp.Or(explodedBaseImage, clusterBaseImage, operatorImageName)
 	if baseImage == "" {
-		err = fmt.Errorf("no base image in operator config, and none specified in image")
+		err = fmt.Errorf("no base image specified in cluster spec, startup flag, or operator config")
 		return
 	}
 
