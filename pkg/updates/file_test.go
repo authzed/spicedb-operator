@@ -175,7 +175,8 @@ func TestComputeTarget(t *testing.T) {
 	table := []struct {
 		name              string
 		graph             *UpdateGraph
-		baseImage         string
+		operatorImageName string
+		clusterBaseImage  string
 		image             string
 		version           string
 		channel           string
@@ -231,7 +232,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
 			expectedState:     State{ID: "v1.0.1"},
@@ -246,7 +247,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
 			expectedState:     State{ID: "v1.0.1"},
@@ -261,7 +262,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			channel:           "missing",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0"},
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedErr:       "no channel",
 		},
@@ -275,7 +276,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			rolling:           true,
 			expectedErr:       "no current state",
@@ -290,7 +291,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			rolling:           true,
@@ -308,7 +309,7 @@ func TestComputeTarget(t *testing.T) {
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			version:           "v1.0.1",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			expectedTarget: &v1alpha1.SpiceDBVersion{
@@ -329,7 +330,7 @@ func TestComputeTarget(t *testing.T) {
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			version:           "v1.0.1",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
 			expectedTarget: &v1alpha1.SpiceDBVersion{
@@ -349,7 +350,7 @@ func TestComputeTarget(t *testing.T) {
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			version:           "v1.0.0",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget: &v1alpha1.SpiceDBVersion{
 				Name:       "v1.0.0",
@@ -369,7 +370,7 @@ func TestComputeTarget(t *testing.T) {
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			version:           "v1.0.0",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget: &v1alpha1.SpiceDBVersion{
 				Name:       "v1.0.0",
@@ -388,7 +389,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
 			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
@@ -404,7 +405,7 @@ func TestComputeTarget(t *testing.T) {
 			}}},
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget: &v1alpha1.SpiceDBVersion{
 				Name:       "v1.0.1",
@@ -424,7 +425,7 @@ func TestComputeTarget(t *testing.T) {
 			engine:            "cockroachdb",
 			channel:           "cockroachdb",
 			version:           "v1.0.0",
-			baseImage:         "ghcr.io/authzed/spicedb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			expectedBaseImage: "ghcr.io/authzed/spicedb",
 			expectedTarget: &v1alpha1.SpiceDBVersion{
 				Name:       "v1.0.0",
@@ -449,10 +450,10 @@ func TestComputeTarget(t *testing.T) {
 					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 				},
 			}},
-			engine:    "cockroachdb",
-			channel:   "rapid",
-			version:   "v1.0.1",
-			baseImage: "ghcr.io/authzed/spicedb",
+			engine:            "cockroachdb",
+			channel:           "rapid",
+			version:           "v1.0.1",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			currentVersion: &v1alpha1.SpiceDBVersion{
 				Name:    "v1.0.1",
 				Channel: "regular",
@@ -480,9 +481,9 @@ func TestComputeTarget(t *testing.T) {
 					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 				},
 			}},
-			engine:    "cockroachdb",
-			channel:   "rapid",
-			baseImage: "ghcr.io/authzed/spicedb",
+			engine:            "cockroachdb",
+			channel:           "rapid",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			currentVersion: &v1alpha1.SpiceDBVersion{
 				Name:    "v1.0.1",
 				Channel: "regular",
@@ -510,10 +511,10 @@ func TestComputeTarget(t *testing.T) {
 					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 				},
 			}},
-			engine:    "cockroachdb",
-			channel:   "rapid",
-			version:   "v1.0.2",
-			baseImage: "ghcr.io/authzed/spicedb",
+			engine:            "cockroachdb",
+			channel:           "rapid",
+			version:           "v1.0.2",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			currentVersion: &v1alpha1.SpiceDBVersion{
 				Name:    "v1.0.1",
 				Channel: "regular",
@@ -541,10 +542,10 @@ func TestComputeTarget(t *testing.T) {
 					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 				},
 			}},
-			engine:    "cockroachdb",
-			channel:   "rapid",
-			version:   "v1.0.1",
-			baseImage: "ghcr.io/authzed/spicedb",
+			engine:            "cockroachdb",
+			channel:           "rapid",
+			version:           "v1.0.1",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			currentVersion: &v1alpha1.SpiceDBVersion{
 				Name:    "v1.0.1",
 				Channel: "regular",
@@ -575,9 +576,9 @@ func TestComputeTarget(t *testing.T) {
 					Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
 				},
 			}},
-			engine:    "cockroachdb",
-			channel:   "rapid",
-			baseImage: "ghcr.io/authzed/spicedb",
+			engine:            "cockroachdb",
+			channel:           "rapid",
+			operatorImageName: "ghcr.io/authzed/spicedb",
 			currentVersion: &v1alpha1.SpiceDBVersion{
 				Name:    "v1.0.1",
 				Channel: "regular",
@@ -592,12 +593,52 @@ func TestComputeTarget(t *testing.T) {
 			},
 			expectedState: State{ID: "v1.0.1"},
 		},
+		{
+			name: "cluster base image takes precedence over operator config",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
+			operatorImageName: "registry.example.com/authzed/spicedb",
+			clusterBaseImage:  "public.ecr.aws/authzed/spicedb",
+			expectedBaseImage: "public.ecr.aws/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "cockroachdb",
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
+		{
+			name: "operator image used when cluster base image not specified",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.1", Channel: "cockroachdb"},
+			operatorImageName: "registry.example.com/authzed/spicedb",
+			expectedBaseImage: "registry.example.com/authzed/spicedb",
+			expectedTarget: &v1alpha1.SpiceDBVersion{
+				Name:    "v1.0.1",
+				Channel: "cockroachdb",
+			},
+			expectedState: State{ID: "v1.0.1"},
+		},
 	}
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
 			baseImage, target, state, err := tt.graph.ComputeTarget(
-				tt.baseImage,
+				tt.operatorImageName,
+				tt.clusterBaseImage,
 				tt.image,
 				tt.version,
 				tt.channel,

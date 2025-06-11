@@ -268,6 +268,28 @@ var _ = Describe("SpiceDBClusters", func() {
 					AssertMigrationJobCleanup(cluster.Name)
 				})
 
+				When("a custom base image is specified", func() {
+					BeforeEach(func() {
+						// Use docker.io registry to test custom base image functionality
+						cluster.Spec.BaseImage = "docker.io/authzed/spicedb"
+					})
+
+					It("uses the custom base image", func() {
+						AssertHealthySpiceDBCluster("", cluster.Name, Not(ContainSubstring("ERROR: kuberesolver")))
+
+						By("verifying the deployment uses the custom base image")
+						Eventually(func(g Gomega) {
+							deployments, err := kclient.AppsV1().Deployments(testNamespace).List(ctx, metav1.ListOptions{
+								LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, cluster.Name),
+							})
+							g.Expect(err).To(Succeed())
+							g.Expect(deployments.Items).To(HaveLen(1))
+							g.Expect(deployments.Items[0].Spec.Template.Spec.Containers).To(HaveLen(1))
+							g.Expect(deployments.Items[0].Spec.Template.Spec.Containers[0].Image).To(HavePrefix("docker.io/authzed/spicedb"))
+						}).Should(Succeed())
+					})
+				})
+
 				When("options are specified (TLS, ServiceAccount, default channel)", func() {
 					BeforeEach(func() {
 						// this installs from the head of the current channel, skip validating image

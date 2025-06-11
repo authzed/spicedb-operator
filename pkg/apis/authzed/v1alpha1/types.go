@@ -98,6 +98,12 @@ type ClusterSpec struct {
 	// in the list take precedence over earlier ones.
 	// +optional
 	Patches []Patch `json:"patches,omitempty"`
+
+	// BaseImage specifies the base container image to use for SpiceDB.
+	// If not specified, will fall back to the operator's --base-image flag,
+	// then to the imageName defined in the update graph.
+	// +optional
+	BaseImage string `json:"baseImage,omitempty"`
 }
 
 // Patch represents a single change to apply to generated manifests
