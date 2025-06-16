@@ -102,10 +102,11 @@ type Controller struct {
 	// config
 	configLock     sync.RWMutex
 	config         config.OperatorConfig
+	baseImage      string
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	// If no namespaces are provided, watch all namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}
@@ -116,6 +117,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		kclient:    kclient,
 		resources:  resources,
 		namespaces: namespaces,
+		baseImage:  baseImage,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
 		textlogger.NewLogger(textlogger.NewConfig()),
@@ -300,6 +302,11 @@ func (c *Controller) loadConfig(path string) {
 			c.configLock.Lock()
 			defer c.configLock.Unlock()
 			c.config = cfg
+			// Override ImageName with flag if provided
+			if c.baseImage != "" {
+				logger.V(3).Info("overriding graph-defined base image with startup flag", "baseImage", c.baseImage)
+				c.config.ImageName = c.baseImage
+			}
 		}()
 		c.lastConfigHash.Store(h)
 	} else {

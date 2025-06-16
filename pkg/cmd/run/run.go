@@ -43,6 +43,7 @@ type Options struct {
 	BootstrapCRDs         bool
 	BootstrapSpicedbsPath string
 	OperatorConfigPath    string
+	BaseImage             string
 
 	MetricNamespace string
 
@@ -87,6 +88,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	globalFlags := namedFlagSets.FlagSet("global")
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
 	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
+	globalFlags.StringVar(&o.BaseImage, "base-image", "", "default base image for SpiceDB containers")
 
 	for _, f := range namedFlagSets.FlagSets {
 		cmd.Flags().AddFlagSet(f)
@@ -153,7 +155,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, broadcaster, o.WatchNamespaces)
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}
