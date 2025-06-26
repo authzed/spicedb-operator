@@ -449,13 +449,6 @@ func (c *Controller) ensurePDB(next ...handler.Handler) handler.Handler {
 		return c.kclient.PolicyV1().PodDisruptionBudgets(nn.Namespace).Delete(ctx, nn.Name, metav1.DeleteOptions{})
 	}
 	return handler.NewHandlerFromFunc(func(ctx context.Context) {
-		cfg := CtxConfig.MustValue(ctx)
-		if cfg.Replicas < 2 {
-			// PDBs are only needed for clusters with more than 1 replica
-			handler.Handlers(next).MustOne().Handle(ctx)
-			return
-		}
-
 		// look up the index to find PDBs owned by the cluster
 		ownedPDBIndexer := typed.MustIndexerForKey[*policyv1.PodDisruptionBudget](
 			c.Registry,
@@ -477,6 +470,7 @@ func (c *Controller) ensurePDB(next ...handler.Handler) handler.Handler {
 
 		// build the handler that ensures the PDB with the proper definition
 		// exists and run it
+		cfg := CtxConfig.MustValue(ctx)
 		component.NewEnsureComponentByHash(
 			component.NewHashableComponent(pdbComponent, hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 			CtxClusterNN,
