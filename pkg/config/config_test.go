@@ -2669,7 +2669,7 @@ func TestPDB(t *testing.T) {
 		wantPDB *applypolicyv1.PodDisruptionBudgetApplyConfiguration
 	}{
 		{
-			name: "pdb sets minavailable to replicas - 1",
+			name: "pdb sets maxUnavailable to 1",
 			cluster: v1alpha1.ClusterSpec{
 				Config: json.RawMessage(`
 					{
@@ -2691,7 +2691,7 @@ func TestPDB(t *testing.T) {
 						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
 							"app.kubernetes.io/instance": "test-spicedb",
 						}),
-					).WithMinAvailable(intstr.FromInt32(4))),
+					).WithMaxUnavailable(intstr.FromInt32(1))),
 		},
 		{
 			name: "patches preserve required fields",
@@ -2722,7 +2722,7 @@ metadata:
 						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
 							"app.kubernetes.io/instance": "test-spicedb",
 						}),
-					).WithMinAvailable(intstr.FromInt32(1))),
+					).WithMaxUnavailable(intstr.FromInt32(1))),
 		},
 	}
 	for _, tt := range tests {

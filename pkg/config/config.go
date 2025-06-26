@@ -872,7 +872,7 @@ func (c *Config) unpatchedPDB() *applypolicyv1.PodDisruptionBudgetApplyConfigura
 				map[string]string{"app.kubernetes.io/instance": deploymentName(c.Name)},
 			)).
 			// only allow one pod to be unavailable at a time
-			WithMinAvailable(intstr.FromInt32(c.Replicas - 1)),
+			WithMaxUnavailable(intstr.FromInt32(1)),
 		)
 }
 
