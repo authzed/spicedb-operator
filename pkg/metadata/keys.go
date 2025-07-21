@@ -34,6 +34,11 @@ const (
 	SpiceDBSecretRequirementsKey    = "authzed.com/spicedb-secret" // nolint: gosec
 	SpiceDBConfigKey                = "authzed.com/spicedb-configuration"
 	FieldManager                    = "spicedb-operator"
+
+	KubernetesNameLabelKey      = "app.kubernetes.io/name"
+	KubernetesInstanceLabelKey  = "app.kubernetes.io/instance"
+	KubernetesComponentLabelKey = "app.kubernetes.io/component"
+	KubernetesVersionLabelKey   = "app.kubernetes.io/version"
 )
 
 var (
