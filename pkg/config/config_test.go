@@ -2175,7 +2175,9 @@ metadata:
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
 			}},
-			wantDeployment: expectedDeployment(),
+			wantDeployment: expectedDeployment(func(dep *applyappsv1.DeploymentApplyConfiguration) {
+				dep.Labels = metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)
+			}),
 		},
 		{
 			name: "patch would create invalid deployment: missing selector",
@@ -2296,7 +2298,9 @@ metadata:
 `),
 				}},
 			},
-			wantJob: expectedJob(),
+			wantJob: expectedJob(func(job *applybatchv1.JobApplyConfiguration) {
+				job.Labels = metadata.LabelsForComponent("test", metadata.ComponentMigrationJobLabelValue)
+			}),
 		},
 		{
 			name: "patch would create invalid job: missing template",
@@ -2425,6 +2429,12 @@ metadata:
 			},
 			wantService: applycorev1.Service("test", "test").
 				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test",
+					metadata.KubernetesNameLabelKey:      "test",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
 				WithOwnerReferences(applymetav1.OwnerReference().
 					WithName("test").
 					WithKind(v1alpha1.SpiceDBClusterKind).
@@ -2681,6 +2691,12 @@ func TestPDB(t *testing.T) {
 			},
 			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
 				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
 				WithOwnerReferences(applymetav1.OwnerReference().
 					WithName("test").
 					WithKind(v1alpha1.SpiceDBClusterKind).
@@ -2689,7 +2705,7 @@ func TestPDB(t *testing.T) {
 				WithSpec(
 					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
 						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
-							"app.kubernetes.io/instance": "test-spicedb",
+							metadata.KubernetesInstanceLabelKey: "test-spicedb",
 						}),
 					).WithMaxUnavailable(intstr.FromInt32(1))),
 		},
@@ -2712,6 +2728,12 @@ metadata:
 			},
 			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
 				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
 				WithOwnerReferences(applymetav1.OwnerReference().
 					WithName("test").
 					WithKind(v1alpha1.SpiceDBClusterKind).
@@ -2720,7 +2742,7 @@ metadata:
 				WithSpec(
 					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
 						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
-							"app.kubernetes.io/instance": "test-spicedb",
+							metadata.KubernetesInstanceLabelKey: "test-spicedb",
 						}),
 					).WithMaxUnavailable(intstr.FromInt32(1))),
 		},
@@ -2755,6 +2777,12 @@ metadata:
 func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfiguration)) *applyappsv1.DeploymentApplyConfiguration {
 	base := applyappsv1.Deployment("test-spicedb", "test").
 		WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
+		WithLabels(map[string]string{
+			metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+			metadata.KubernetesNameLabelKey:      "test-spicedb",
+			metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+			metadata.KubernetesVersionLabelKey:   "v1",
+		}).
 		WithAnnotations(map[string]string{
 			metadata.SpiceDBMigrationRequirementsKey: "1",
 		}).
@@ -2774,7 +2802,12 @@ func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfigurat
 					metadata.SpiceDBSecretRequirementsKey: "2",
 					metadata.SpiceDBTargetMigrationKey:    "to-v1",
 				}).
-				WithLabels(map[string]string{"app.kubernetes.io/instance": "test-spicedb"}).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
 				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
 				WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").WithContainers(
 					applycorev1.Container().WithName(ContainerNameSpiceDB).WithImage("image:v1").
@@ -2843,6 +2876,12 @@ func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfigurat
 func expectedJob(apply ...func(dep *applybatchv1.JobApplyConfiguration)) *applybatchv1.JobApplyConfiguration {
 	base := applybatchv1.Job("test-migrate-1", "test").
 		WithLabels(metadata.LabelsForComponent("test", metadata.ComponentMigrationJobLabelValue)).
+		WithLabels(map[string]string{
+			metadata.KubernetesInstanceLabelKey:  "test",
+			metadata.KubernetesNameLabelKey:      "test",
+			metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+			metadata.KubernetesVersionLabelKey:   "v1",
+		}).
 		WithAnnotations(map[string]string{
 			metadata.SpiceDBMigrationRequirementsKey: "1",
 		}).
@@ -2854,57 +2893,64 @@ func expectedJob(apply ...func(dep *applybatchv1.JobApplyConfiguration)) *applyb
 		WithSpec(applybatchv1.JobSpec().WithTemplate(
 			applycorev1.PodTemplateSpec().WithLabels(
 				metadata.LabelsForComponent("test", metadata.ComponentMigrationJobLabelValue),
-			).WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").
-				WithContainers(
-					applycorev1.Container().
-						WithName("migrate").
-						WithImage("image:v1").
-						WithCommand("spicedb", "migrate", "to-v1").
-						WithVolumeMounts(
-							applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
-							applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
-						).
-						WithEnv(
-							applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
-							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
-							applycorev1.EnvVar().WithName("SPICEDB_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("migration_secrets").WithOptional(true))),
-							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
-							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
-							applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
-						).
-						WithPorts(
-							applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
-							applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
-							applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
-							applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
-						).
-						WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
-				).WithVolumes(
-				applycorev1.Volume().WithName(podNameVolume).
-					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-						applycorev1.DownwardAPIVolumeFile().
-							WithPath("name").
-							WithFieldRef(applycorev1.ObjectFieldSelector().
-								WithFieldPath("metadata.name"),
-							),
-					)),
-				applycorev1.Volume().WithName(labelsVolume).
-					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-						applycorev1.DownwardAPIVolumeFile().
-							WithPath("labels").
-							WithFieldRef(applycorev1.ObjectFieldSelector().
-								WithFieldPath("metadata.labels"),
-							),
-					)),
-				applycorev1.Volume().WithName(annotationsVolume).
-					WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
-						applycorev1.DownwardAPIVolumeFile().
-							WithPath("annotations").
-							WithFieldRef(applycorev1.ObjectFieldSelector().
-								WithFieldPath("metadata.annotations"),
-							),
-					)),
-			).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
+			).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test",
+					metadata.KubernetesNameLabelKey:      "test",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
+				WithSpec(applycorev1.PodSpec().WithServiceAccountName("test").
+					WithContainers(
+						applycorev1.Container().
+							WithName("migrate").
+							WithImage("image:v1").
+							WithCommand("spicedb", "migrate", "to-v1").
+							WithVolumeMounts(
+								applycorev1.VolumeMount().WithName(labelsVolume).WithMountPath("/etc/podlabels"),
+								applycorev1.VolumeMount().WithName(annotationsVolume).WithMountPath("/etc/podannotations"),
+							).
+							WithEnv(
+								applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
+								applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
+								applycorev1.EnvVar().WithName("SPICEDB_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("migration_secrets").WithOptional(true))),
+								applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
+								applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
+								applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
+							).
+							WithPorts(
+								applycorev1.ContainerPort().WithContainerPort(50051).WithName("grpc"),
+								applycorev1.ContainerPort().WithContainerPort(8443).WithName("gateway"),
+								applycorev1.ContainerPort().WithContainerPort(9090).WithName("metrics"),
+								applycorev1.ContainerPort().WithContainerPort(50053).WithName("dispatch"),
+							).
+							WithTerminationMessagePolicy(corev1.TerminationMessageFallbackToLogsOnError),
+					).WithVolumes(
+					applycorev1.Volume().WithName(podNameVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("name").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.name"),
+								),
+						)),
+					applycorev1.Volume().WithName(labelsVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("labels").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.labels"),
+								),
+						)),
+					applycorev1.Volume().WithName(annotationsVolume).
+						WithDownwardAPI(applycorev1.DownwardAPIVolumeSource().WithItems(
+							applycorev1.DownwardAPIVolumeFile().
+								WithPath("annotations").
+								WithFieldRef(applycorev1.ObjectFieldSelector().
+									WithFieldPath("metadata.annotations"),
+								),
+						)),
+				).WithRestartPolicy(corev1.RestartPolicyOnFailure))))
 	for _, f := range apply {
 		f(base)
 	}
