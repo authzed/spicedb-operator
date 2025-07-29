@@ -126,17 +126,18 @@ type Config struct {
 // MigrationConfig stores data that is relevant for running migrations
 // or deciding if migrations need to be run
 type MigrationConfig struct {
-	TargetMigration        string
-	TargetPhase            string
-	MigrationLogLevel      string
-	DatastoreEngine        string
-	DatastoreURI           string
-	SpannerCredsSecretRef  string
-	TargetSpiceDBImage     string
-	EnvPrefix              string
-	SpiceDBCmd             string
-	DatastoreTLSSecretName string
-	SpiceDBVersion         *v1alpha1.SpiceDBVersion
+	TargetMigration         string
+	TargetPhase             string
+	MigrationLogLevel       string
+	DatastoreEngine         string
+	DatastoreURI            string
+	DatastoreReadReplicaURI string
+	SpannerCredsSecretRef   string
+	TargetSpiceDBImage      string
+	EnvPrefix               string
+	SpiceDBCmd              string
+	DatastoreTLSSecretName  string
+	SpiceDBVersion          *v1alpha1.SpiceDBVersion
 }
 
 // SpiceConfig contains config relevant to running spicedb or determining
@@ -276,6 +277,14 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
 		migrationConfig.DatastoreURI = string(datastoreURI)
+
+		// Check for read replica URI for supported datastores
+		if datastoreEngine == "postgres" || datastoreEngine == "mysql" {
+			if datastoreReadReplicaURI, ok := secret.Data["datastore_read_replica_conn_uri"]; ok {
+				migrationConfig.DatastoreReadReplicaURI = string(datastoreReadReplicaURI)
+			}
+		}
+
 		psk, ok = secret.Data["preshared_key"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
@@ -377,6 +386,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		"presharedKey",
 		"preshared_key",
 		"datastore_uri",
+		"datastore_read_replica_conn_uri",
 	}
 	// strip sensitive values from passthrough config (if they have been
 	// inadvertently set by a user)
@@ -454,6 +464,11 @@ func (c *Config) toEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 		envVars = append(envVars,
 			applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
 				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))))
+		// Add read replica URI for supported datastores
+		if (c.DatastoreEngine == "postgres" || c.DatastoreEngine == "mysql") && len(c.DatastoreReadReplicaURI) > 0 {
+			envVars = append(envVars,
+				applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_READ_REPLICA_CONN_URI").WithValue(c.DatastoreReadReplicaURI))
+		}
 	}
 	if c.DispatchEnabled {
 		envVars = append(envVars,

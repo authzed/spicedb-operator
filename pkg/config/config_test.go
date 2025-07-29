@@ -1917,6 +1917,172 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantPortCount: 4,
 		},
+		{
+			name: "postgres with read replica",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "postgres"
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "postgres",
+								Metadata: map[string]string{"datastore": "postgres", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri":                   []byte("postgresql://postgres:password@localhost:5432/spicedb"),
+					"datastore_read_replica_conn_uri": []byte("postgresql://postgres:password@read-replica:5432/spicedb"),
+					"preshared_key":                   []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:       "debug",
+					DatastoreEngine:         "postgres",
+					DatastoreURI:            "postgresql://postgres:password@localhost:5432/spicedb",
+					DatastoreReadReplicaURI: "postgresql://postgres:password@read-replica:5432/spicedb",
+					TargetSpiceDBImage:      "image:v1",
+					EnvPrefix:               "SPICEDB",
+					SpiceDBCmd:              "spicedb",
+					TargetMigration:         "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "postgres",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:                     "info",
+					SkipMigrations:               false,
+					Name:                         "test",
+					Namespace:                    "test",
+					UID:                          "1",
+					Replicas:                     2,
+					PresharedKey:                 "psk",
+					EnvPrefix:                    "SPICEDB",
+					SpiceDBCmd:                   "spicedb",
+					ServiceAccountName:           "test",
+					DispatchEnabled:              true,
+					DispatchUpstreamCASecretPath: "tls.crt",
+					ProjectLabels:                true,
+					ProjectAnnotations:           true,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "postgres",
+						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DATASTORE_READ_REPLICA_CONN_URI=postgresql://postgres:password@read-replica:5432/spicedb",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=postgres",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
+			},
+			wantPortCount: 4,
+		},
+		{
+			name: "mysql with read replica",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "mysql"
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "mysql",
+								Metadata: map[string]string{"datastore": "mysql", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri":                   []byte("root:password@tcp(mysql:3306)/spicedb?parseTime=true"),
+					"datastore_read_replica_conn_uri": []byte("root:password@tcp(read-replica:3306)/spicedb?parseTime=true"),
+					"preshared_key":                   []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:       "debug",
+					DatastoreEngine:         "mysql",
+					DatastoreURI:            "root:password@tcp(mysql:3306)/spicedb?parseTime=true",
+					DatastoreReadReplicaURI: "root:password@tcp(read-replica:3306)/spicedb?parseTime=true",
+					TargetSpiceDBImage:      "image:v1",
+					EnvPrefix:               "SPICEDB",
+					SpiceDBCmd:              "spicedb",
+					TargetMigration:         "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "mysql",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:                     "info",
+					SkipMigrations:               false,
+					Name:                         "test",
+					Namespace:                    "test",
+					UID:                          "1",
+					Replicas:                     2,
+					PresharedKey:                 "psk",
+					EnvPrefix:                    "SPICEDB",
+					SpiceDBCmd:                   "spicedb",
+					ServiceAccountName:           "test",
+					DispatchEnabled:              true,
+					DispatchUpstreamCASecretPath: "tls.crt",
+					ProjectLabels:                true,
+					ProjectAnnotations:           true,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "mysql",
+						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DATASTORE_READ_REPLICA_CONN_URI=root:password@tcp(read-replica:3306)/spicedb?parseTime=true",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=mysql",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
+			},
+			wantPortCount: 4,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
