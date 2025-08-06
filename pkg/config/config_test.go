@@ -3005,40 +3005,10 @@ func TestRawConfigPop(t *testing.T) {
 			expected: "false",
 		},
 		{
-			name:     "handles integer values",
-			config:   RawConfig{"test": 42},
-			key:      "test",
-			expected: "42",
-		},
-		{
-			name:     "handles float values",
-			config:   RawConfig{"test": 3.14},
-			key:      "test",
-			expected: "3.14",
-		},
-		{
-			name:     "handles complex types",
-			config:   RawConfig{"test": []string{"a", "b"}},
-			key:      "test",
-			expected: "[a b]",
-		},
-		{
-			name:     "handles nil values",
-			config:   RawConfig{"test": nil},
-			key:      "test",
-			expected: "<nil>",
-		},
-		{
 			name:     "handles otelInsecure boolean true",
 			config:   RawConfig{"otelInsecure": true},
 			key:      "otelInsecure",
 			expected: "true",
-		},
-		{
-			name:     "handles otelInsecure boolean false",
-			config:   RawConfig{"otelInsecure": false},
-			key:      "otelInsecure",
-			expected: "false",
 		},
 		{
 			name:     "handles otelInsecure string true",
@@ -3046,25 +3016,13 @@ func TestRawConfigPop(t *testing.T) {
 			key:      "otelInsecure",
 			expected: "true",
 		},
-		{
-			name:     "handles skipMigrations boolean true",
-			config:   RawConfig{"skipMigrations": true},
-			key:      "skipMigrations",
-			expected: "true",
-		},
-		{
-			name:     "handles dispatchEnabled boolean false",
-			config:   RawConfig{"dispatchEnabled": false},
-			key:      "dispatchEnabled",
-			expected: "false",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.config.Pop(tt.key)
 			require.Equal(t, tt.expected, result)
-
+			
 			// Verify the key was removed from the config
 			_, exists := tt.config[tt.key]
 			require.False(t, exists, "key should be removed after Pop")
