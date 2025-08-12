@@ -12,11 +12,13 @@ import (
 	"github.com/authzed/controller-idioms/hash"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/fatih/camelcase"
+	"github.com/gosimple/slug"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
@@ -886,8 +888,24 @@ func (c *Config) unpatchedPDB() *applypolicyv1.PodDisruptionBudgetApplyConfigura
 
 func (c *Config) commonLabels(name string) map[string]string {
 	version := ""
-	if c.SpiceDBVersion != nil {
-		version = c.SpiceDBVersion.Name
+	if c.SpiceDBVersion != nil && c.SpiceDBVersion.Name != "" {
+		// Dots are valid label characters in Kubernetes labels
+		slug.CustomSub = map[string]string{
+			".": "__dot__",
+		}
+		// Use slug to clean the version name (removes spaces, special characters, etc.)
+		versionValue := slug.Make(c.SpiceDBVersion.Name)
+		// Replace the custom sub with a dot
+		versionValue = strings.ReplaceAll(versionValue, "__dot__", ".")
+
+		// Ensure the version is not too long for Kubernetes labels
+		if len(versionValue) > 63 {
+			versionValue = versionValue[:63]
+		}
+
+		if errs := validation.IsValidLabelValue(versionValue); len(errs) == 0 {
+			version = versionValue
+		}
 	}
 
 	cLabels := map[string]string{
