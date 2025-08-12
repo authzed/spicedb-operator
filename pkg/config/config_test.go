@@ -2774,6 +2774,91 @@ metadata:
 	}
 }
 
+func TestVersionLabels(t *testing.T) {
+	resources := newFakeResources()
+	tests := []struct {
+		name               string
+		cluster            v1alpha1.ClusterSpec
+		wantServiceAccount *applycorev1.ServiceAccountApplyConfiguration
+	}{
+		{
+			name: "version label: slugify",
+			cluster: v1alpha1.ClusterSpec{
+				Version: "v1.0.0+test.v1",
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+			},
+			wantServiceAccount: applycorev1.ServiceAccount("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceAccountLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test",
+					metadata.KubernetesNameLabelKey:      "test",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1.0.0-test.v1",
+				}).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")),
+		},
+		{
+			name: "version label: shorten",
+			cluster: v1alpha1.ClusterSpec{
+				Version: "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12",
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+			},
+			wantServiceAccount: applycorev1.ServiceAccount("test", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentServiceAccountLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test",
+					metadata.KubernetesNameLabelKey:      "test",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef1",
+				}).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			secret := &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}}
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: tt.cluster,
+			}
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			require.NoError(t, err)
+
+			wantServiceAccount, err := json.Marshal(tt.wantServiceAccount)
+			require.NoError(t, err)
+			gotServiceAccount, err := json.Marshal(got.ServiceAccount())
+			require.NoError(t, err)
+
+			require.JSONEq(t, string(wantServiceAccount), string(gotServiceAccount))
+		})
+	}
+}
+
 func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfiguration)) *applyappsv1.DeploymentApplyConfiguration {
 	base := applyappsv1.Deployment("test-spicedb", "test").
 		WithLabels(metadata.LabelsForComponent("test", metadata.ComponentSpiceDBLabelValue)).
@@ -2966,8 +3051,14 @@ var testGlobalConfig = OperatorConfig{
 				Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
 				Nodes: []updates.State{
 					{ID: "v1", Tag: "v1", Migration: "to-v1"},
+					{ID: "v1.0.0+test.v1", Tag: "v1.0.0+test.v1", Migration: "to-v1.0.0"},
+					{ID: "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12", Tag: "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12", Migration: "to-long64charstring"},
 				},
-				Edges: map[string][]string{"v1": {}},
+				Edges: map[string][]string{
+					"v1":             {},
+					"v1.0.0+test.v1": {"v1"},
+					"long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12": {"v1.0.0+test.v1"},
+				},
 			},
 		},
 	},
