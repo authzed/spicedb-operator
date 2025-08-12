@@ -105,17 +105,17 @@ func (r RawConfig) Pop(key string) string {
 		return ""
 	}
 	delete(r, key)
-	
+
 	// Handle string values
 	if vs, ok := v.(string); ok {
 		return vs
 	}
-	
+
 	// Handle boolean values by converting to string
 	if vb, ok := v.(bool); ok {
 		return strconv.FormatBool(vb)
 	}
-	
+
 	// Handle other types by converting to string
 	return fmt.Sprintf("%v", v)
 }

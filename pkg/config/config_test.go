@@ -3022,7 +3022,7 @@ func TestRawConfigPop(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.config.Pop(tt.key)
 			require.Equal(t, tt.expected, result)
-			
+
 			// Verify the key was removed from the config
 			_, exists := tt.config[tt.key]
 			require.False(t, exists, "key should be removed after Pop")
