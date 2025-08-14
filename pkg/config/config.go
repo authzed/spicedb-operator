@@ -107,11 +107,19 @@ func (r RawConfig) Pop(key string) string {
 		return ""
 	}
 	delete(r, key)
-	vs, ok := v.(string)
-	if !ok {
-		return ""
+
+	// Handle string values
+	if vs, ok := v.(string); ok {
+		return vs
 	}
-	return vs
+
+	// Handle boolean values by converting to string
+	if vb, ok := v.(bool); ok {
+		return strconv.FormatBool(vb)
+	}
+
+	// Handle other types by converting to string
+	return fmt.Sprintf("%v", v)
 }
 
 // Config holds all values required to create and manage a cluster.

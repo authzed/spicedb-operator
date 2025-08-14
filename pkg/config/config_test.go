@@ -3063,3 +3063,60 @@ var testGlobalConfig = OperatorConfig{
 		},
 	},
 }
+
+func TestRawConfigPop(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   RawConfig
+		key      string
+		expected string
+	}{
+		{
+			name:     "returns empty string when key not found",
+			config:   RawConfig{},
+			key:      "nonexistent",
+			expected: "",
+		},
+		{
+			name:     "handles string values correctly",
+			config:   RawConfig{"test": "value"},
+			key:      "test",
+			expected: "value",
+		},
+		{
+			name:     "handles boolean true correctly",
+			config:   RawConfig{"test": true},
+			key:      "test",
+			expected: "true",
+		},
+		{
+			name:     "handles boolean false correctly",
+			config:   RawConfig{"test": false},
+			key:      "test",
+			expected: "false",
+		},
+		{
+			name:     "handles otelInsecure boolean true",
+			config:   RawConfig{"otelInsecure": true},
+			key:      "otelInsecure",
+			expected: "true",
+		},
+		{
+			name:     "handles otelInsecure string true",
+			config:   RawConfig{"otelInsecure": "true"},
+			key:      "otelInsecure",
+			expected: "true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.Pop(tt.key)
+			require.Equal(t, tt.expected, result)
+
+			// Verify the key was removed from the config
+			_, exists := tt.config[tt.key]
+			require.False(t, exists, "key should be removed after Pop")
+		})
+	}
+}
