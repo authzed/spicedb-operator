@@ -17,7 +17,7 @@ jobs:
     name: "Lint Go"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v5"
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -52,7 +52,7 @@ jobs:
     name: "Lint YAML & Markdown"
     runs-on: "ubuntu-latest"
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v5"
       - uses: "authzed/actions/yaml-lint@main"
       - uses: "stefanprodan/kube-tools@v1"
         with:
@@ -78,5 +78,5 @@ jobs:
       matrix:
         language: ["go"]
     steps:
-      - uses: "actions/checkout@v4"
+      - uses: "actions/checkout@v5"
       - uses: "authzed/actions/codeql@main"
