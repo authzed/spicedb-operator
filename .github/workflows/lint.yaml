@@ -15,7 +15,7 @@ env:
 jobs:
   go-lint:
     name: "Lint Go"
-    runs-on: "ubuntu-latest"
+    runs-on: "depot-ubuntu-24.04"
     steps:
       - uses: "actions/checkout@v5"
       - uses: "authzed/actions/setup-go@main"
@@ -50,7 +50,7 @@ jobs:
 
   extra-lint:
     name: "Lint YAML & Markdown"
-    runs-on: "ubuntu-latest"
+    runs-on: "depot-ubuntu-24.04"
     steps:
       - uses: "actions/checkout@v5"
       - uses: "authzed/actions/yaml-lint@main"
@@ -68,7 +68,7 @@ jobs:
   codeql:
     if: "${{ github.event_name == 'pull_request' }}"
     name: "Analyze with CodeQL"
-    runs-on: "ubuntu-latest-8-cores"
+    runs-on: "depot-ubuntu-24.04-8"
     permissions:
       actions: "read"
       contents: "read"
