@@ -21,28 +21,28 @@ import (
 )
 
 type keyRecordingQueue struct {
-	workqueue.TypedRateLimitingInterface[any]
-	Items chan any
+	workqueue.TypedRateLimitingInterface[string]
+	Items chan string
 }
 
-func newKeyRecordingQueue(queue workqueue.TypedRateLimitingInterface[any]) *keyRecordingQueue {
+func newKeyRecordingQueue(queue workqueue.TypedRateLimitingInterface[string]) *keyRecordingQueue {
 	return &keyRecordingQueue{
 		TypedRateLimitingInterface: queue,
-		Items:                      make(chan any),
+		Items:                      make(chan string),
 	}
 }
 
-func (q *keyRecordingQueue) Add(item any) {
+func (q *keyRecordingQueue) Add(item string) {
 	q.Items <- item
 	q.TypedRateLimitingInterface.Add(item)
 }
 
-func (q *keyRecordingQueue) AddAfter(item any, d time.Duration) {
+func (q *keyRecordingQueue) AddAfter(item string, d time.Duration) {
 	q.Items <- item
 	q.TypedRateLimitingInterface.AddAfter(item, d)
 }
 
-func (q *keyRecordingQueue) AddRateLimited(item any) {
+func (q *keyRecordingQueue) AddRateLimited(item string) {
 	q.Items <- item
 	q.TypedRateLimitingInterface.AddRateLimited(item)
 }
@@ -137,7 +137,7 @@ func TestControllerNamespacing(t *testing.T) {
 			kclient := kfake.NewSimpleClientset()
 			c, err := NewController(ctx, registry, dclient, kclient, nil, "", "", broadcaster, tt.watchedNamespaces)
 			require.NoError(t, err)
-			queue := newKeyRecordingQueue(workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]()))
+			queue := newKeyRecordingQueue(workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()))
 			c.Queue = queue
 			go c.Start(ctx, 1)
 
@@ -182,7 +182,7 @@ func TestControllerNamespacing(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			gotKeys := make([]any, 0)
+			gotKeys := make([]string, 0)
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
