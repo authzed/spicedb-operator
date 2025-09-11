@@ -11,7 +11,7 @@ env:
   GO_VERSION: "~1.22"
 jobs:
   goreleaser:
-    runs-on: "ubuntu-latest"
+    runs-on: "depot-ubuntu-24.04"
     env:
       KUSTOMIZER_ARTIFACT: "oci://ghcr.io/${{github.repository_owner}}/${{github.event.repository.name}}-manifests"
     steps:
