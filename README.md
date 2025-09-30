@@ -165,6 +165,10 @@ status:
 Note that it can also show you updates that are available in other channels, if you wish to switch back and forth (be careful! if you switch to another channel and update, there may not be a path to get back to the original channel!)
 Only the nearest-neighbor update will be shown for channels other than the current one.
 
+### Available Versions
+
+The available versions in the `stable` channel are visible in [./proposed-update-graph.yaml]. If there's a version that you feel is missing, please open an issue.
+
 ### Force Override
 
 You can opt out of update channels entirely, and force spicedb-operator to install a specific image and manage it as a `spicedb` instance.
