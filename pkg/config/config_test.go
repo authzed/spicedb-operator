@@ -2046,7 +2046,7 @@ func GetConfig(fileName string) (cfg OperatorConfig) {
 	if err != nil {
 		panic(err)
 	}
-	return
+	return cfg
 }
 
 func TestGraphDiffSanity(t *testing.T) {

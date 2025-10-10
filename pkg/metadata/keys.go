@@ -78,15 +78,15 @@ func SplitGVRMetaNamespaceKey(key string) (gvr *schema.GroupVersionResource, nam
 	before, after, ok := strings.Cut(key, "::")
 	if !ok {
 		err = fmt.Errorf("error parsing key: %s", key)
-		return
+		return gvr, namespace, name, err
 	}
 	gvr, _ = schema.ParseResourceArg(before)
 	if gvr == nil {
 		err = fmt.Errorf("error parsing gvr from key: %s", before)
-		return
+		return gvr, namespace, name, err
 	}
 	namespace, name, err = cache.SplitMetaNamespaceKey(after)
-	return
+	return gvr, namespace, name, err
 }
 
 func GetClusterKeyFromMeta(in interface{}) ([]string, error) {

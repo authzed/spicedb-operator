@@ -216,7 +216,7 @@ func explodeImage(image string) (baseImage, tag, digest string) {
 	if !hasTag {
 		tag = ""
 	}
-	return
+	return baseImage, tag, digest
 }
 
 // ComputeTarget determines the target update version and state given an update
@@ -228,7 +228,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 	if len(digest) > 0 || len(tag) > 0 {
 		state = State{Tag: tag, Digest: digest}
 		baseImage = explodedBaseImage
-		return
+		return baseImage, target, state, err
 	}
 
 	// The base image in the .spec.config.image field takes precedence over the
@@ -236,7 +236,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 	baseImage = cmp.Or(explodedBaseImage, clusterBaseImage, operatorImageName)
 	if baseImage == "" {
 		err = fmt.Errorf("no base image specified in cluster spec, startup flag, or operator config")
-		return
+		return baseImage, target, state, err
 	}
 
 	// Fallback to the channel from the current currentVersion.
@@ -249,7 +249,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		channel, err = g.DefaultChannelForDatastore(engine)
 		if err != nil {
 			err = fmt.Errorf("couldn't find channel for datastore %q: %w", engine, err)
-			return
+			return baseImage, target, state, err
 		}
 	}
 
@@ -258,7 +258,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		updateSource, err = g.SourceForChannel(engine, channel)
 		if err != nil {
 			err = fmt.Errorf("error fetching update source: %w", err)
-			return
+			return baseImage, target, state, err
 		}
 	}
 
@@ -277,14 +277,14 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		state = updateSource.State(version)
 		target.Name = state.ID
 		target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
-		return
+		return baseImage, target, state, err
 	}
 
 	// If version is explicit, and the explicit version matches the current
 	// version, just install it
 	if currentVersion != nil && currentVersion.Name == version && currentVersion.Channel == channel {
 		state = updateSource.State(currentVersion.Name)
-		return
+		return baseImage, target, state, err
 	}
 
 	var currentState State
@@ -298,7 +298,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 			source, err = g.SourceForChannel(engine, currentVersion.Channel)
 			if err != nil {
 				err = fmt.Errorf("error fetching update source: %w", err)
-				return
+				return baseImage, target, state, err
 			}
 			currentState = source.State(currentVersion.Name)
 			target.Channel = currentVersion.Channel
@@ -315,10 +315,10 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		if len(currentState.ID) == 0 {
 			target = nil
 			err = fmt.Errorf("cluster is rolling out, but no current state is defined")
-			return
+			return baseImage, target, state, err
 		}
 		state = currentState
-		return
+		return baseImage, target, state, err
 	}
 
 	// If currentVersion is set, we only use the subset of the update graph that leads
@@ -327,7 +327,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
 			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
-			return
+			return baseImage, target, state, err
 		}
 	}
 
@@ -337,7 +337,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 		if len(targetVersion) == 0 {
 			// There's no next currentVersion, so use the current state.
 			state = currentState
-			return
+			return baseImage, target, state, err
 		}
 		if targetVersion != updateSource.NextVersionWithoutMigrations(currentVersion.Name) {
 			target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
@@ -351,7 +351,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 	// If we found the next step to take, return it.
 	state = updateSource.State(targetVersion)
 	target.Name = state.ID
-	return
+	return baseImage, target, state, err
 }
 
 // Difference returns a graph that contains just edges in g that are not
