@@ -32,7 +32,7 @@ type Test mg.Namespace
 // Runs the unit tests
 func (Test) Unit() error {
 	fmt.Println("running unit tests")
-	return sh.RunV(goCmdForTests(), "test", "./...")
+	return sh.RunV(goCmdForTests(), "test", "-race", "-timeout", "30m", "./...")
 }
 
 const (
