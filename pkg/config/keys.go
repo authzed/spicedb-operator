@@ -72,10 +72,10 @@ func (k *intOrStringKey[I]) pop(config RawConfig) (out I, err error) {
 	var parsed int64
 	parsed, err = strconv.ParseInt(fmt.Sprint(v), 10, bits)
 	if err != nil {
-		return
+		return out, err
 	}
 	out = I(parsed)
-	return
+	return out, err
 }
 
 type boolOrStringKey struct {
@@ -101,14 +101,14 @@ func (k *boolOrStringKey) pop(config RawConfig) (out bool, err error) {
 	case string:
 		out, err = strconv.ParseBool(value)
 		if err != nil {
-			return
+			return out, err
 		}
 	case bool:
 		out = value
 	default:
 		err = fmt.Errorf("expected bool or string for key %s", k.key)
 	}
-	return
+	return out, err
 }
 
 type metadataSetKey string
@@ -117,7 +117,7 @@ func (k metadataSetKey) pop(config RawConfig, objectType, metadataType string) (
 	v, ok := config[string(k)]
 	delete(config, string(k))
 	if !ok {
-		return
+		return metadata, warnings, err
 	}
 
 	metadata = make(map[string]string)
@@ -147,5 +147,5 @@ func (k metadataSetKey) pop(config RawConfig, objectType, metadataType string) (
 	default:
 		err = fmt.Errorf("expected string or map for key %s", k)
 	}
-	return
+	return metadata, warnings, err
 }
