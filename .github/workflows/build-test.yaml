@@ -139,7 +139,7 @@ jobs:
           default_author: "github_actor"
           message: "update validated graph after successful tests"
           pathspec_error_handling: "exitImmediately"
-      - uses: "actions/upload-artifact@v4"
+      - uses: "actions/upload-artifact@v5"
         if: "always()"
         # this upload step is really flaky, don't fail the job if it fails
         continue-on-error: true
