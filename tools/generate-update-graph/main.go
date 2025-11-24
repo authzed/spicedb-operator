@@ -44,6 +44,7 @@ func main() {
 
 func postgresChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.47.1", Tag: "v1.47.1", Migration: "add-index-for-transaction-gc"},
 		{ID: "v1.45.4", Tag: "v1.45.4", Migration: "add-index-for-transaction-gc"},
 		{ID: "v1.42.1", Tag: "v1.42.1", Migration: "add-index-for-transaction-gc"},
 		{ID: "v1.40.1", Tag: "v1.40.1", Migration: "add-index-for-transaction-gc"},
@@ -90,6 +91,7 @@ func postgresChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transaction-timestamp-index"},
 	}
 	edgePatterns := map[string]string{
+		"v1.45.4":        ">=1.47.1",
 		"v1.42.1":        ">=1.45.4",
 		"v1.40.1":        ">=1.42.1",
 		"v1.39.1":        ">=1.40.1",
@@ -148,6 +150,7 @@ func postgresChannel() updates.Channel {
 
 func crdbChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.47.1", Tag: "v1.47.1", Migration: "add-expiration-support"},
 		{ID: "v1.45.4", Tag: "v1.45.4", Migration: "add-expiration-support"},
 		{ID: "v1.42.1", Tag: "v1.42.1", Migration: "add-expiration-support"},
 		{ID: "v1.40.1", Tag: "v1.40.1", Migration: "add-expiration-support"},
@@ -193,6 +196,7 @@ func crdbChannel() updates.Channel {
 		{ID: "v1.2.0", Tag: "v1.2.0", Migration: "add-transactions-table"},
 	}
 	edgePatterns := map[string]string{
+		"v1.45.4":        ">=1.47.1",
 		"v1.42.1":        ">=1.45.4",
 		"v1.40.1":        ">=1.42.1",
 		"v1.39.1":        ">=1.40.1",
@@ -249,6 +253,7 @@ func crdbChannel() updates.Channel {
 
 func mysqlChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.47.1", Tag: "v1.47.1", Migration: "add_expiration_to_relation_tuple"},
 		{ID: "v1.45.4", Tag: "v1.45.4", Migration: "add_expiration_to_relation_tuple"},
 		{ID: "v1.42.1", Tag: "v1.42.1", Migration: "add_expiration_to_relation_tuple"},
 		{ID: "v1.40.1", Tag: "v1.40.1", Migration: "add_expiration_to_relation_tuple"},
@@ -288,6 +293,7 @@ func mysqlChannel() updates.Channel {
 		{ID: "v1.7.0", Tag: "v1.7.0", Migration: "add_unique_datastore_id", Deprecated: true},
 	}
 	edgePatterns := map[string]string{
+		"v1.45.4": ">=1.47.1",
 		"v1.42.1": ">=1.45.4",
 		"v1.40.1": ">=1.42.1",
 		"v1.39.1": ">=1.40.1",
@@ -338,6 +344,7 @@ func mysqlChannel() updates.Channel {
 
 func spannerChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.47.1", Tag: "v1.47.1", Migration: "add-expiration-support"},
 		{ID: "v1.45.4", Tag: "v1.45.4", Migration: "add-expiration-support"},
 		{ID: "v1.42.1", Tag: "v1.42.1", Migration: "add-expiration-support"},
 		{ID: "v1.40.1", Tag: "v1.40.1", Migration: "add-expiration-support"},
@@ -378,6 +385,7 @@ func spannerChannel() updates.Channel {
 		{ID: "v1.8.0", Tag: "v1.8.0", Migration: "add-metadata-and-counters"},
 	}
 	edgePatterns := map[string]string{
+		"v1.45.4":        ">=1.47.1",
 		"v1.42.1":        ">=1.45.4",
 		"v1.40.1":        ">=1.42.1",
 		"v1.39.1":        ">=1.40.1",
@@ -429,6 +437,7 @@ func spannerChannel() updates.Channel {
 
 func memoryChannel() updates.Channel {
 	releases := []updates.State{
+		{ID: "v1.47.1", Tag: "v1.47.1"},
 		{ID: "v1.45.4", Tag: "v1.45.4"},
 		{ID: "v1.42.1", Tag: "v1.42.1"},
 		{ID: "v1.40.1", Tag: "v1.40.1"},
