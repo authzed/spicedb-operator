@@ -92,6 +92,7 @@ var (
 	httpTLSCertPathKey                = newKey("httpTLSCertPath", DefaultTLSCrtFile)
 	dashboardTLSKeyPathKey            = newKey("dashboardTLSKeyPath", DefaultTLSKeyFile)
 	dashboardTLSCertPathKey           = newKey("dashboardTLSCertPath", DefaultTLSCrtFile)
+	skipTLSWarningKey                 = newBoolOrStringKey("skipTLSWarning", false)
 )
 
 // Warning is an issue with configuration that we will report as undesirable
@@ -162,6 +163,7 @@ type SpiceConfig struct {
 	EnvPrefix                      string
 	SpiceDBCmd                     string
 	TLSSecretName                  string
+	SkipTLSWarning                 bool
 	DispatchEnabled                bool
 	DispatchUpstreamCASecretName   string
 	DispatchUpstreamCASecretPath   string
@@ -263,6 +265,11 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		errs = append(errs, err)
 	}
 
+	spiceConfig.SkipTLSWarning, err = skipTLSWarningKey.pop(config)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	// can't run dispatch with memory datastore
 	if datastoreEngine == "memory" {
 		spiceConfig.DispatchEnabled = false
@@ -359,7 +366,7 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		for _, k := range passthroughKeys {
 			passthroughConfig[k.key] = k.pop(config)
 		}
-	} else {
+	} else if !spiceConfig.SkipTLSWarning {
 		warnings = append(warnings, fmt.Errorf("no TLS configured, consider setting %q", "tlsSecretName"))
 	}
 
