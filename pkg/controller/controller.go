@@ -98,6 +98,7 @@ type Controller struct {
 	kclient     kubernetes.Interface
 	resources   openapi.Resources
 	mainHandler handler.Handler
+	logger      logr.Logger
 
 	// config
 	configLock     sync.RWMutex
@@ -106,7 +107,7 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
+func NewController(ctx context.Context, logger logr.Logger, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	// If no namespaces are provided, watch all namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}
@@ -118,9 +119,10 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		resources:  resources,
 		namespaces: namespaces,
 		baseImage:  baseImage,
+		logger:     logger,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
-		textlogger.NewLogger(textlogger.NewConfig()),
+		logger,
 		v1alpha1.SpiceDBClusterResourceName,
 		v1alpha1ClusterGVR,
 		QueueOps,
@@ -129,7 +131,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		c.syncOwnedResource,
 	)
 
-	fileInformerFactory, err := fileinformer.NewFileInformerFactory(textlogger.NewLogger(textlogger.NewConfig()))
+	fileInformerFactory, err := fileinformer.NewFileInformerFactory(logger)
 	if err != nil {
 		return nil, err
 	}
@@ -276,8 +278,7 @@ func (c *Controller) loadConfig(path string) {
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
-	logger.V(3).Info("loading config", "path", path)
+	c.logger.V(3).Info("loading config", "path", path)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -356,7 +357,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
+	logger := c.logger.WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(cluster).MarshalLog(),
@@ -391,7 +392,7 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
+	logger := c.logger.WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(objMeta),
