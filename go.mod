@@ -8,6 +8,7 @@ require (
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/fatih/camelcase v1.0.0
 	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/zapr v1.3.0
 	github.com/gosimple/slug v1.15.0
 	github.com/jzelinskie/stringz v0.0.3
 	github.com/magefile/mage v1.15.0
@@ -15,6 +16,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/atomic v1.11.0
+	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 	k8s.io/api v0.36.0-alpha.0
 	k8s.io/apimachinery v0.36.0-alpha.0
