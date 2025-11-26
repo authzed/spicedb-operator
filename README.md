@@ -80,9 +80,90 @@ zed --insecure --endpoint=localhost:50051 --token=averysecretpresharedkey schema
 
 ## Where To Go From Here
 
-- Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, and Ingress.
+- Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, Ingress, and cloud provider integrations.
 - Learn how to use SpiceDB via the [docs](https://docs.authzed.com/) and [playground](https://play.authzed.com/).
 - Ask questions and join the community in [discord](https://authzed.com/discord).
+
+## Configuration Options
+
+The `SpiceDBCluster` resource supports various configuration options through the `spec.config` field:
+
+### Service Account Annotations
+
+The `extraServiceAccountAnnotations` field allows you to add custom annotations to the ServiceAccount created for SpiceDB pods. This is particularly useful for cloud provider integrations that use workload identity.
+
+#### AWS IAM Roles for Service Accounts (IRSA)
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-with-irsa
+spec:
+  config:
+    datastoreEngine: postgres
+    # Required for RDS IAM authentication
+    datastoreCredentialsProviderName: "aws-iam"
+    extraServiceAccountAnnotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/spicedb-role"
+```
+
+See the [AWS IAM Service Account example](examples/aws-iam-service-account/) for a complete guide on using IRSA with SpiceDB.
+
+#### GCP Workload Identity
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-with-workload-identity
+spec:
+  config:
+    datastoreEngine: postgres
+    extraServiceAccountAnnotations:
+      iam.gke.io/gcp-service-account: "spicedb@my-project.iam.gserviceaccount.com"
+```
+
+#### Azure Workload Identity
+
+```yaml
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-with-azure-wi
+spec:
+  config:
+    datastoreEngine: postgres
+    extraServiceAccountAnnotations:
+      azure.workload.identity/client-id: "<AZURE_CLIENT_ID>"
+```
+
+### Custom Service Account Name
+
+You can specify a custom service account name using the `serviceAccountName` field:
+
+```yaml
+spec:
+  config:
+    serviceAccountName: "my-custom-spicedb-sa"
+    extraServiceAccountAnnotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/spicedb-role"
+```
+
+### Pod Labels and Annotations
+
+You can also add custom labels and annotations to SpiceDB pods:
+
+```yaml
+spec:
+  config:
+    extraPodLabels:
+      environment: "production"
+      team: "platform"
+    extraPodAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9090"
+```
 
 ## Automatic and Suggested Updates
 
