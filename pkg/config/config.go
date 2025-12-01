@@ -136,17 +136,18 @@ type Config struct {
 // MigrationConfig stores data that is relevant for running migrations
 // or deciding if migrations need to be run
 type MigrationConfig struct {
-	TargetMigration        string
-	TargetPhase            string
-	MigrationLogLevel      string
-	DatastoreEngine        string
-	DatastoreURI           string
-	SpannerCredsSecretRef  string
-	TargetSpiceDBImage     string
-	EnvPrefix              string
-	SpiceDBCmd             string
-	DatastoreTLSSecretName string
-	SpiceDBVersion         *v1alpha1.SpiceDBVersion
+	TargetMigration          string
+	TargetPhase              string
+	MigrationLogLevel        string
+	DatastoreEngine          string
+	DatastoreURI             string
+	HasMigrationDatastoreURI bool
+	SpannerCredsSecretRef    string
+	TargetSpiceDBImage       string
+	EnvPrefix                string
+	SpiceDBCmd               string
+	DatastoreTLSSecretName   string
+	SpiceDBVersion           *v1alpha1.SpiceDBVersion
 }
 
 // SpiceConfig contains config relevant to running spicedb or determining
@@ -286,6 +287,14 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
 		}
 		migrationConfig.DatastoreURI = string(datastoreURI)
+
+		// Check for separate migration datastore URI
+		if migrationURI, ok := secret.Data["migration_datastore_uri"]; ok && len(migrationURI) > 0 {
+			migrationConfig.HasMigrationDatastoreURI = true
+			// Note: We don't store the actual URI in the config for security reasons
+			// It will be read from the secret by the migration job
+		}
+
 		psk, ok = secret.Data["preshared_key"]
 		if !ok {
 			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
@@ -666,9 +675,16 @@ func (c *Config) jobName(migrationHash string) string {
 
 func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
 	envPrefix := c.SpiceConfig.EnvPrefix
+
+	// Use migration_datastore_uri if present, otherwise fall back to datastore_uri
+	datastoreURIKey := "datastore_uri"
+	if c.HasMigrationDatastoreURI {
+		datastoreURIKey = "migration_datastore_uri"
+	}
+
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.MigrationLogLevel),
-		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
+		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey(datastoreURIKey))),
 		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
 	}
 
