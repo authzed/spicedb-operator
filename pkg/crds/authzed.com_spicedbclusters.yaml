@@ -74,9 +74,17 @@ spec:
               baseImage:
                 description: |-
                   BaseImage specifies the base container image to use for SpiceDB.
+                  This is useful for air-gapped environments or when using a private registry.
+                  The operator will append the appropriate tag based on version/channel.
+                  Must not include a tag or digest - use spec.version or spec.config.image instead.
                   If not specified, will fall back to the operator's --base-image flag,
                   then to the imageName defined in the update graph.
                 type: string
+                x-kubernetes-validations:
+                  - rule: "!self.contains('@')"
+                    message: "baseImage must not contain a digest (@sha256:...) - version is determined by the update graph"
+                  - rule: "self.lastIndexOf(':') < 0 || self.substring(self.lastIndexOf(':') + 1).contains('/')"
+                    message: "baseImage must not contain a tag (:tag) - version is determined by the update graph. Use spec.version or spec.config.image instead"
               channel:
                 description: |-
                   Channel is a defined series of updates that operator should follow.
@@ -229,6 +237,12 @@ spec:
                 type: string
               image:
                 description: Image is the image that is or will be used for this cluster
+                type: string
+              resolvedBaseImage:
+                description: |-
+                  ResolvedBaseImage is the base image that was resolved for this cluster.
+                  This shows which registry/image the operator is using before appending
+                  the version tag. Useful for debugging alternative registry configurations.
                 type: string
               migration:
                 description: Migration is the name of the last migration applied
