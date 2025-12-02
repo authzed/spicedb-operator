@@ -100,6 +100,9 @@ type ClusterSpec struct {
 	Patches []Patch `json:"patches,omitempty"`
 
 	// BaseImage specifies the base container image to use for SpiceDB.
+	// This is useful for air-gapped environments or when using a private registry.
+	// The operator will append the appropriate tag based on version/channel.
+	// Must not include a tag or digest - use spec.version or spec.config.image instead.
 	// If not specified, will fall back to the operator's --base-image flag,
 	// then to the imageName defined in the update graph.
 	// +optional
@@ -143,6 +146,12 @@ type ClusterStatus struct {
 	// Image is the image that is or will be used for this cluster
 	Image string `json:"image,omitempty"`
 
+	// ResolvedBaseImage is the base image that was resolved for this cluster.
+	// This shows which registry/image the operator is using before appending
+	// the version tag. Useful for debugging alternative registry configurations.
+	// +optional
+	ResolvedBaseImage string `json:"resolvedBaseImage,omitempty"`
+
 	// Migration is the name of the last migration applied
 	Migration string `json:"migration,omitempty"`
 
@@ -169,6 +178,7 @@ func (s ClusterStatus) Equals(other ClusterStatus) bool {
 		s.CurrentMigrationHash == other.TargetMigrationHash &&
 		s.SecretHash == other.SecretHash &&
 		s.Image == other.Image &&
+		s.ResolvedBaseImage == other.ResolvedBaseImage &&
 		s.Migration == other.Migration &&
 		s.Phase == other.Phase &&
 		s.CurrentVersion.Equals(other.CurrentVersion) &&
