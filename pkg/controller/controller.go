@@ -47,7 +47,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
 	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -306,18 +305,18 @@ func (c *Controller) loadConfig(path string) {
 			c.config = cfg
 			// Override ImageName with flag if provided
 			if c.baseImage != "" {
-				logger.V(3).Info("overriding graph-defined base image with startup flag", "baseImage", c.baseImage)
+				c.logger.V(3).Info("overriding graph-defined base image with startup flag", "baseImage", c.baseImage)
 				c.config.ImageName = c.baseImage
 			}
 		}()
 		c.lastConfigHash.Store(h)
 	} else {
 		// config hasn't changed
-		logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
+		c.logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
 		return
 	}
 
-	logger.V(3).Info("updated config", "path", path, "config", c.config)
+	c.logger.V(3).Info("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
 	for _, ns := range c.namespaces {
