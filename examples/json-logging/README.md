@@ -41,12 +41,14 @@ spec:
 ## Log Format Comparison
 
 ### Text Format (Default)
-```
+
+```text
 2024-01-15T10:30:45.123Z	INFO	controller	Reconciling SpiceDBCluster	{"namespace": "default", "name": "my-spicedb"}
 2024-01-15T10:30:45.456Z	INFO	controller	Created deployment	{"namespace": "default", "name": "my-spicedb-spicedb"}
 ```
 
 ### JSON Format
+
 ```json
 {"level":"info","ts":"2024-01-15T10:30:45.123Z","logger":"controller","msg":"Reconciling SpiceDBCluster","namespace":"default","name":"my-spicedb"}
 {"level":"info","ts":"2024-01-15T10:30:45.456Z","logger":"controller","msg":"Created deployment","namespace":"default","name":"my-spicedb-spicedb"}
@@ -57,6 +59,7 @@ spec:
 When using JSON logging with the ELK stack:
 
 1. **Filebeat Configuration**: Configure Filebeat to read the operator logs:
+
    ```yaml
    filebeat.inputs:
    - type: container
