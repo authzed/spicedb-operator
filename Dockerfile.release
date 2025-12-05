@@ -1,5 +1,5 @@
 # vim: syntax=dockerfile
 FROM cgr.dev/chainguard/static:latest
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.25 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.42 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 COPY spicedb-operator /usr/local/bin/spicedb-operator
 ENTRYPOINT ["spicedb-operator"]

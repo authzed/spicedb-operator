@@ -1,6 +1,6 @@
 module github.com/authzed/spicedb-operator/e2e
 
-go 1.24.0
+go 1.25.5
 
 require (
 	cloud.google.com/go/spanner v1.85.0
