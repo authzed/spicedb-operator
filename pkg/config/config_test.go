@@ -2514,6 +2514,10 @@ metadata:
 						WithAPIGroups("").
 						WithResources("endpoints").
 						WithVerbs("get", "list", "watch"),
+					applyrbacv1.PolicyRule().
+						WithAPIGroups("discovery.k8s.io").
+						WithResources("endpointslices").
+						WithVerbs("get", "list", "watch"),
 				),
 		},
 	}
