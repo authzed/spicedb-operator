@@ -15,7 +15,7 @@ jobs:
     env:
       KUSTOMIZER_ARTIFACT: "oci://ghcr.io/${{github.repository_owner}}/${{github.event.repository.name}}-manifests"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
         with:
           fetch-depth: 0
       - uses: "authzed/actions/setup-go@main"

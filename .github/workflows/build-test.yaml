@@ -19,7 +19,7 @@ jobs:
       codechange: "${{ steps.filter.outputs.codechange }}"
       graphchange: "${{ steps.graph-filter.outputs.graphchange }}"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
       - uses: "dorny/paths-filter@v3"
         id: "filter"
         with:
@@ -46,7 +46,7 @@ jobs:
     name: "Build Binary"
     runs-on: "depot-ubuntu-24.04"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -59,7 +59,7 @@ jobs:
     name: "Build Container Image"
     runs-on: "depot-ubuntu-24.04"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
@@ -77,7 +77,7 @@ jobs:
     name: "Unit Tests"
     runs-on: "depot-ubuntu-24.04"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
         with:
           submodules: true
       - uses: "authzed/actions/setup-go@main"
@@ -98,7 +98,7 @@ jobs:
     name: "E2E Tests"
     runs-on: "depot-ubuntu-24.04-8"
     steps:
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
         if: |
           needs.paths-filter.outputs.graphchange == 'true'
         with:
@@ -106,7 +106,7 @@ jobs:
           token: "${{ secrets.AUTHZED_BOT_PAT }}"
           repository: "${{ github.event.pull_request.head.repo.full_name }}"
           ref: "${{ github.event.pull_request.head.ref }}"
-      - uses: "actions/checkout@v5"
+      - uses: "actions/checkout@v6"
         if: |
           needs.paths-filter.outputs.graphchange == 'false'
         with:
@@ -139,7 +139,7 @@ jobs:
           default_author: "github_actor"
           message: "update validated graph after successful tests"
           pathspec_error_handling: "exitImmediately"
-      - uses: "actions/upload-artifact@v4"
+      - uses: "actions/upload-artifact@v6"
         if: "always()"
         # this upload step is really flaky, don't fail the job if it fails
         continue-on-error: true
