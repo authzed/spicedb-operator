@@ -62,7 +62,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "d63755f0adf415d2",
+				metadata.SpiceDBConfigKey: "95f10575d028890f",
 			}}}},
 			expectNext: nextKey,
 		},
@@ -71,7 +71,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret",
 			existingDeployments: []*appsv1.Deployment{{}, {ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "d63755f0adf415d2",
+				metadata.SpiceDBConfigKey: "95f10575d028890f",
 			}}}},
 			expectDelete: true,
 			expectNext:   nextKey,
@@ -81,7 +81,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			migrationHash: "testtesttesttest",
 			secretHash:    "secret1",
 			existingDeployments: []*appsv1.Deployment{{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-				metadata.SpiceDBConfigKey: "d63755f0adf415d2",
+				metadata.SpiceDBConfigKey: "95f10575d028890f",
 			}}}},
 			expectApply:        true,
 			expectRequeueAfter: true,
@@ -118,7 +118,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -155,7 +155,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -186,7 +186,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:            2,
@@ -237,7 +237,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:            2,
@@ -309,7 +309,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -345,7 +345,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			}},
 			existingDeployments: []*appsv1.Deployment{{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-					metadata.SpiceDBConfigKey: "e3370c15d9428dca",
+					metadata.SpiceDBConfigKey: "20730b08a142770d",
 				}},
 				Status: appsv1.DeploymentStatus{
 					Replicas:          2,
@@ -378,7 +378,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				tt.expectStatus = &v1alpha1.SpiceDBCluster{}
 			}
 
-			ctx := CtxConfig.WithValue(context.Background(), &config.Config{
+			ctx := CtxConfig.WithValue(t.Context(), &config.Config{
 				MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"},
 				SpiceConfig:     config.SpiceConfig{Replicas: tt.replicas},
 			})
@@ -416,7 +416,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 				cluster.Status.Conditions[i].LastTransitionTime = now
 			}
 			require.Equal(t, tt.expectStatus, cluster)
-			require.Equal(t, tt.expectApply, applyCalled)
+			require.Equal(t, tt.expectApply, applyCalled, "apply's called status was different than expected")
 			require.Equal(t, tt.expectDelete, deleteCalled)
 			require.Equal(t, tt.expectPatchStatus, patchCalled)
 			require.Equal(t, tt.expectNext, called)

@@ -134,7 +134,7 @@ func TestControllerNamespacing(t *testing.T) {
 			registry := typed.NewRegistry()
 			broadcaster := record.NewBroadcaster()
 			dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
-			kclient := kfake.NewSimpleClientset()
+			kclient := kfake.NewClientset()
 			c, err := NewController(ctx, registry, dclient, kclient, nil, "", "", broadcaster, tt.watchedNamespaces)
 			require.NoError(t, err)
 			queue := newKeyRecordingQueue(workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()))
