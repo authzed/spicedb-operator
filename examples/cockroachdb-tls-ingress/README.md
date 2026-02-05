@@ -85,6 +85,39 @@ kubectl apply --server-side -k  .
 It is safe and may be necessary to run this multiple times if any of the resources fail to apply.
 CRDs especially may fail to create, so check the output for them.
 
+## Datastore TLS (Optional)
+
+This example configures TLS for SpiceDB's API endpoints and internal dispatch communication, but the CockroachDB database connection uses `sslmode=disable` for simplicity.
+
+If your production database requires TLS client certificates, you can configure them using the `datastoreTLSSecretName` option:
+
+1. Create a secret with your database TLS certificates:
+
+```sh
+kubectl create secret generic db-tls-certs \
+  --namespace spicedb \
+  --from-file=ca.crt=/path/to/db-ca.crt \
+  --from-file=tls.crt=/path/to/db-client.crt \
+  --from-file=tls.key=/path/to/db-client.key
+```
+
+1. Add `datastoreTLSSecretName` to the SpiceDB cluster config in `spicedb/spicedb.yaml`:
+
+```yaml
+spec:
+  config:
+    datastoreTLSSecretName: db-tls-certs
+```
+
+1. Update the `datastore_uri` in the secret to reference the mounted certificates at `/spicedb-db-tls`:
+
+```yaml
+stringData:
+  datastore_uri: "postgresql://root@cockroachdb.cockroachdb:26257/defaultdb?sslmode=verify-full&sslrootcert=/spicedb-db-tls/ca.crt&sslcert=/spicedb-db-tls/tls.crt&sslkey=/spicedb-db-tls/tls.key"
+```
+
+See the main [README](../../README.md#datastore-tls-certificates) for more details.
+
 ## Connect with `zed`
 
 If you haven't already, make sure you've installed [zed](https://github.com/authzed/zed#installation).
