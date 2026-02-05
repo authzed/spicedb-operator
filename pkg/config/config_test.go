@@ -1389,6 +1389,91 @@ func TestNewConfig(t *testing.T) {
 			wantPortCount: 4,
 		},
 		{
+			name: "separate migration datastore URI",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"logLevel": "info",
+						"datastoreEngine": "cockroachdb"
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "cockroachdb",
+								Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"datastore_uri":           []byte("uri"),
+					"migration_datastore_uri": []byte("migration-uri"),
+					"preshared_key":           []byte("psk"),
+				}},
+			},
+			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:        "debug",
+					DatastoreEngine:          "cockroachdb",
+					DatastoreURI:             "uri",
+					HasMigrationDatastoreURI: true,
+					SpannerCredsSecretRef:    "",
+					TargetSpiceDBImage:       "image:v1",
+					EnvPrefix:                "SPICEDB",
+					SpiceDBCmd:               "spicedb",
+					DatastoreTLSSecretName:   "",
+					TargetMigration:          "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:                     "info",
+					SkipMigrations:               false,
+					Name:                         "test",
+					Namespace:                    "test",
+					UID:                          "1",
+					Replicas:                     2,
+					PresharedKey:                 "psk",
+					EnvPrefix:                    "SPICEDB",
+					SpiceDBCmd:                   "spicedb",
+					ServiceAccountName:           "test",
+					DispatchEnabled:              true,
+					DispatchUpstreamCASecretPath: "tls.crt",
+					ProjectLabels:                true,
+					ProjectAnnotations:           true,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "cockroachdb",
+						"dispatchClusterEnabled": "true",
+						"terminationLogPath":     "/dev/termination-log",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_CONN_URI=datastore_uri",
+				"SPICEDB_DISPATCH_UPSTREAM_ADDR=kubernetes:///test.test:dispatch",
+				"SPICEDB_DATASTORE_ENGINE=cockroachdb",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=true",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
+			},
+			wantPortCount: 4,
+		},
+		{
 			name: "disable dispatch",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
@@ -2341,6 +2426,20 @@ metadata:
 			},
 			wantJob: expectedJob(),
 		},
+		{
+			name: "uses migration datastore URI when present",
+			cluster: v1alpha1.ClusterSpec{
+				Config: json.RawMessage(`
+					{
+						"logLevel": "debug",
+						"datastoreEngine": "cockroachdb"
+					}
+				`),
+			},
+			wantJob: expectedJob(func(_ *applybatchv1.JobApplyConfiguration) {
+				// The test below will verify the correct env var is set
+			}),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2348,6 +2447,11 @@ metadata:
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
 			}}
+
+			// Add migration_datastore_uri for specific test
+			if tt.name == "uses migration datastore URI when present" {
+				secret.Data["migration_datastore_uri"] = []byte("migration-uri")
+			}
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test",
@@ -2364,7 +2468,28 @@ metadata:
 			gotJob, err := json.Marshal(got.MigrationJob("1"))
 			require.NoError(t, err)
 
-			require.JSONEq(t, string(wantJob), string(gotJob))
+			// For migration datastore URI test, we check the env var specifically
+			if tt.name == "uses migration datastore URI when present" {
+				// Verify the migration job uses migration_datastore_uri key
+				job := got.MigrationJob("1")
+				containers := job.Spec.Template.Spec.Containers
+				require.Len(t, containers, 1)
+
+				var foundDatastoreURI bool
+				for _, env := range containers[0].Env {
+					if env.Name != nil && *env.Name == "SPICEDB_DATASTORE_CONN_URI" {
+						foundDatastoreURI = true
+						require.NotNil(t, env.ValueFrom)
+						require.NotNil(t, env.ValueFrom.SecretKeyRef)
+						require.NotNil(t, env.ValueFrom.SecretKeyRef.Key)
+						require.Equal(t, "migration_datastore_uri", *env.ValueFrom.SecretKeyRef.Key)
+					}
+				}
+				require.True(t, foundDatastoreURI, "SPICEDB_DATASTORE_CONN_URI env var not found")
+			} else {
+				// For other tests, use the original JSONEq assertion
+				require.JSONEq(t, string(wantJob), string(gotJob))
+			}
 		})
 	}
 }
