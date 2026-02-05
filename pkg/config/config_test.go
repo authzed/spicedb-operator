@@ -334,6 +334,85 @@ func TestNewConfig(t *testing.T) {
 			wantPortCount: 3,
 		},
 		{
+			name: "memory with skipTLSWarning",
+			args: args{
+				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+					{
+						"datastoreEngine": "memory",
+						"skipTLSWarning": true
+					}
+				`)},
+				globalConfig: OperatorConfig{
+					ImageName: "image",
+					UpdateGraph: updates.UpdateGraph{
+						Channels: []updates.Channel{
+							{
+								Name:     "memory",
+								Metadata: map[string]string{"datastore": "memory", "default": "true"},
+								Nodes: []updates.State{
+									{ID: "v1", Tag: "v1"},
+								},
+								Edges: map[string][]string{"v1": {}},
+							},
+						},
+					},
+				},
+				secret: &corev1.Secret{Data: map[string][]byte{
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantWarnings: nil,
+			want: &Config{
+				MigrationConfig: MigrationConfig{
+					MigrationLogLevel:  "debug",
+					DatastoreEngine:    "memory",
+					DatastoreURI:       "",
+					TargetSpiceDBImage: "image:v1",
+					EnvPrefix:          "SPICEDB",
+					SpiceDBCmd:         "spicedb",
+					TargetMigration:    "head",
+					SpiceDBVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "memory",
+						Attributes: []v1alpha1.SpiceDBVersionAttributes{
+							v1alpha1.SpiceDBVersionAttributesMigration,
+						},
+					},
+				},
+				SpiceConfig: SpiceConfig{
+					LogLevel:                     "info",
+					SkipMigrations:               false,
+					SkipTLSWarning:               true,
+					Name:                         "test",
+					Namespace:                    "test",
+					UID:                          "1",
+					Replicas:                     1,
+					PresharedKey:                 "psk",
+					EnvPrefix:                    "SPICEDB",
+					SpiceDBCmd:                   "spicedb",
+					ServiceAccountName:           "test",
+					DispatchEnabled:              false,
+					DispatchUpstreamCASecretPath: "tls.crt",
+					ProjectLabels:                true,
+					ProjectAnnotations:           true,
+					Passthrough: map[string]string{
+						"datastoreEngine":        "memory",
+						"dispatchClusterEnabled": "false",
+						"terminationLogPath":     "/dev/termination-log",
+					},
+				},
+			},
+			wantEnvs: []string{
+				"SPICEDB_POD_NAME=FIELD_REF=metadata.name",
+				"SPICEDB_LOG_LEVEL=info",
+				"SPICEDB_GRPC_PRESHARED_KEY=preshared_key",
+				"SPICEDB_DATASTORE_ENGINE=memory",
+				"SPICEDB_DISPATCH_CLUSTER_ENABLED=false",
+				"SPICEDB_TERMINATION_LOG_PATH=/dev/termination-log",
+			},
+			wantPortCount: 3,
+		},
+		{
 			name: "set image with tag explicitly",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
