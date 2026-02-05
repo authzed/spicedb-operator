@@ -44,9 +44,10 @@ func TestValidateConfigHandler(t *testing.T) {
 				}`)},
 				Status: v1alpha1.ClusterStatus{
 					Image:                "image:v1",
+					ResolvedBaseImage:    "image",
 					Migration:            "head",
-					TargetMigrationHash:  "69066f71d9cf4a1c",
-					CurrentMigrationHash: "69066f71d9cf4a1c",
+					TargetMigrationHash:  "a690b4600777a4f6",
+					CurrentMigrationHash: "a690b4600777a4f6",
 					CurrentVersion: &v1alpha1.SpiceDBVersion{
 						Name:    "v1",
 						Channel: "cockroachdb",
