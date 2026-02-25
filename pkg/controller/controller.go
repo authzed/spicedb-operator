@@ -244,7 +244,9 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 
 	c.mainHandler = chain(
 		c.pauseCluster,
+		c.validateSpec,
 		c.secretAdopter,
+		c.collectSecrets,
 		c.checkConfigChanged,
 		c.validateConfig,
 		parallel(
@@ -366,10 +368,18 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 
 	ctx = CtxCluster.WithValue(ctx, cluster.DeepCopy())
 	ctx = CtxClusterNN.WithValue(ctx, cluster.NamespacedName())
+
+	// Derive the primary secret name from SecretRef or Credentials (first non-skipped ref).
+	secretNames := credentialSecretNames(cluster.DeepCopy())
+	primarySecretName := ""
+	if len(secretNames) > 0 {
+		primarySecretName = secretNames[0]
+	}
 	ctx = CtxSecretNN.WithValue(ctx, types.NamespacedName{
-		Name:      cluster.Spec.SecretRef,
+		Name:      primarySecretName,
 		Namespace: cluster.Namespace,
 	})
+	ctx = CtxSecretNames.WithValue(ctx, secretNames)
 
 	c.configLock.RLock()
 	cfg := c.config.Copy()
@@ -379,6 +389,29 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 	logger.V(4).Info("syncing owned object", "gvr", gvr)
 
 	c.Handle(ctx)
+}
+
+// credentialSecretNames returns the unique list of secret names required by the cluster's credentials.
+// If Credentials is nil and SecretRef is set, returns the single SecretRef name (promotion path).
+func credentialSecretNames(cluster *v1alpha1.SpiceDBCluster) []string {
+	creds := cluster.Spec.Credentials
+	if creds == nil && cluster.Spec.SecretRef != "" {
+		return []string{cluster.Spec.SecretRef}
+	}
+	if creds == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var names []string
+	for _, ref := range []*v1alpha1.CredentialRef{creds.DatastoreURI, creds.PresharedKey, creds.MigrationSecrets} {
+		if ref != nil && !ref.Skip && ref.SecretName != "" {
+			if _, ok := seen[ref.SecretName]; !ok {
+				seen[ref.SecretName] = struct{}{}
+				names = append(names, ref.SecretName)
+			}
+		}
+	}
+	return names
 }
 
 // syncExternalResource is called when a dependent resource is updated:
@@ -543,52 +576,94 @@ func (c *Controller) selfPauseCluster(...handler.Handler) handler.Handler {
 func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
 	return handler.NewHandlerFromFunc(func(ctx context.Context) {
-		NewSecretAdoptionHandler(
-			c.Recorder,
-			func(ctx context.Context) (*corev1.Secret, error) {
-				return typed.MustListerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
-			},
-			func(ctx context.Context, err error) {
-				cluster := CtxCluster.MustValue(ctx)
-				status := &v1alpha1.SpiceDBCluster{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       v1alpha1.SpiceDBClusterKind,
-						APIVersion: v1alpha1.SchemeGroupVersion.String(),
-					},
-					ObjectMeta: metav1.ObjectMeta{Namespace: cluster.Namespace, Name: cluster.Name},
-					Status:     *cluster.Status.DeepCopy(),
-				}
-				status.Status.ObservedGeneration = cluster.GetGeneration()
-				status.SetStatusCondition(v1alpha1.NewMissingSecretCondition(types.NamespacedName{
-					Namespace: cluster.Namespace,
-					Name:      cluster.Spec.SecretRef,
-				}))
-				if err := c.PatchStatus(ctx, status); err != nil {
-					QueueOps.RequeueAPIErr(ctx, err)
-				}
-				// keep checking to see if the secret is added
-				QueueOps.RequeueErr(ctx, err)
-			},
-			typed.MustIndexerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)),
-			func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
-				return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
-			},
-			func(ctx context.Context, nn types.NamespacedName) error {
-				_, err := c.kclient.CoreV1().Secrets(nn.Namespace).Get(ctx, nn.Name, metav1.GetOptions{})
-				return err
-			},
-			handler.Handlers(next).MustOne(),
-		).Handle(ctx)
-		if errors.Is(ctx.Err(), context.Canceled) {
+		names := CtxSecretNames.Value(ctx)
+		if len(names) == 0 {
+			handler.Handlers(next).MustOne().Handle(ctx)
 			return
 		}
+		cluster := CtxCluster.MustValue(ctx)
+		for _, name := range names {
+			secretCtx := CtxSecretNN.WithValue(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: cluster.Namespace,
+			})
+			NewSecretAdoptionHandler(
+				c.Recorder,
+				func(ctx context.Context) (*corev1.Secret, error) {
+					return typed.MustListerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
+				},
+				func(ctx context.Context, err error) {
+					cluster := CtxCluster.MustValue(ctx)
+					status := &v1alpha1.SpiceDBCluster{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       v1alpha1.SpiceDBClusterKind,
+							APIVersion: v1alpha1.SchemeGroupVersion.String(),
+						},
+						ObjectMeta: metav1.ObjectMeta{Namespace: cluster.Namespace, Name: cluster.Name},
+						Status:     *cluster.Status.DeepCopy(),
+					}
+					status.Status.ObservedGeneration = cluster.GetGeneration()
+					status.SetStatusCondition(v1alpha1.NewMissingSecretCondition(CtxSecretNN.MustValue(ctx)))
+					if err := c.PatchStatus(ctx, status); err != nil {
+						QueueOps.RequeueAPIErr(ctx, err)
+						return
+					}
+					QueueOps.RequeueErr(ctx, err)
+				},
+				typed.MustIndexerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)),
+				func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
+					return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
+				},
+				func(ctx context.Context, nn types.NamespacedName) error {
+					_, err := c.kclient.CoreV1().Secrets(nn.Namespace).Get(ctx, nn.Name, metav1.GetOptions{})
+					return err
+				},
+				handler.NoopHandler,
+			).Handle(secretCtx)
+			if errors.Is(secretCtx.Err(), context.Canceled) {
+				return
+			}
+		}
+		// Call next with the original ctx; collectSecrets fetches all secrets
+		// from cache into CtxSecrets using CtxSecretNames.
 		handler.Handlers(next).MustOne().Handle(ctx)
-	}, "adoptSecret")
+	}, "adoptSecrets")
+}
+
+// collectSecrets looks up all credential secrets from the cache and populates
+// CtxSecrets. This runs after secretAdopter.
+func (c *Controller) collectSecrets(next ...handler.Handler) handler.Handler {
+	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
+	return handler.NewHandlerFromFunc(func(ctx context.Context) {
+		cluster := CtxCluster.MustValue(ctx)
+		names := CtxSecretNames.Value(ctx)
+		if names == nil {
+			names = credentialSecretNames(cluster)
+		}
+		secretsMap := make(map[string]*corev1.Secret, len(names))
+		lister := typed.MustListerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)).ByNamespace(cluster.Namespace)
+		for _, name := range names {
+			sec, err := lister.Get(name)
+			if err == nil && sec != nil {
+				secretsMap[name] = sec
+			}
+		}
+		ctx = CtxSecrets.WithValue(ctx, secretsMap)
+		handler.Handlers(next).MustOne().Handle(ctx)
+	}, "collectSecrets")
 }
 
 func (c *Controller) checkConfigChanged(next ...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&ConfigChangedHandler{
 		patchStatus: c.PatchStatus,
+		next:        handler.Handlers(next).MustOne(),
+	})
+}
+
+func (c *Controller) validateSpec(next ...handler.Handler) handler.Handler {
+	return handler.NewTypeHandler(&ValidateSpecHandler{
+		patchStatus: c.PatchStatus,
+		recorder:    c.Recorder,
 		next:        handler.Handlers(next).MustOne(),
 	})
 }

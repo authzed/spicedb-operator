@@ -11,6 +11,7 @@ import (
 	"github.com/authzed/controller-idioms/adopt"
 	"github.com/authzed/controller-idioms/handler"
 	"github.com/authzed/controller-idioms/typed"
+	"github.com/authzed/controller-idioms/typedctx"
 
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
@@ -18,12 +19,13 @@ import (
 const EventSecretAdoptedBySpiceDBCluster = "SecretAdoptedBySpiceDB"
 
 func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(ctx context.Context) (*corev1.Secret, error), missingFunc func(ctx context.Context, err error), secretIndexer *typed.Indexer[*corev1.Secret], secretApplyFunc adopt.ApplyFunc[*corev1.Secret, *applycorev1.SecretApplyConfiguration], existsFunc func(ctx context.Context, name types.NamespacedName) error, next handler.Handler) handler.Handler {
+	ctxSecret := typedctx.WithDefault[*corev1.Secret](nil)
 	return handler.NewHandler(&adopt.AdoptionHandler[*corev1.Secret, *applycorev1.SecretApplyConfiguration]{
 		OperationsContext:      QueueOps,
 		ControllerFieldManager: metadata.FieldManager,
 		AdopteeCtx:             CtxSecretNN,
 		OwnerCtx:               CtxClusterNN,
-		AdoptedCtx:             CtxSecret,
+		AdoptedCtx:             ctxSecret,
 		ObjectAdoptedFunc: func(ctx context.Context, secret *corev1.Secret) {
 			recorder.Eventf(secret, corev1.EventTypeNormal, EventSecretAdoptedBySpiceDBCluster, "Secret was referenced as the secret source for SpiceDBCluster %s; it has been labelled to mark it as part of the configuration for that controller.", CtxClusterNN.MustValue(ctx).String())
 		},
