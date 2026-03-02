@@ -45,7 +45,7 @@ jobs:
           token: "${{ github.token }}"
           kustomize_build_dir: "release/config"
           kustomize_output_file: "release/bundle.yaml"
-      - uses: "goreleaser/goreleaser-action@v6"
+      - uses: "goreleaser/goreleaser-action@v7"
         with:
           distribution: "goreleaser-pro"
           version: "latest"
