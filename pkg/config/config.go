@@ -98,6 +98,13 @@ var (
 // but which don't prevent the cluster from starting (i.e. no TLS config)
 type Warning error
 
+// ResolvedCredentialRef is a credential source after defaults have been applied.
+type ResolvedCredentialRef struct {
+	SecretName string
+	Key        string
+	Skip       bool
+}
+
 // RawConfig has not been processed/validated yet
 type RawConfig map[string]any
 
@@ -166,7 +173,9 @@ type SpiceConfig struct {
 	DispatchUpstreamCASecretName   string
 	DispatchUpstreamCASecretPath   string
 	TelemetryTLSCASecretName       string
-	SecretName                     string
+	DatastoreURIRef                ResolvedCredentialRef
+	PresharedKeyRef                ResolvedCredentialRef
+	MigrationSecretsRef            ResolvedCredentialRef
 	ExtraPodLabels                 map[string]string
 	ExtraPodAnnotations            map[string]string
 	ExtraServiceAccountAnnotations map[string]string
@@ -176,8 +185,8 @@ type SpiceConfig struct {
 	Passthrough                    map[string]string
 }
 
-// NewConfig checks that the values in the config + the secret are sane
-func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secret *corev1.Secret, resources openapi.Resources) (*Config, Warning, error) {
+// NewConfig checks that the values in the config + the secrets are sane
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secrets map[string]*corev1.Secret, resources openapi.Resources) (*Config, Warning, error) {
 	if cluster.Spec.Config == nil {
 		return nil, nil, fmt.Errorf("couldn't parse empty config")
 	}
@@ -272,25 +281,92 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	passthroughConfig["datastoreEngine"] = datastoreEngine
 	passthroughConfig["dispatchClusterEnabled"] = strconv.FormatBool(spiceConfig.DispatchEnabled)
 
-	if secret == nil {
-		errs = append(errs, fmt.Errorf("secret must be provided"))
+	// Resolve credentials: use Credentials field if set, otherwise promote from SecretRef.
+	credentials := cluster.Spec.Credentials
+	if credentials == nil {
+		secretName := cluster.Spec.SecretRef
+		if secretName == "" {
+			errs = append(errs, fmt.Errorf("credentials or secretName must be provided"))
+		} else {
+			credentials = &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{SecretName: secretName, Key: "datastore_uri"},
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: secretName, Key: "preshared_key"},
+			}
+		}
 	}
 
-	var datastoreURI, psk []byte
-	if secret != nil {
-		spiceConfig.SecretName = secret.GetName()
+	if credentials != nil {
+		// Resolve DatastoreURI credential
+		if credentials.DatastoreURI == nil {
+			errs = append(errs, fmt.Errorf("credentials.datastoreURI must be set (use skip: true to opt out)"))
+		} else if credentials.DatastoreURI.Skip {
+			spiceConfig.DatastoreURIRef = ResolvedCredentialRef{Skip: true}
+		} else {
+			key := credentials.DatastoreURI.Key
+			if key == "" {
+				key = "datastore_uri"
+			}
+			spiceConfig.DatastoreURIRef = ResolvedCredentialRef{SecretName: credentials.DatastoreURI.SecretName, Key: key}
+			if datastoreEngine != "memory" {
+				sec := secrets[credentials.DatastoreURI.SecretName]
+				if sec == nil {
+					errs = append(errs, fmt.Errorf("secret must be provided for datastoreURI"))
+				} else {
+					val, ok := sec.Data[key]
+					if !ok {
+						errs = append(errs, fmt.Errorf("secret must contain a %s field", key))
+					}
+					migrationConfig.DatastoreURI = string(val)
+				}
+			}
+		}
 
-		var ok bool
-		datastoreURI, ok = secret.Data["datastore_uri"]
-		if !ok && datastoreEngine != "memory" {
-			errs = append(errs, fmt.Errorf("secret must contain a datastore_uri field"))
+		// Resolve PresharedKey credential
+		if credentials.PresharedKey == nil {
+			errs = append(errs, fmt.Errorf("credentials.presharedKey must be set (use skip: true to opt out)"))
+		} else if credentials.PresharedKey.Skip {
+			spiceConfig.PresharedKeyRef = ResolvedCredentialRef{Skip: true}
+		} else {
+			key := credentials.PresharedKey.Key
+			if key == "" {
+				key = "preshared_key"
+			}
+			spiceConfig.PresharedKeyRef = ResolvedCredentialRef{SecretName: credentials.PresharedKey.SecretName, Key: key}
+			sec := secrets[credentials.PresharedKey.SecretName]
+			if sec == nil {
+				errs = append(errs, fmt.Errorf("secret must be provided for presharedKey"))
+			} else {
+				val, ok := sec.Data[key]
+				if !ok {
+					errs = append(errs, fmt.Errorf("secret must contain a %s field", key))
+				}
+				spiceConfig.PresharedKey = string(val)
+			}
 		}
-		migrationConfig.DatastoreURI = string(datastoreURI)
-		psk, ok = secret.Data["preshared_key"]
-		if !ok {
-			errs = append(errs, fmt.Errorf("secret must contain a preshared_key field"))
+
+		// Resolve MigrationSecrets credential.
+		// If not specified, inherit the secret from DatastoreURI with key "migration_secrets".
+		if credentials.MigrationSecrets == nil {
+			if spiceConfig.DatastoreURIRef.Skip {
+				spiceConfig.MigrationSecretsRef = ResolvedCredentialRef{Skip: true}
+			} else {
+				spiceConfig.MigrationSecretsRef = ResolvedCredentialRef{
+					SecretName: spiceConfig.DatastoreURIRef.SecretName,
+					Key:        "migration_secrets",
+				}
+			}
+		} else if credentials.MigrationSecrets.Skip {
+			spiceConfig.MigrationSecretsRef = ResolvedCredentialRef{Skip: true}
+		} else {
+			key := credentials.MigrationSecrets.Key
+			if key == "" {
+				key = "migration_secrets"
+			}
+			spiceConfig.MigrationSecretsRef = ResolvedCredentialRef{
+				SecretName: credentials.MigrationSecrets.SecretName,
+				Key:        key,
+			}
 		}
-		spiceConfig.PresharedKey = string(psk)
 	}
 
 	if len(migrationConfig.SpannerCredsSecretRef) > 0 {
@@ -456,14 +532,17 @@ func (c *Config) toEnvVarApplyConfiguration() []*applycorev1.EnvVarApplyConfigur
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_POD_NAME").WithValueFrom(
 			applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
 		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_LOG_LEVEL").WithValue(c.LogLevel),
-		applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix + "_GRPC_PRESHARED_KEY").
-			WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
-				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("preshared_key"))),
 	}
-	if c.DatastoreEngine != "memory" {
+	if !c.PresharedKeyRef.Skip {
+		envVars = append(envVars,
+			applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_GRPC_PRESHARED_KEY").
+				WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
+					applycorev1.SecretKeySelector().WithName(c.PresharedKeyRef.SecretName).WithKey(c.PresharedKeyRef.Key))))
+	}
+	if c.DatastoreEngine != "memory" && !c.DatastoreURIRef.Skip {
 		envVars = append(envVars,
 			applycorev1.EnvVar().WithName(c.SpiceConfig.EnvPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
-				applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))))
+				applycorev1.SecretKeySelector().WithName(c.DatastoreURIRef.SecretName).WithKey(c.DatastoreURIRef.Key))))
 	}
 	if c.DispatchEnabled {
 		envVars = append(envVars,
@@ -672,8 +751,16 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 	envPrefix := c.SpiceConfig.EnvPrefix
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.MigrationLogLevel),
-		applycorev1.EnvVar().WithName(envPrefix + "_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("datastore_uri"))),
-		applycorev1.EnvVar().WithName(envPrefix + "_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.SecretName).WithKey("migration_secrets").WithOptional(true))),
+	}
+	if !c.DatastoreURIRef.Skip {
+		envVars = append(envVars,
+			applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.DatastoreURIRef.SecretName).WithKey(c.DatastoreURIRef.Key))),
+		)
+	}
+	if !c.MigrationSecretsRef.Skip {
+		envVars = append(envVars,
+			applycorev1.EnvVar().WithName(envPrefix+"_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.MigrationSecretsRef.SecretName).WithKey(c.MigrationSecretsRef.Key).WithOptional(true))),
+		)
 	}
 
 	keys := make([]string, 0, len(c.Passthrough))
@@ -995,8 +1082,10 @@ func fixDeploymentPatches(name string, in []v1alpha1.Patch) []v1alpha1.Patch {
 // the key isCamelCased will be converted to PREFIX_IS_CAMEL_CASED
 func toEnvVarName(prefix string, key string) string {
 	prefix = strings.TrimSuffix(prefix, "_")
-	envVarParts := []string{strings.ToUpper(prefix)}
-	for _, p := range camelcase.Split(key) {
+	parts := camelcase.Split(key)
+	envVarParts := make([]string, 0, 1+len(parts))
+	envVarParts = append(envVarParts, strings.ToUpper(prefix))
+	for _, p := range parts {
 		envVarParts = append(envVarParts, strings.ToUpper(p))
 	}
 	return strings.Join(envVarParts, "_")

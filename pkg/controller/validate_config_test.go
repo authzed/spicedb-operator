@@ -24,8 +24,9 @@ func TestValidateConfigHandler(t *testing.T) {
 	tests := []struct {
 		name string
 
-		cluster        *v1alpha1.SpiceDBCluster
-		existingSecret *corev1.Secret
+		cluster         *v1alpha1.SpiceDBCluster
+		existingSecret  *corev1.Secret
+		existingSecrets map[string]*corev1.Secret // optional: overrides CtxSecrets when set
 
 		expectNext        handler.Key
 		expectEvents      []string
@@ -38,10 +39,13 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "valid config, no changes, no warnings",
 			cluster: &v1alpha1.SpiceDBCluster{
-				Spec: v1alpha1.ClusterSpec{Config: json.RawMessage(`{
+				Spec: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`{
 					"datastoreEngine": "cockroachdb",
 					"tlsSecretName":   "secret"
-				}`)},
+				}`),
+				},
 				Status: v1alpha1.ClusterStatus{
 					Image:                "image:v1",
 					Migration:            "head",
@@ -55,6 +59,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 			},
 			existingSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("testtest"),
@@ -67,17 +72,21 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "valid config, new target migrationhash",
 			cluster: &v1alpha1.SpiceDBCluster{
-				Spec: v1alpha1.ClusterSpec{Config: json.RawMessage(`{
+				Spec: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`{
 					"image": "image:v1",
 					"datastoreEngine": "cockroachdb",
 					"tlsSecretName":   "secret"
-				}`)},
+				}`),
+				},
 				Status: v1alpha1.ClusterStatus{
 					Image:                "image:v1",
 					CurrentMigrationHash: "old",
 				},
 			},
 			existingSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("testtest"),
@@ -90,14 +99,18 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "valid config with label warnings",
 			cluster: &v1alpha1.SpiceDBCluster{
-				Spec: v1alpha1.ClusterSpec{Config: json.RawMessage(`{
+				Spec: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`{
 					"datastoreEngine": "cockroachdb",
 					"extraPodLabels":  "wrong:format",
 					"extraPodAnnotations":  "annotation:bad"
-				}`)},
+				}`),
+				},
 				Status: v1alpha1.ClusterStatus{Image: "image"},
 			},
 			existingSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("testtest"),
@@ -115,7 +128,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				"datastoreEngine": "cockroachdb"
 			}`)},
 			},
-			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: secret must be provided"},
+			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: credentials or secretName must be provided"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,
 			expectDone:        true,
@@ -127,7 +140,7 @@ func TestValidateConfigHandler(t *testing.T) {
 					"nope": "cockroachdb"
 				}`)},
 			},
-			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: [datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, secret must be provided]"},
+			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: [datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, credentials or secretName must be provided]"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,
 			expectDone:        true,
@@ -135,17 +148,21 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "detects when config is now valid",
 			cluster: &v1alpha1.SpiceDBCluster{
-				Spec: v1alpha1.ClusterSpec{Config: json.RawMessage(`{
+				Spec: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`{
 					"datastoreEngine": "cockroachdb",
 					"tlsSecretName":   "secret"
-				}`)},
+				}`),
+				},
 				Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
 					Type:    "ValidatingFailed",
 					Status:  metav1.ConditionTrue,
-					Message: "invalid config: [datastoreEngine is a required field, secret must be provided]",
+					Message: "invalid config: [datastoreEngine is a required field, credentials or secretName must be provided]",
 				}}},
 			},
 			existingSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("testtest"),
@@ -158,12 +175,15 @@ func TestValidateConfigHandler(t *testing.T) {
 		{
 			name: "detects when warnings are fixed",
 			cluster: &v1alpha1.SpiceDBCluster{
-				Spec: v1alpha1.ClusterSpec{Config: json.RawMessage(`{
+				Spec: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`{
 					"datastoreEngine":     "cockroachdb",
 					"tlsSecretName":       "secret",
 					"extraPodLabels":      "correct=format,good=value",
 					"extraPodAnnotations": "annotation=works"
-				}`)},
+				}`),
+				},
 				Status: v1alpha1.ClusterStatus{Image: "image", Conditions: []metav1.Condition{{
 					Type:    "ConfigurationWarning",
 					Status:  metav1.ConditionTrue,
@@ -171,6 +191,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				}}},
 			},
 			existingSecret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
 				Data: map[string][]byte{
 					"datastore_uri": []byte("uri"),
 					"preshared_key": []byte("testtest"),
@@ -189,7 +210,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
 					Type:    "ValidatingFailed",
 					Status:  metav1.ConditionTrue,
-					Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, secret must be provided]",
+					Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, credentials or secretName must be provided]",
 				}}},
 			},
 			expectConditions:  []string{"ValidatingFailed"},
@@ -205,13 +226,61 @@ func TestValidateConfigHandler(t *testing.T) {
 				Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
 					Type:    "ValidatingFailed",
 					Status:  metav1.ConditionTrue,
-					Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, secret must be provided]",
+					Message: "Error validating config with secret hash \"\": [datastoreEngine is a required field, credentials or secretName must be provided]",
 				}}},
 			},
-			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: secret must be provided"},
+			expectEvents:      []string{"Warning InvalidSpiceDBConfig invalid config: credentials or secretName must be provided"},
 			expectConditions:  []string{"ValidatingFailed"},
 			expectPatchStatus: true,
 			expectDone:        true,
+		},
+		{
+			name: "valid config with two-secret credentials path",
+			cluster: &v1alpha1.SpiceDBCluster{
+				Spec: v1alpha1.ClusterSpec{
+					Config: json.RawMessage(`{
+						"datastoreEngine": "cockroachdb",
+						"tlsSecretName":   "tls-secret"
+					}`),
+					Credentials: &v1alpha1.ClusterCredentials{
+						DatastoreURI: &v1alpha1.CredentialRef{
+							SecretName: "db-secret",
+							Key:        "datastore_uri",
+						},
+						PresharedKey: &v1alpha1.CredentialRef{
+							SecretName: "psk-secret",
+							Key:        "preshared_key",
+						},
+					},
+				},
+				Status: v1alpha1.ClusterStatus{
+					Image:                "image:v1",
+					Migration:            "head",
+					TargetMigrationHash:  "69066f71d9cf4a1c",
+					CurrentMigrationHash: "69066f71d9cf4a1c",
+					CurrentVersion: &v1alpha1.SpiceDBVersion{
+						Name:    "v1",
+						Channel: "cockroachdb",
+					},
+					AvailableVersions: []v1alpha1.SpiceDBVersion{},
+				},
+			},
+			existingSecret: nil,
+			existingSecrets: map[string]*corev1.Secret{
+				"db-secret": {
+					Data: map[string][]byte{
+						"datastore_uri": []byte("uri"),
+					},
+				},
+				"psk-secret": {
+					Data: map[string][]byte{
+						"preshared_key": []byte("testtest"),
+					},
+				},
+			},
+			expectPatchStatus: false,
+			expectStatusImage: "image:v1",
+			expectNext:        nextKey,
 		},
 	}
 	for _, tt := range tests {
@@ -222,7 +291,17 @@ func TestValidateConfigHandler(t *testing.T) {
 
 			ctx := context.Background()
 			ctx = QueueOps.WithValue(ctx, ctrls)
-			ctx = CtxSecret.WithValue(ctx, tt.existingSecret)
+			// Build CtxSecrets: use existingSecrets if explicitly provided, otherwise derive from existingSecret
+			var secretsMap map[string]*corev1.Secret
+			if tt.existingSecrets != nil {
+				secretsMap = tt.existingSecrets
+			} else {
+				secretsMap = map[string]*corev1.Secret{}
+				if tt.existingSecret != nil {
+					secretsMap[tt.existingSecret.Name] = tt.existingSecret
+				}
+			}
+			ctx = CtxSecrets.WithValue(ctx, secretsMap)
 			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: "test", Name: "test"})
 			ctx = CtxCluster.WithValue(ctx, tt.cluster)
 			ctx = CtxCluster.WithValue(ctx, tt.cluster)
