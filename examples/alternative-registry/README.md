@@ -26,6 +26,8 @@ The image selection follows this precedence order (highest to lowest):
 
 See [spicedb-cluster.yaml](spicedb-cluster.yaml) for a complete example.
 
+Unlike `spec.config.image`, using `baseImage` preserves the update graph — the operator still selects the correct version and handles migration safety based on your channel, but pulls from your registry.
+
 ```yaml
 apiVersion: authzed.com/v1alpha1
 kind: SpiceDBCluster
@@ -34,14 +36,14 @@ metadata:
 spec:
   # Specify your alternative registry here (NO TAG!)
   baseImage: "my-registry.company.com/authzed/spicedb"
-  
-  # The operator will append the appropriate tag based on the version/channel
-  version: "v1.33.0"
-  
+
+  # Use a channel to get automatic updates from the update graph
+  channel: "stable"
+
   config:
     datastoreEngine: postgres
     # ... other config
-  
+
   # If using a private registry, use patches to add imagePullSecrets
   patches:
     - kind: Deployment
@@ -58,15 +60,17 @@ spec:
 When you specify a `baseImage`, the operator will:
 
 1. Use your specified registry as the base
-2. Append the appropriate tag or digest based on the `version` or `channel` you specify
+2. Resolve the appropriate tag or digest from the update graph based on your `channel`
 3. The final image will be: `<baseImage>:<tag>` or `<baseImage>@<digest>`
 
 For example, if you specify:
 
 - `baseImage: "my-registry.company.com/authzed/spicedb"`
-- `version: "v1.33.0"`
+- `channel: "stable"`
 
-The operator will use: `my-registry.company.com/authzed/spicedb:v1.33.0`
+The operator resolves the latest version in the `stable` channel and uses e.g.: `my-registry.company.com/authzed/spicedb:v1.33.0`
+
+You can also pin a specific version with `version: "v1.33.0"` instead of `channel`. Use `spec.config.image` only if you need to use an image that is not present in the update graph (this bypasses migration safety checks).
 
 ## Private Registry Authentication
 

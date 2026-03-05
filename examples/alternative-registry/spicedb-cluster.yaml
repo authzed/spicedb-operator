@@ -10,15 +10,15 @@ metadata:
   namespace: spicedb-custom-registry
 spec:
   # Use an alternative container registry
-  # The operator will append the appropriate tag based on version/channel
+  # The operator will resolve the tag from the update graph based on your channel
   # NOTE: Do NOT include a tag here - just the registry and image name
   baseImage: "my-registry.company.com/authzed/spicedb"
-  
-  # Specify the version to use
-  version: "v1.33.0"
-  
-  # Alternatively, use a channel for automatic updates within that channel
-  # channel: "stable"
+
+  # Use a channel to get automatic updates from the update graph
+  channel: "stable"
+
+  # Alternatively, pin a specific version while still using the update graph
+  # version: "v1.33.0"
   
   config:
     datastoreEngine: postgres
