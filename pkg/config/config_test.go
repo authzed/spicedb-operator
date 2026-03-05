@@ -364,12 +364,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "memory with skipTLSWarning",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "memory",
 						"skipTLSWarning": true
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -421,6 +424,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              false,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
