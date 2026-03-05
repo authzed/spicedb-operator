@@ -2135,6 +2135,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -2161,6 +2164,7 @@ func TestNewConfig(t *testing.T) {
 			name: "baseImage with tag is rejected",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					BaseImage: "public.ecr.aws/authzed/spicedb:v1.33.0",
 					Config: json.RawMessage(`
 						{
@@ -2195,6 +2199,7 @@ func TestNewConfig(t *testing.T) {
 			name: "baseImage with digest is rejected",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					BaseImage: "public.ecr.aws/authzed/spicedb@sha256:abc123",
 					Config: json.RawMessage(`
 						{
@@ -2229,6 +2234,7 @@ func TestNewConfig(t *testing.T) {
 			name: "baseImage with port number in registry is accepted",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					BaseImage: "my-registry.company.com:5000/authzed/spicedb",
 					Config: json.RawMessage(`
 						{
@@ -2290,6 +2296,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -2316,6 +2325,7 @@ func TestNewConfig(t *testing.T) {
 			name: "valid baseImage populates ResolvedBaseImage in config",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					BaseImage: "gcr.io/my-project/spicedb",
 					Config: json.RawMessage(`
 						{
