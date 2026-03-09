@@ -1778,7 +1778,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
-				MigrationConfig: MigrationConfig{
+				MigrationConfig: MigrationConfig{ //nolint:gosec  // this is a test
 					MigrationLogLevel:     "debug",
 					DatastoreEngine:       "spanner",
 					DatastoreURI:          "uri",
@@ -1810,7 +1810,7 @@ func TestNewConfig(t *testing.T) {
 					DispatchUpstreamCASecretPath: "tls.crt",
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
-					Passthrough: map[string]string{
+					Passthrough: map[string]string{ //nolint:gosec  // this is a test
 						"datastoreEngine":             "spanner",
 						"dispatchClusterEnabled":      "true",
 						"datastoreSpannerCredentials": "/spanner-credentials/credentials.json",
