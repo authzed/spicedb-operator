@@ -65,6 +65,7 @@ func (c *ValidateConfigHandler) Handle(ctx context.Context) {
 		CurrentMigrationHash: cluster.Status.CurrentMigrationHash,
 		SecretHash:           cluster.Status.SecretHash,
 		Image:                validatedConfig.TargetSpiceDBImage,
+		ResolvedBaseImage:    validatedConfig.ResolvedBaseImage,
 		Migration:            validatedConfig.TargetMigration,
 		Phase:                validatedConfig.TargetPhase,
 		CurrentVersion:       validatedConfig.SpiceDBVersion,
