@@ -176,6 +176,7 @@ type SpiceConfig struct {
 	DatastoreURIRef                ResolvedCredentialRef
 	PresharedKeyRef                ResolvedCredentialRef
 	MigrationSecretsRef            ResolvedCredentialRef
+	MigrationDatastoreURIRef       ResolvedCredentialRef
 	ExtraPodLabels                 map[string]string
 	ExtraPodAnnotations            map[string]string
 	ExtraServiceAccountAnnotations map[string]string
@@ -364,6 +365,24 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 			}
 			spiceConfig.MigrationSecretsRef = ResolvedCredentialRef{
 				SecretName: credentials.MigrationSecrets.SecretName,
+				Key:        key,
+			}
+		}
+
+		// Resolve MigrationDatastoreURI credential.
+		// If not specified, migrations use the same DatastoreURI.
+		if credentials.MigrationDatastoreURI == nil {
+			// Default: use the same datastore URI for migrations
+			spiceConfig.MigrationDatastoreURIRef = spiceConfig.DatastoreURIRef
+		} else if credentials.MigrationDatastoreURI.Skip {
+			spiceConfig.MigrationDatastoreURIRef = ResolvedCredentialRef{Skip: true}
+		} else {
+			key := credentials.MigrationDatastoreURI.Key
+			if key == "" {
+				key = "migration_datastore_uri"
+			}
+			spiceConfig.MigrationDatastoreURIRef = ResolvedCredentialRef{
+				SecretName: credentials.MigrationDatastoreURI.SecretName,
 				Key:        key,
 			}
 		}
@@ -752,9 +771,14 @@ func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobAp
 	envVars := []*applycorev1.EnvVarApplyConfiguration{
 		applycorev1.EnvVar().WithName(envPrefix + "_LOG_LEVEL").WithValue(c.MigrationLogLevel),
 	}
-	if !c.DatastoreURIRef.Skip {
+	// Use MigrationDatastoreURIRef for migrations if set, otherwise fall back to DatastoreURIRef.
+	migrationURIRef := c.MigrationDatastoreURIRef
+	if migrationURIRef.SecretName == "" && !migrationURIRef.Skip {
+		migrationURIRef = c.DatastoreURIRef
+	}
+	if !migrationURIRef.Skip {
 		envVars = append(envVars,
-			applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(c.DatastoreURIRef.SecretName).WithKey(c.DatastoreURIRef.Key))),
+			applycorev1.EnvVar().WithName(envPrefix+"_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName(migrationURIRef.SecretName).WithKey(migrationURIRef.Key))),
 		)
 	}
 	if !c.MigrationSecretsRef.Skip {
