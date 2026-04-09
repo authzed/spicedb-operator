@@ -610,7 +610,12 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 					}
 					QueueOps.RequeueErr(ctx, err)
 				},
-				typed.MustIndexerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)),
+				typed.NewIndexer[*corev1.Secret](newAdoptionAwareIndexer(
+				c.Registry.MustIndexerForKey(typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)),
+				name,
+				cluster.Namespace,
+				names,
+			)),
 				func(ctx context.Context, secret *applycorev1.SecretApplyConfiguration, options metav1.ApplyOptions) (*corev1.Secret, error) {
 					return c.kclient.CoreV1().Secrets(*secret.Namespace).Apply(ctx, secret, options)
 				},

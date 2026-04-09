@@ -4,8 +4,10 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	applycorev1 "k8s.io/client-go/applyconfigurations/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/controller-idioms/adopt"
@@ -15,6 +17,69 @@ import (
 
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
+
+// adoptionAwareIndexer wraps a cache.Indexer and filters ByIndex results so
+// that other currently-valid adoptees are not misidentified as stale extras.
+//
+// When secretAdopter runs N AdoptionHandlers sequentially (one per secret),
+// each handler's cleanup loop removes labels from any indexed secret that isn't
+// its own adoptee. Without this wrapper, handler[i] strips the label from
+// handler[j]'s adoptee on every reconcile, creating an infinite re-adoption loop.
+//
+// This wrapper ensures each handler sees only:
+//   - Its own adoptee (so adoption proceeds normally), and
+//   - Truly stale secrets (not in validNames) so they are still cleaned up.
+//
+// Other currently-valid adoptees are hidden from each handler's ByIndex call.
+type adoptionAwareIndexer struct {
+	cache.Indexer
+	currentAdoptee string
+	namespace      string
+	validNames     map[string]struct{}
+}
+
+func newAdoptionAwareIndexer(base cache.Indexer, currentAdoptee, namespace string, allNames []string) *adoptionAwareIndexer {
+	valid := make(map[string]struct{}, len(allNames))
+	for _, n := range allNames {
+		valid[n] = struct{}{}
+	}
+	return &adoptionAwareIndexer{
+		Indexer:        base,
+		currentAdoptee: currentAdoptee,
+		namespace:      namespace,
+		validNames:     valid,
+	}
+}
+
+func (a *adoptionAwareIndexer) ByIndex(indexName, indexedValue string) ([]interface{}, error) {
+	objs, err := a.Indexer.ByIndex(indexName, indexedValue)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]interface{}, 0, len(objs))
+	for _, obj := range objs {
+		m, err := meta.Accessor(obj)
+		if err != nil {
+			continue
+		}
+		name := m.GetName()
+		ns := m.GetNamespace()
+		// Objects in other namespaces are passed through unchanged.
+		if ns != a.namespace {
+			filtered = append(filtered, obj)
+			continue
+		}
+		// Always include the current adoptee.
+		// Include stale secrets (not in validNames) so cleanup removes them.
+		// Exclude other currently-valid adoptees to prevent incorrect cleanup.
+		if name == a.currentAdoptee {
+			filtered = append(filtered, obj)
+		} else if _, isValid := a.validNames[name]; !isValid {
+			filtered = append(filtered, obj)
+		}
+	}
+	return filtered, nil
+}
 
 const EventSecretAdoptedBySpiceDBCluster = "SecretAdoptedBySpiceDB"
 
