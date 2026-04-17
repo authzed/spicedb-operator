@@ -154,3 +154,33 @@ spec:
         resources:
           requests:
             storage: 100Gi
+---
+# Enable rangefeeds so the SpiceDB Watch API works.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: crdb-enable-rangefeeds
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-crdb
+          image: cockroachdb/cockroach:v22.1.6
+          command:
+            - "/bin/bash"
+            - "-c"
+            - |
+              until /cockroach/cockroach sql --insecure --host=cockroachdb-public --execute="SELECT 1"; do
+                echo "waiting for CockroachDB..."
+                sleep 2
+              done
+      containers:
+        - name: enable-rangefeeds
+          image: cockroachdb/cockroach:v22.1.6
+          command:
+            - "/cockroach/cockroach"
+            - "sql"
+            - "--insecure"
+            - "--host=cockroachdb-public"
+            - "--execute=SET CLUSTER SETTING kv.rangefeed.enabled = true;"

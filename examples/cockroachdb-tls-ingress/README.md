@@ -5,6 +5,7 @@ This will guide you through setting up a complete example SpiceDB cluster:
 - Managed by the operator
 - With multiple nodes that dispatch to each other (with TLS)
 - With a cockroachdb backing datastore
+- With the Watch API enabled (via CockroachDB rangefeeds)
 - With ingress (and TLS)
 
 ## Configure Root CA
@@ -109,6 +110,19 @@ EOF
 
 zed schema read
 ```
+
+## Watch API
+
+The CockroachDB configuration in this example enables [rangefeeds], which are required for the SpiceDB [Watch API]. A Kubernetes Job runs automatically to set `kv.rangefeed.enabled = true` on the CockroachDB cluster.
+
+You can verify rangefeeds are enabled by checking the CockroachDB cluster setting:
+
+```sh
+kubectl exec cockroachdb-0 -- cockroach sql --insecure --execute="SHOW CLUSTER SETTING kv.rangefeed.enabled;"
+```
+
+[rangefeeds]: https://www.cockroachlabs.com/docs/stable/create-and-configure-changefeeds.html
+[Watch API]: https://authzed.com/docs/spicedb/concepts/commands#watch
 
 ## Clean up
 
