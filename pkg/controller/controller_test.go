@@ -204,3 +204,87 @@ func TestControllerNamespacing(t *testing.T) {
 		})
 	}
 }
+
+func TestCredentialSecretsForCluster(t *testing.T) {
+	ref := func(name string) *v1alpha1.CredentialRef { return &v1alpha1.CredentialRef{SecretName: name} }
+	skipped := func(name string) *v1alpha1.CredentialRef {
+		return &v1alpha1.CredentialRef{SecretName: name, Skip: true}
+	}
+
+	tests := []struct {
+		name        string
+		credentials *v1alpha1.ClusterCredentials
+		secretRef   string
+		expect      []credentialSecret
+	}{
+		{
+			name:   "nil credentials with no SecretRef returns nil",
+			expect: nil,
+		},
+		{
+			name:      "nil credentials with SecretRef returns legacy entry with empty type",
+			secretRef: "my-secret",
+			expect:    []credentialSecret{{name: "my-secret", credType: ""}},
+		},
+		{
+			name:        "datastoreURI only",
+			credentials: &v1alpha1.ClusterCredentials{DatastoreURI: ref("ds-secret")},
+			expect:      []credentialSecret{{name: "ds-secret", credType: metadata.CredentialTypeDatastoreURI}},
+		},
+		{
+			name:        "presharedKey only",
+			credentials: &v1alpha1.ClusterCredentials{PresharedKey: ref("psk-secret")},
+			expect:      []credentialSecret{{name: "psk-secret", credType: metadata.CredentialTypePresharedKey}},
+		},
+		{
+			name:        "migrationSecrets only",
+			credentials: &v1alpha1.ClusterCredentials{MigrationSecrets: ref("mig-secret")},
+			expect:      []credentialSecret{{name: "mig-secret", credType: metadata.CredentialTypeMigrationSecrets}},
+		},
+		{
+			name: "shared secret across two roles returns one entry per role",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: ref("shared"),
+				PresharedKey: ref("shared"),
+			},
+			expect: []credentialSecret{
+				{name: "shared", credType: metadata.CredentialTypeDatastoreURI},
+				{name: "shared", credType: metadata.CredentialTypePresharedKey},
+			},
+		},
+		{
+			name: "shared secret across all three roles returns three entries",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI:     ref("shared"),
+				PresharedKey:     ref("shared"),
+				MigrationSecrets: ref("shared"),
+			},
+			expect: []credentialSecret{
+				{name: "shared", credType: metadata.CredentialTypeDatastoreURI},
+				{name: "shared", credType: metadata.CredentialTypePresharedKey},
+				{name: "shared", credType: metadata.CredentialTypeMigrationSecrets},
+			},
+		},
+		{
+			name: "skipped ref is excluded",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: skipped("shared"),
+				PresharedKey: ref("shared"),
+			},
+			expect: []credentialSecret{
+				{name: "shared", credType: metadata.CredentialTypePresharedKey},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster := &v1alpha1.SpiceDBCluster{
+				Spec: v1alpha1.ClusterSpec{
+					Credentials: tt.credentials,
+					SecretRef:   tt.secretRef,
+				},
+			}
+			require.Equal(t, tt.expect, credentialSecretsForCluster(cluster))
+		})
+	}
+}

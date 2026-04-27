@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
@@ -16,7 +15,25 @@ import (
 )
 
 const (
-	OwningClusterIndex              = "owning-cluster"
+	OwningClusterIndex                 = "owning-cluster"
+	OwningClusterDatastoreURIIndex     = "owning-cluster-datastore-uri"
+	OwningClusterPresharedKeyIndex     = "owning-cluster-preshared-key"
+	OwningClusterMigrationSecretsIndex = "owning-cluster-migration-secrets"
+
+	// CredentialType* are the internal credential-role identifiers. They are
+	// used to derive per-role label keys and index names; they are not stored
+	// directly on Kubernetes objects.
+	CredentialTypeDatastoreURI     = "datastore-uri"     // nolint: gosec
+	CredentialTypePresharedKey     = "preshared-key"     // nolint: gosec
+	CredentialTypeMigrationSecrets = "migration-secrets" // nolint: gosec
+
+	// Per-role label keys. A secret carries exactly the keys for the roles it
+	// serves. Key presence (not value) is what the index functions check, so a
+	// shared secret can carry all applicable keys simultaneously.
+	CredentialTypeDatastoreURILabelKey     = "authzed.com/credential-type-datastore-uri"     // nolint: gosec
+	CredentialTypePresharedKeyLabelKey     = "authzed.com/credential-type-preshared-key"     // nolint: gosec
+	CredentialTypeMigrationSecretsLabelKey = "authzed.com/credential-type-migration-secrets" // nolint: gosec
+
 	OperatorManagedLabelKey         = "authzed.com/managed-by"
 	OperatorManagedLabelValue       = "operator"
 	OwnerLabelKey                   = "authzed.com/cluster"
@@ -89,14 +106,73 @@ func SplitGVRMetaNamespaceKey(key string) (gvr *schema.GroupVersionResource, nam
 	return gvr, namespace, name, err
 }
 
-func GetClusterKeyFromMeta(in interface{}) ([]string, error) {
-	obj := in.(runtime.Object)
-	objMeta, err := meta.Accessor(obj)
+// LabelKeyForCredentialType returns the per-role label key for the given
+// credential type, or "" for unknown types (including the legacy empty-string
+// SecretRef type).
+func LabelKeyForCredentialType(credType string) string {
+	switch credType {
+	case CredentialTypeDatastoreURI:
+		return CredentialTypeDatastoreURILabelKey
+	case CredentialTypePresharedKey:
+		return CredentialTypePresharedKeyLabelKey
+	case CredentialTypeMigrationSecrets:
+		return CredentialTypeMigrationSecretsLabelKey
+	default:
+		return ""
+	}
+}
+
+// IndexNameForCredentialType maps a credential type to its dedicated index
+// name. The empty string (legacy SecretRef) falls back to OwningClusterIndex.
+func IndexNameForCredentialType(credType string) string {
+	switch credType {
+	case CredentialTypeDatastoreURI:
+		return OwningClusterDatastoreURIIndex
+	case CredentialTypePresharedKey:
+		return OwningClusterPresharedKeyIndex
+	case CredentialTypeMigrationSecrets:
+		return OwningClusterMigrationSecretsIndex
+	default:
+		return OwningClusterIndex
+	}
+}
+
+// GetClusterKeyFromMetaForType returns a cache.IndexFunc that indexes objects
+// by owning cluster, but only for objects that carry the per-role label key for
+// the given credential type. Key presence (not value) is checked, so a single
+// secret can carry multiple role labels and appear in multiple indexes without
+// any handler treating another role's secret as stale.
+func GetClusterKeyFromMetaForType(credentialType string) cache.IndexFunc {
+	labelKey := LabelKeyForCredentialType(credentialType)
+	return func(in any) ([]string, error) {
+		if d, ok := in.(cache.DeletedFinalStateUnknown); ok {
+			in = d.Obj
+		}
+		objMeta, err := meta.Accessor(in)
+		if err != nil {
+			return nil, err
+		}
+		// When labelKey is "" (legacy SecretRef / unknown type) skip the type
+		// filter and index all owned objects, matching OwningClusterIndex.
+		if labelKey != "" {
+			if _, ok := objMeta.GetLabels()[labelKey]; !ok {
+				return nil, nil
+			}
+		}
+		return adopt.OwnerKeysFromMeta(OwnerAnnotationKeyPrefix)(in)
+	}
+}
+
+func GetClusterKeyFromMeta(in any) ([]string, error) {
+	if d, ok := in.(cache.DeletedFinalStateUnknown); ok {
+		in = d.Obj
+	}
+	objMeta, err := meta.Accessor(in)
 	if err != nil {
 		return nil, err
 	}
 
-	clusterNames, err := adopt.OwnerKeysFromMeta(OwnerAnnotationKeyPrefix)(obj)
+	clusterNames, err := adopt.OwnerKeysFromMeta(OwnerAnnotationKeyPrefix)(in)
 	if err != nil {
 		return nil, err
 	}
