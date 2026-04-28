@@ -287,3 +287,62 @@ func TestControllerSecretAdopter(t *testing.T) {
 		})
 	}
 }
+
+// TestSecretAdopterMultipleSecretsNoSpuriousCleanup verifies that when two
+// secrets are both already adopted, secretAdopter makes no API calls.
+//
+// Regression test for a bug where N sequential AdoptionHandlers sharing the
+// same OwningClusterIndex would each clean up the other handler's valid
+// adoptee: handler[i] finds handler[j]'s secret in the index and removes its
+// label as if it were stale. This caused an infinite re-adoption loop.
+func TestSecretAdopterMultipleSecretsNoSpuriousCleanup(t *testing.T) {
+	const testNamespace = "test"
+	const clusterName = "mycluster"
+
+	ownerAnnotationKey := metadata.OwnerAnnotationKeyPrefix + clusterName
+	makeAdoptedSecret := func(name string) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: testNamespace,
+				Labels:    map[string]string{metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue},
+				Annotations: map[string]string{
+					ownerAnnotationKey: "owned",
+				},
+			},
+		}
+	}
+
+	c, _ := newTestControllerForSecretAdopter(t, testNamespace, []*corev1.Secret{
+		makeAdoptedSecret("secret1"),
+		makeAdoptedSecret("secret2"),
+	})
+
+	handlerCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	ops := queue.NewOperations(cancel, func(_ time.Duration) { cancel() }, cancel)
+
+	cluster := &v1alpha1.SpiceDBCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: testNamespace},
+	}
+
+	ctx := handlerCtx
+	ctx = QueueOps.WithValue(ctx, ops)
+	ctx = CtxCacheNamespace.WithValue(ctx, testNamespace)
+	ctx = CtxCluster.WithValue(ctx, cluster)
+	ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Namespace: testNamespace, Name: clusterName})
+	ctx = CtxSecretNames.WithValue(ctx, []string{"secret1", "secret2"})
+
+	nextCalled := false
+	c.secretAdopter(handler.NewHandlerFromFunc(func(_ context.Context) {
+		nextCalled = true
+	}, "testnext")).Handle(ctx)
+
+	require.True(t, nextCalled, "next should be called when both secrets are already adopted")
+
+	// When both secrets are already adopted, secretAdopter should make zero API
+	// calls. The bug caused handler[i] to issue two patches (annotation + label
+	// removal) against handler[j]'s secret on every reconcile.
+	require.Empty(t, c.kclient.(*kfake.Clientset).Actions(),
+		"secretAdopter must not issue any API calls when all secrets are already adopted")
+}
