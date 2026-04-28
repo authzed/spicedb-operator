@@ -116,6 +116,29 @@ spec:
                           identity, sidecar proxy). When true, SecretName and Key are ignored.
                         type: boolean
                     type: object
+                  migrationDatastoreURI:
+                    description: |-
+                      MigrationDatastoreURI configures a separate connection string for migrations.
+                      When set, migration jobs use this URI instead of DatastoreURI, enabling
+                      least-privilege credentials for the application while using elevated
+                      credentials only for migrations.
+                    properties:
+                      key:
+                        description: |-
+                          Key is the key within the Secret. Defaults to the standard SpiceDB key
+                          name for this credential (datastore_uri or preshared_key) if omitted.
+                        type: string
+                      secretName:
+                        description: SecretName is the name of the Kubernetes Secret
+                          in the same namespace.
+                        type: string
+                      skip:
+                        description: |-
+                          Skip instructs the operator not to validate or inject this credential.
+                          Use when the credential is provided externally (CSI driver, workload
+                          identity, sidecar proxy). When true, SecretName and Key are ignored.
+                        type: boolean
+                    type: object
                   migrationSecrets:
                     description: MigrationSecrets configures the source for the migration
                       secrets.
