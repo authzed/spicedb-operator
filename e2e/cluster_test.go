@@ -167,7 +167,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
 				return condition == nil
 			})
-			Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, secret must be provided]"))))
+			Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, credentials or secretName must be provided]"))))
 		})
 	})
 

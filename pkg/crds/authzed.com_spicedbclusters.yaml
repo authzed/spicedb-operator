@@ -91,6 +91,72 @@ spec:
                 description: Config values to be passed to the cluster
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              credentials:
+                description: |-
+                  Credentials configures per-field secret references for sensitive config.
+                  Mutually exclusive with SecretRef.
+                properties:
+                  datastoreURI:
+                    description: DatastoreURI configures the source for the datastore
+                      connection string.
+                    properties:
+                      key:
+                        description: |-
+                          Key is the key within the Secret. Defaults to the standard SpiceDB key
+                          name for this credential (datastore_uri or preshared_key) if omitted.
+                        type: string
+                      secretName:
+                        description: SecretName is the name of the Kubernetes Secret
+                          in the same namespace.
+                        type: string
+                      skip:
+                        description: |-
+                          Skip instructs the operator not to validate or inject this credential.
+                          Use when the credential is provided externally (CSI driver, workload
+                          identity, sidecar proxy). When true, SecretName and Key are ignored.
+                        type: boolean
+                    type: object
+                  migrationSecrets:
+                    description: MigrationSecrets configures the source for the migration
+                      secrets.
+                    properties:
+                      key:
+                        description: |-
+                          Key is the key within the Secret. Defaults to the standard SpiceDB key
+                          name for this credential (datastore_uri or preshared_key) if omitted.
+                        type: string
+                      secretName:
+                        description: SecretName is the name of the Kubernetes Secret
+                          in the same namespace.
+                        type: string
+                      skip:
+                        description: |-
+                          Skip instructs the operator not to validate or inject this credential.
+                          Use when the credential is provided externally (CSI driver, workload
+                          identity, sidecar proxy). When true, SecretName and Key are ignored.
+                        type: boolean
+                    type: object
+                  presharedKey:
+                    description: PresharedKey configures the source for the gRPC preshared
+                      key.
+                    properties:
+                      key:
+                        description: |-
+                          Key is the key within the Secret. Defaults to the standard SpiceDB key
+                          name for this credential (datastore_uri or preshared_key) if omitted.
+                        type: string
+                      secretName:
+                        description: SecretName is the name of the Kubernetes Secret
+                          in the same namespace.
+                        type: string
+                      skip:
+                        description: |-
+                          Skip instructs the operator not to validate or inject this credential.
+                          Use when the credential is provided externally (CSI driver, workload
+                          identity, sidecar proxy). When true, SecretName and Key are ignored.
+                        type: boolean
+                    type: object
+                type: object
               patches:
                 description: |-
                   Patches is a list of patches to apply to generated resources.

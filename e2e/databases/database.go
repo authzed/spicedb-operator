@@ -10,6 +10,7 @@ import (
 
 	"github.com/fluxcd/cli-utils/pkg/kstatus/polling"
 	"github.com/fluxcd/pkg/ssa"
+
 	//revive:disable:dot-imports convention is dot-import
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

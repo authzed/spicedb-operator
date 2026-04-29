@@ -93,6 +93,11 @@ type ClusterSpec struct {
 	// +optional
 	SecretRef string `json:"secretName,omitempty"`
 
+	// Credentials configures per-field secret references for sensitive config.
+	// Mutually exclusive with SecretRef.
+	// +optional
+	Credentials *ClusterCredentials `json:"credentials,omitempty"`
+
 	// Patches is a list of patches to apply to generated resources.
 	// If multiple patches apply to the same object and field, later patches
 	// in the list take precedence over earlier ones.
@@ -104,6 +109,40 @@ type ClusterSpec struct {
 	// then to the imageName defined in the update graph.
 	// +optional
 	BaseImage string `json:"baseImage,omitempty"`
+}
+
+// ClusterCredentials configures where the operator reads sensitive credentials.
+type ClusterCredentials struct {
+	// DatastoreURI configures the source for the datastore connection string.
+	// +optional
+	DatastoreURI *CredentialRef `json:"datastoreURI,omitempty"`
+
+	// PresharedKey configures the source for the gRPC preshared key.
+	// +optional
+	PresharedKey *CredentialRef `json:"presharedKey,omitempty"`
+
+	// MigrationSecrets configures the source for the migration secrets.
+	// +optional
+	MigrationSecrets *CredentialRef `json:"migrationSecrets,omitempty"`
+}
+
+// CredentialRef describes where to read a single credential value.
+// Either SecretName must be set, or Skip must be true.
+type CredentialRef struct {
+	// SecretName is the name of the Kubernetes Secret in the same namespace.
+	// +optional
+	SecretName string `json:"secretName,omitempty"`
+
+	// Key is the key within the Secret. Defaults to the standard SpiceDB key
+	// name for this credential (datastore_uri or preshared_key) if omitted.
+	// +optional
+	Key string `json:"key,omitempty"`
+
+	// Skip instructs the operator not to validate or inject this credential.
+	// Use when the credential is provided externally (CSI driver, workload
+	// identity, sidecar proxy). When true, SecretName and Key are ignored.
+	// +optional
+	Skip bool `json:"skip,omitempty"`
 }
 
 // Patch represents a single change to apply to generated manifests
