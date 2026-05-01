@@ -722,7 +722,7 @@ spec:
 							WithCSI(applycorev1.CSIVolumeSource().
 								WithDriver("secrets-store.csi.k8s.io").
 								WithReadOnly(true).
-								WithVolumeAttributes(map[string]string{"secretProviderClass": "spicedb-aws-secrets"}))).
+								WithVolumeAttributes(map[string]string{"secretProviderClass": "spicedb-aws-secrets"}))). //nolint:gosec  // this is a test
 						WithContainers(applycorev1.Container().
 							WithName("container").WithVolumeMounts(
 							applycorev1.VolumeMount().
@@ -815,7 +815,7 @@ spec:
 								WithCSI(applycorev1.CSIVolumeSource().
 									WithDriver("secrets-store.csi.k8s.io").
 									WithReadOnly(true).
-									WithVolumeAttributes(map[string]string{"secretProviderClass": "spicedb-aws-secrets"})),
+									WithVolumeAttributes(map[string]string{"secretProviderClass": "spicedb-aws-secrets"})), //nolint:gosec  // this is a test
 							applycorev1.Volume().
 								WithName("config-volume").
 								WithConfigMap(applycorev1.ConfigMapVolumeSource().

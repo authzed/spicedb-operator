@@ -37,6 +37,16 @@ func newFakeResources() *openapitesting.FakeResources {
 	return openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
 }
 
+// singleSecretMap wraps a single secret in a map using the given name key.
+// Pass an empty name to use "" as the map key (which preserves the original
+// behavior of anonymous secrets created without a Name field).
+func singleSecretMap(name string, s *corev1.Secret) map[string]*corev1.Secret {
+	if s == nil {
+		return map[string]*corev1.Secret{}
+	}
+	return map[string]*corev1.Secret{name: s}
+}
+
 func TestToEnvVarName(t *testing.T) {
 	tests := []struct {
 		prefix string
@@ -91,18 +101,21 @@ func TestNewConfig(t *testing.T) {
 				fmt.Errorf("datastoreEngine is a required field"),
 				fmt.Errorf("couldn't find channel for datastore \"\": %w", fmt.Errorf("no channel found for datastore \"\"")),
 				fmt.Errorf("no update found in channel"),
-				fmt.Errorf("secret must be provided"),
+				fmt.Errorf("credentials or secretName must be provided"),
 			},
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 		},
 		{
 			name: "simple",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -154,6 +167,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -178,12 +194,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "override termination log",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
                         "terminationLogPath": "/alt/path"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -235,6 +254,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -259,11 +281,14 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "memory",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "memory"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -314,6 +339,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              false,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -336,12 +364,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set image with tag explicitly",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"image": "adifferentimage:tag"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 				},
@@ -374,6 +405,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -398,12 +432,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set image with digest explicitly",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"image": "adifferentimage@sha256:abc"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 				},
@@ -436,6 +473,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -460,12 +500,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set replicas as int",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"replicas": 3
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -517,6 +560,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -541,12 +587,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set replicas as string",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"replicas": "3"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -598,6 +647,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -622,12 +674,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as string",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"extraPodLabels": "test=label,other=label"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -683,6 +738,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -707,7 +765,9 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra labels as map",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"extraPodLabels": {
@@ -715,7 +775,8 @@ func TestNewConfig(t *testing.T) {
 							"other": "label"
 						}
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -771,6 +832,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -795,12 +859,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations bool",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": true	
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -854,6 +921,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -878,12 +948,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "skip migrations string",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": "true"	
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -937,6 +1010,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -961,12 +1037,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra annotations as string",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"extraPodAnnotations": "app.kubernetes.io/name=test,app.kubernetes.io/managed-by=test-owner"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1022,6 +1101,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1046,7 +1128,9 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra annotations as map",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
 						"extraPodAnnotations": {
@@ -1054,7 +1138,8 @@ func TestNewConfig(t *testing.T) {
 							"app.kubernetes.io/managed-by": "test-owner"
 						}
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1110,6 +1195,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1134,13 +1222,16 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra service account with annotations as string",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
                         "serviceAccountName": "spicedb-non-default",
 						"extraServiceAccountAnnotations": "iam.gke.io/gcp-service-account=authzed-operator@account-12345.iam.gserviceaccount.com"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1195,6 +1286,9 @@ func TestNewConfig(t *testing.T) {
 					},
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1219,7 +1313,9 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set extra service account with annotations as map",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
                         "serviceAccountName": "spicedb-non-default",
@@ -1227,7 +1323,8 @@ func TestNewConfig(t *testing.T) {
 							"iam.gke.io/gcp-service-account": "authzed-operator@account-12345.iam.gserviceaccount.com"
 						}
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1282,6 +1379,9 @@ func TestNewConfig(t *testing.T) {
 					},
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1306,14 +1406,17 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set different migration and spicedb log level",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
 						"migrationLogLevel": "info",
 						"datastoreEngine": "cockroachdb",
 						"skipMigrations": "true"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1367,6 +1470,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1391,13 +1497,16 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "disable dispatch",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
 						"dispatchEnabled": false,
 						"datastoreEngine": "cockroachdb"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1451,6 +1560,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              false,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1474,13 +1586,16 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "update graph pushes the current version forward",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
 						"migrationLogLevel": "info",
 						"datastoreEngine": "cockroachdb"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1536,6 +1651,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1563,6 +1681,7 @@ func TestNewConfig(t *testing.T) {
 			name: "explicit channel and version, updates to the next in the channel",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -1628,6 +1747,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1655,6 +1777,7 @@ func TestNewConfig(t *testing.T) {
 			name: "explicit channel and version, doesn't update past the explicit version",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -1724,6 +1847,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1750,12 +1876,15 @@ func TestNewConfig(t *testing.T) {
 		{
 			name: "set spanner credentials",
 			args: args{
-				cluster: v1alpha1.ClusterSpec{Config: json.RawMessage(`
+				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
+					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "spanner",
 						"spannerCredentials": "spanner-creds-secret-name"
 					}
-				`)},
+				`),
+				},
 				globalConfig: OperatorConfig{
 					ImageName: "image",
 					UpdateGraph: updates.UpdateGraph{
@@ -1778,7 +1907,7 @@ func TestNewConfig(t *testing.T) {
 			},
 			wantWarnings: []error{fmt.Errorf("no TLS configured, consider setting \"tlsSecretName\"")},
 			want: &Config{
-				MigrationConfig: MigrationConfig{
+				MigrationConfig: MigrationConfig{ //nolint:gosec  // this is a test
 					MigrationLogLevel:     "debug",
 					DatastoreEngine:       "spanner",
 					DatastoreURI:          "uri",
@@ -1808,9 +1937,12 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
-					Passthrough: map[string]string{
+					Passthrough: map[string]string{ //nolint:gosec  // this is a test
 						"datastoreEngine":             "spanner",
 						"dispatchClusterEnabled":      "true",
 						"datastoreSpannerCredentials": "/spanner-credentials/credentials.json",
@@ -1835,6 +1967,7 @@ func TestNewConfig(t *testing.T) {
 			name: "custom base image from cluster spec",
 			args: args{
 				cluster: v1alpha1.ClusterSpec{
+					SecretRef: "test-secret",
 					BaseImage: "public.ecr.aws/authzed/spicedb",
 					Config: json.RawMessage(`
 						{
@@ -1895,6 +2028,9 @@ func TestNewConfig(t *testing.T) {
 					ServiceAccountName:           "test",
 					DispatchEnabled:              true,
 					DispatchUpstreamCASecretPath: "tls.crt",
+					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
+					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
+					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1933,7 +2069,7 @@ func TestNewConfig(t *testing.T) {
 			if tt.want != nil {
 				tt.want.Resources = resources
 			}
-			got, gotWarning, err := NewConfig(cluster, &global, tt.args.secret, resources)
+			got, gotWarning, err := NewConfig(cluster, &global, singleSecretMap(tt.args.cluster.SecretRef, tt.args.secret), resources)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
 			require.EqualValues(t, errors.NewAggregate(tt.wantWarnings), gotWarning)
 			require.Equal(t, tt.want, got)
@@ -1948,6 +2084,189 @@ func TestNewConfig(t *testing.T) {
 				require.Equal(t, tt.wantPortCount, len(got.containerPorts()),
 					"expected container to have %d ports but had %d", tt.wantPortCount, len(got.containerPorts()))
 			}
+		})
+	}
+}
+
+func TestNewConfig_Credentials(t *testing.T) {
+	resources := newFakeResources()
+
+	// globalConfig with a cockroachdb channel used for all credentials tests
+	credGlobalConfig := OperatorConfig{
+		ImageName: "image",
+		UpdateGraph: updates.UpdateGraph{
+			Channels: []updates.Channel{
+				{
+					Name:     "cockroachdb",
+					Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+					Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+					Edges:    map[string][]string{"v1": {}},
+				},
+			},
+		},
+	}
+
+	baseClusterConfig := json.RawMessage(`{"datastoreEngine": "cockroachdb"}`)
+
+	tests := []struct {
+		name        string
+		credentials *v1alpha1.ClusterCredentials
+		secret      *corev1.Secret
+		wantErrs    []error
+		wantRef     ResolvedCredentialRef // DatastoreURIRef
+		wantPSKRef  ResolvedCredentialRef // PresharedKeyRef
+		wantMigRef  ResolvedCredentialRef // MigrationSecretsRef
+	}{
+		{
+			name: "custom keys same secret",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "my_db_uri"},
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "my_psk"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"my_db_uri": []byte("uri"),
+				"my_psk":    []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{SecretName: "my-secret", Key: "my_db_uri"},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "my_psk"},
+			wantMigRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "migration_secrets"},
+		},
+		{
+			name: "default keys via credentials",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: "my-secret"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantMigRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "migration_secrets"},
+		},
+		{
+			name: "datastore URI skipped preshared key from secret",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{Skip: true},
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"preshared_key": []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{Skip: true},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantMigRef: ResolvedCredentialRef{Skip: true},
+		},
+		{
+			name: "both skipped",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{Skip: true},
+				PresharedKey: &v1alpha1.CredentialRef{Skip: true},
+			},
+			secret:     nil,
+			wantRef:    ResolvedCredentialRef{Skip: true},
+			wantPSKRef: ResolvedCredentialRef{Skip: true},
+			wantMigRef: ResolvedCredentialRef{Skip: true},
+		},
+		{
+			name: "missing key in secret",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "nonexistent"},
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"preshared_key": []byte("psk"),
+			}},
+			wantErrs: []error{fmt.Errorf("secret must contain a nonexistent field")},
+		},
+		{
+			name: "datastoreURI omitted from credentials no skip",
+			credentials: &v1alpha1.ClusterCredentials{
+				PresharedKey: &v1alpha1.CredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"preshared_key": []byte("psk"),
+			}},
+			wantErrs: []error{fmt.Errorf("credentials.datastoreURI must be set (use skip: true to opt out)")},
+		},
+		{
+			name: "explicit MigrationSecrets with empty key defaults to migration_secrets",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				PresharedKey:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				MigrationSecrets: &v1alpha1.CredentialRef{SecretName: "mig-secret"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantMigRef: ResolvedCredentialRef{SecretName: "mig-secret", Key: "migration_secrets"},
+		},
+		{
+			name: "explicit MigrationSecrets with different secret and key",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				PresharedKey:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				MigrationSecrets: &v1alpha1.CredentialRef{SecretName: "mig-secret", Key: "bootstrap_tokens"},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantMigRef: ResolvedCredentialRef{SecretName: "mig-secret", Key: "bootstrap_tokens"},
+		},
+		{
+			name: "MigrationSecrets Skip: true",
+			credentials: &v1alpha1.ClusterCredentials{
+				DatastoreURI:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				PresharedKey:     &v1alpha1.CredentialRef{SecretName: "my-secret"},
+				MigrationSecrets: &v1alpha1.CredentialRef{Skip: true},
+			},
+			secret: &corev1.Secret{Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("psk"),
+			}},
+			wantRef:    ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			wantPSKRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantMigRef: ResolvedCredentialRef{Skip: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			global := credGlobalConfig.Copy()
+			cluster := &v1alpha1.SpiceDBCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "test",
+					UID:       types.UID("1"),
+				},
+				Spec: v1alpha1.ClusterSpec{
+					Config:      baseClusterConfig,
+					Credentials: tt.credentials,
+				},
+			}
+
+			got, _, err := NewConfig(cluster, &global, singleSecretMap("my-secret", tt.secret), resources)
+
+			if len(tt.wantErrs) > 0 {
+				require.Error(t, err)
+				for _, wantErr := range tt.wantErrs {
+					require.Contains(t, err.Error(), wantErr.Error())
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, got)
+			require.Equal(t, tt.wantRef, got.DatastoreURIRef)
+			require.Equal(t, tt.wantPSKRef, got.PresharedKeyRef)
+			require.Equal(t, tt.wantMigRef, got.MigrationSecretsRef)
 		})
 	}
 }
@@ -1978,7 +2297,7 @@ func envVarFromStrings(envs []string) []*applycorev1.EnvVarApplyConfiguration {
 		}
 
 		if _, ok := secrets[name]; ok {
-			localname := ""
+			localname := "test-secret"
 			valueFrom = &applycorev1.EnvVarSourceApplyConfiguration{
 				SecretKeyRef: &applycorev1.SecretKeySelectorApplyConfiguration{
 					LocalObjectReferenceApplyConfiguration: applycorev1.LocalObjectReferenceApplyConfiguration{
@@ -2068,6 +2387,7 @@ func TestDeployment(t *testing.T) {
 		{
 			name: "container name back compat: smp patch with old name",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2112,6 +2432,7 @@ spec:
 		{
 			name: "container name back compat: smp wildcard patch with old name",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2156,6 +2477,7 @@ spec:
 		{
 			name: "patch preserves required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2182,6 +2504,7 @@ metadata:
 		{
 			name: "patch would create invalid deployment: missing selector",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2206,6 +2529,7 @@ metadata:
 		{
 			name: "patch would create invalid deployment: missing spec",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2229,6 +2553,7 @@ metadata:
 		{
 			name: "patch would create invalid deployment: missing template",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2261,7 +2586,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), tt.secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", tt.secret), resources)
 			require.NoError(t, err)
 
 			wantDep, err := json.Marshal(tt.wantDeployment)
@@ -2277,13 +2602,15 @@ metadata:
 func TestMigrationJob(t *testing.T) {
 	resources := newFakeResources()
 	tests := []struct {
-		name    string
-		cluster v1alpha1.ClusterSpec
-		wantJob *applybatchv1.JobApplyConfiguration
+		name       string
+		cluster    v1alpha1.ClusterSpec
+		secretsMap map[string]*corev1.Secret // if non-nil, overrides the default singleSecretMap("test-secret", secret)
+		wantJob    *applybatchv1.JobApplyConfiguration
 	}{
 		{
 			name: "patch preserves required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2305,6 +2632,7 @@ metadata:
 		{
 			name: "patch would create invalid job: missing template",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2325,6 +2653,7 @@ metadata:
 		{
 			name: "patch would create invalid job: missing spec",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2341,6 +2670,88 @@ metadata:
 			},
 			wantJob: expectedJob(),
 		},
+		{
+			name: "Credentials path nil MigrationSecrets: SPICEDB_SECRETS from DatastoreURI secret",
+			cluster: v1alpha1.ClusterSpec{
+				Credentials: &v1alpha1.ClusterCredentials{
+					DatastoreURI: &v1alpha1.CredentialRef{SecretName: "test-secret"},
+					PresharedKey: &v1alpha1.CredentialRef{SecretName: "test-secret"},
+				},
+				Config: json.RawMessage(`{"logLevel": "debug", "datastoreEngine": "cockroachdb"}`),
+			},
+			secretsMap: map[string]*corev1.Secret{
+				"test-secret": {Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantJob: expectedJob(),
+		},
+		{
+			name: "Credentials path explicit MigrationSecrets: SPICEDB_SECRETS from different secret",
+			cluster: v1alpha1.ClusterSpec{
+				Credentials: &v1alpha1.ClusterCredentials{
+					DatastoreURI:     &v1alpha1.CredentialRef{SecretName: "db-secret"},
+					PresharedKey:     &v1alpha1.CredentialRef{SecretName: "db-secret"},
+					MigrationSecrets: &v1alpha1.CredentialRef{SecretName: "mig-secret", Key: "bootstrap_tokens"},
+				},
+				Config: json.RawMessage(`{"logLevel": "debug", "datastoreEngine": "cockroachdb"}`),
+			},
+			secretsMap: map[string]*corev1.Secret{
+				"db-secret": {Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+				"mig-secret": {Data: map[string][]byte{}},
+			},
+			wantJob: expectedJob(func(job *applybatchv1.JobApplyConfiguration) {
+				for i, env := range job.Spec.Template.Spec.Containers[0].Env {
+					if *env.Name == "SPICEDB_DATASTORE_CONN_URI" {
+						job.Spec.Template.Spec.Containers[0].Env[i] = *applycorev1.EnvVar().
+							WithName("SPICEDB_DATASTORE_CONN_URI").
+							WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
+								applycorev1.SecretKeySelector().
+									WithName("db-secret").
+									WithKey("datastore_uri")))
+					}
+					if *env.Name == "SPICEDB_SECRETS" {
+						job.Spec.Template.Spec.Containers[0].Env[i] = *applycorev1.EnvVar().
+							WithName("SPICEDB_SECRETS").
+							WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(
+								applycorev1.SecretKeySelector().
+									WithName("mig-secret").
+									WithKey("bootstrap_tokens").
+									WithOptional(true)))
+					}
+				}
+			}),
+		},
+		{
+			name: "Credentials path MigrationSecrets Skip: SPICEDB_SECRETS absent",
+			cluster: v1alpha1.ClusterSpec{
+				Credentials: &v1alpha1.ClusterCredentials{
+					DatastoreURI:     &v1alpha1.CredentialRef{SecretName: "test-secret"},
+					PresharedKey:     &v1alpha1.CredentialRef{SecretName: "test-secret"},
+					MigrationSecrets: &v1alpha1.CredentialRef{Skip: true},
+				},
+				Config: json.RawMessage(`{"logLevel": "debug", "datastoreEngine": "cockroachdb"}`),
+			},
+			secretsMap: map[string]*corev1.Secret{
+				"test-secret": {Data: map[string][]byte{
+					"datastore_uri": []byte("uri"),
+					"preshared_key": []byte("psk"),
+				}},
+			},
+			wantJob: expectedJob(func(job *applybatchv1.JobApplyConfiguration) {
+				var envs []applycorev1.EnvVarApplyConfiguration
+				for _, env := range job.Spec.Template.Spec.Containers[0].Env {
+					if *env.Name != "SPICEDB_SECRETS" {
+						envs = append(envs, env)
+					}
+				}
+				job.Spec.Template.Spec.Containers[0].Env = envs
+			}),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2348,6 +2759,10 @@ metadata:
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
 			}}
+			secretsToUse := singleSecretMap("test-secret", secret)
+			if tt.secretsMap != nil {
+				secretsToUse = tt.secretsMap
+			}
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test",
@@ -2356,7 +2771,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secretsToUse, resources)
 			require.NoError(t, err)
 
 			wantJob, err := json.Marshal(tt.wantJob)
@@ -2379,6 +2794,7 @@ func TestService(t *testing.T) {
 		{
 			name: "patches preserve required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2413,6 +2829,7 @@ metadata:
 		{
 			name: "patch would create invalid service: missing spec",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2465,7 +2882,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantService, err := json.Marshal(tt.wantService)
@@ -2488,6 +2905,7 @@ func TestRole(t *testing.T) {
 		{
 			name: "patches preserve required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2535,7 +2953,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantRole, err := json.Marshal(tt.wantRole)
@@ -2558,6 +2976,7 @@ func TestRoleBinding(t *testing.T) {
 		{
 			name: "patches preserve required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2602,7 +3021,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantRoleBinding, err := json.Marshal(tt.wantRoleBinding)
@@ -2625,6 +3044,7 @@ func TestServiceAccount(t *testing.T) {
 		{
 			name: "patches preserve required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2662,7 +3082,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantServiceAccount, err := json.Marshal(tt.wantServiceAccount)
@@ -2685,6 +3105,7 @@ func TestPDB(t *testing.T) {
 		{
 			name: "pdb sets maxUnavailable to 1",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2716,6 +3137,7 @@ func TestPDB(t *testing.T) {
 		{
 			name: "patches preserve required fields",
 			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2765,7 +3187,7 @@ metadata:
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantPDB, err := json.Marshal(tt.wantPDB)
@@ -2788,7 +3210,8 @@ func TestVersionLabels(t *testing.T) {
 		{
 			name: "version label: slugify",
 			cluster: v1alpha1.ClusterSpec{
-				Version: "v1.0.0+test.v1",
+				SecretRef: "test-secret",
+				Version:   "v1.0.0+test.v1",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2813,7 +3236,8 @@ func TestVersionLabels(t *testing.T) {
 		{
 			name: "version label: shorten",
 			cluster: v1alpha1.ClusterSpec{
-				Version: "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12",
+				SecretRef: "test-secret",
+				Version:   "long64charstring-4567890abcdef1234567890abcdef1234567890abcdef12",
 				Config: json.RawMessage(`
 					{
 						"logLevel": "debug",
@@ -2850,7 +3274,7 @@ func TestVersionLabels(t *testing.T) {
 				},
 				Spec: tt.cluster,
 			}
-			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), secret, resources)
+			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
 			require.NoError(t, err)
 
 			wantServiceAccount, err := json.Marshal(tt.wantServiceAccount)
@@ -2904,8 +3328,8 @@ func expectedDeployment(apply ...func(dep *applyappsv1.DeploymentApplyConfigurat
 						WithEnv(
 							applycorev1.EnvVar().WithName("SPICEDB_POD_NAME").WithValueFrom(applycorev1.EnvVarSource().WithFieldRef(applycorev1.ObjectFieldSelector().WithFieldPath("metadata.name"))),
 							applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
-							applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("preshared_key"))),
-							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
+							applycorev1.EnvVar().WithName("SPICEDB_GRPC_PRESHARED_KEY").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("test-secret").WithKey("preshared_key"))),
+							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("test-secret").WithKey("datastore_uri"))),
 							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_UPSTREAM_ADDR").WithValue("kubernetes:///test.test:dispatch"),
 							applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
 							applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
@@ -3001,8 +3425,8 @@ func expectedJob(apply ...func(dep *applybatchv1.JobApplyConfiguration)) *applyb
 							).
 							WithEnv(
 								applycorev1.EnvVar().WithName("SPICEDB_LOG_LEVEL").WithValue("debug"),
-								applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("datastore_uri"))),
-								applycorev1.EnvVar().WithName("SPICEDB_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("").WithKey("migration_secrets").WithOptional(true))),
+								applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_CONN_URI").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("test-secret").WithKey("datastore_uri"))),
+								applycorev1.EnvVar().WithName("SPICEDB_SECRETS").WithValueFrom(applycorev1.EnvVarSource().WithSecretKeyRef(applycorev1.SecretKeySelector().WithName("test-secret").WithKey("migration_secrets").WithOptional(true))),
 								applycorev1.EnvVar().WithName("SPICEDB_DATASTORE_ENGINE").WithValue("cockroachdb"),
 								applycorev1.EnvVar().WithName("SPICEDB_DISPATCH_CLUSTER_ENABLED").WithValue("true"),
 								applycorev1.EnvVar().WithName("SPICEDB_TERMINATION_LOG_PATH").WithValue("/dev/termination-log"),
@@ -3066,6 +3490,143 @@ var testGlobalConfig = OperatorConfig{
 			},
 		},
 	},
+}
+
+func TestToEnvVarApplyConfiguration_Skip(t *testing.T) {
+	// envVarNames extracts all env var names from an apply configuration slice.
+	envVarNames := func(envVars []*applycorev1.EnvVarApplyConfiguration) []string {
+		names := make([]string, 0, len(envVars))
+		for _, e := range envVars {
+			if e.Name != nil {
+				names = append(names, *e.Name)
+			}
+		}
+		return names
+	}
+
+	// hasEnvVar returns true if the named env var is present in the slice.
+	hasEnvVar := func(envVars []*applycorev1.EnvVarApplyConfiguration, name string) bool {
+		for _, e := range envVars {
+			if e.Name != nil && *e.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	// secretKeyRefOf returns the SecretKeyRef for the named env var, or nil.
+	secretKeyRefOf := func(envVars []*applycorev1.EnvVarApplyConfiguration, name string) *applycorev1.SecretKeySelectorApplyConfiguration {
+		for _, e := range envVars {
+			if e.Name != nil && *e.Name == name && e.ValueFrom != nil {
+				return e.ValueFrom.SecretKeyRef
+			}
+		}
+		return nil
+	}
+
+	baseConfig := func() *Config {
+		return &Config{
+			MigrationConfig: MigrationConfig{
+				DatastoreEngine: "cockroachdb",
+				EnvPrefix:       "SPICEDB",
+				SpiceDBCmd:      "spicedb",
+			},
+			SpiceConfig: SpiceConfig{
+				Name:            "test",
+				Namespace:       "test",
+				UID:             "1",
+				EnvPrefix:       "SPICEDB",
+				SpiceDBCmd:      "spicedb",
+				LogLevel:        "info",
+				Replicas:        2,
+				DispatchEnabled: true,
+				Passthrough:     map[string]string{},
+			},
+		}
+	}
+
+	tests := []struct {
+		name            string
+		datastoreURIRef ResolvedCredentialRef
+		presharedKeyRef ResolvedCredentialRef
+		wantDSURI       bool
+		wantDSURISecret string
+		wantDSURIKey    string
+		wantPSK         bool
+		wantPSKSecret   string
+		wantPSKKey      string
+	}{
+		{
+			name:            "both managed: both env vars present with correct secret/key refs",
+			datastoreURIRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			presharedKeyRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantDSURI:       true,
+			wantDSURISecret: "my-secret",
+			wantDSURIKey:    "datastore_uri",
+			wantPSK:         true,
+			wantPSKSecret:   "my-secret",
+			wantPSKKey:      "preshared_key",
+		},
+		{
+			name:            "presharedKey skip: PSK env var absent",
+			datastoreURIRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "datastore_uri"},
+			presharedKeyRef: ResolvedCredentialRef{Skip: true},
+			wantDSURI:       true,
+			wantDSURISecret: "my-secret",
+			wantDSURIKey:    "datastore_uri",
+			wantPSK:         false,
+		},
+		{
+			name:            "datastoreURI skip: DATASTORE_CONN_URI env var absent",
+			datastoreURIRef: ResolvedCredentialRef{Skip: true},
+			presharedKeyRef: ResolvedCredentialRef{SecretName: "my-secret", Key: "preshared_key"},
+			wantDSURI:       false,
+			wantPSK:         true,
+			wantPSKSecret:   "my-secret",
+			wantPSKKey:      "preshared_key",
+		},
+		{
+			name:            "both skip: neither env var present",
+			datastoreURIRef: ResolvedCredentialRef{Skip: true},
+			presharedKeyRef: ResolvedCredentialRef{Skip: true},
+			wantDSURI:       false,
+			wantPSK:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := baseConfig()
+			c.DatastoreURIRef = tt.datastoreURIRef
+			c.PresharedKeyRef = tt.presharedKeyRef
+
+			envVars := c.toEnvVarApplyConfiguration()
+			names := envVarNames(envVars)
+
+			require.Equal(t, tt.wantDSURI, hasEnvVar(envVars, "SPICEDB_DATASTORE_CONN_URI"),
+				"SPICEDB_DATASTORE_CONN_URI presence mismatch; got env vars: %v", names)
+			require.Equal(t, tt.wantPSK, hasEnvVar(envVars, "SPICEDB_GRPC_PRESHARED_KEY"),
+				"SPICEDB_GRPC_PRESHARED_KEY presence mismatch; got env vars: %v", names)
+
+			if tt.wantDSURI {
+				ref := secretKeyRefOf(envVars, "SPICEDB_DATASTORE_CONN_URI")
+				require.NotNil(t, ref, "expected SecretKeyRef for SPICEDB_DATASTORE_CONN_URI")
+				require.NotNil(t, ref.Name)
+				require.Equal(t, tt.wantDSURISecret, *ref.Name)
+				require.NotNil(t, ref.Key)
+				require.Equal(t, tt.wantDSURIKey, *ref.Key)
+			}
+
+			if tt.wantPSK {
+				ref := secretKeyRefOf(envVars, "SPICEDB_GRPC_PRESHARED_KEY")
+				require.NotNil(t, ref, "expected SecretKeyRef for SPICEDB_GRPC_PRESHARED_KEY")
+				require.NotNil(t, ref.Name)
+				require.Equal(t, tt.wantPSKSecret, *ref.Name)
+				require.NotNil(t, ref.Key)
+				require.Equal(t, tt.wantPSKKey, *ref.Key)
+			}
+		})
+	}
 }
 
 func TestRawConfigPop(t *testing.T) {

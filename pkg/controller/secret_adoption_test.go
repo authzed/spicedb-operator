@@ -63,7 +63,6 @@ func TestSecretAdopterHandler(t *testing.T) {
 		expectRequeueAPIErr    error
 		expectRequeue          bool
 		expectObjectMissingErr error
-		expectCtxSecret        *corev1.Secret
 	}{
 		{
 			name: "no secret",
@@ -132,9 +131,8 @@ func TestSecretAdopterHandler(t *testing.T) {
 					},
 				},
 			},
-			expectEvents:    []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
-			expectCtxSecret: testSecret,
-			expectNext:      true,
+			expectEvents: []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
+			expectNext:   true,
 		},
 		{
 			name: "secret already adopted",
@@ -142,12 +140,11 @@ func TestSecretAdopterHandler(t *testing.T) {
 				Namespace: "test",
 				Name:      "test",
 			},
-			secretName:      "secret",
-			secretInCache:   testSecret,
-			secretsInIndex:  []*corev1.Secret{testSecret},
-			expectEvents:    []string{},
-			expectNext:      true,
-			expectCtxSecret: testSecret,
+			secretName:     "secret",
+			secretInCache:  testSecret,
+			secretsInIndex: []*corev1.Secret{testSecret},
+			expectEvents:   []string{},
+			expectNext:     true,
 		},
 		{
 			name: "secret adopted by a second cluster",
@@ -180,20 +177,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 				},
 			},
 			expectEvents: []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test2; it has been labelled to mark it as part of the configuration for that controller."},
-			expectCtxSecret: &corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "secret",
-					Namespace: "test",
-					Labels: map[string]string{
-						metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
-					},
-					Annotations: map[string]string{
-						metadata.OwnerAnnotationKeyPrefix + "test":  "owned",
-						metadata.OwnerAnnotationKeyPrefix + "test2": "owned",
-					},
-				},
-			},
-			expectNext: true,
+			expectNext:   true,
 		},
 		{
 			name: "transient error adopting secret",
@@ -258,8 +242,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 					},
 				},
 			},
-			expectCtxSecret: testSecret,
-			expectNext:      true,
+			expectNext: true,
 		},
 		{
 			name: "old secret still in index, still has other owners",
@@ -293,8 +276,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 					},
 				},
 			},
-			expectCtxSecret: testSecret,
-			expectNext:      true,
+			expectNext: true,
 		},
 	}
 	for _, tt := range tests {
@@ -325,9 +307,8 @@ func TestSecretAdopterHandler(t *testing.T) {
 				func(_ context.Context, _ types.NamespacedName) error {
 					return tt.secretExistsErr
 				},
-				handler.NewHandlerFromFunc(func(ctx context.Context) {
+				handler.NewHandlerFromFunc(func(_ context.Context) {
 					nextCalled = true
-					require.Equal(t, tt.expectCtxSecret, CtxSecret.Value(ctx))
 				}, "testnext"),
 			)
 			ctx := CtxClusterNN.WithValue(context.Background(), tt.cluster)
@@ -354,7 +335,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 
 func ExpectEvents(t *testing.T, recorder *record.FakeRecorder, expected []string) {
 	close(recorder.Events)
-	events := make([]string, 0)
+	events := make([]string, 0, len(recorder.Events))
 	for e := range recorder.Events {
 		events = append(events, e)
 	}
