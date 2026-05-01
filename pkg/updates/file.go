@@ -19,17 +19,17 @@ const DatastoreMetadataKey = "datastore"
 // to the "head" of the channel from every node.
 type Channel struct {
 	// Name is the user-facing identifier for a graph of updates.
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Metadata contains any additional properties about the channel.
 	// For example, the applicable datastore is stored as metadata.
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Edges are the transitions between states in the update graph.
-	Edges EdgeSet `json:"edges,omitempty"`
+	Edges EdgeSet `json:"edges,omitempty" yaml:"edges,omitempty"`
 
 	// Nodes are the possible states in an update graph.
-	Nodes []State `json:"nodes,omitempty"`
+	Nodes []State `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 }
 
 // EqualIdentity determines if two channels represent the same stream of
@@ -80,19 +80,19 @@ func (c Channel) RemoveNodes(nodes []State) Channel {
 // State is a "node" in the channel graph, indicating how to run at that
 // release.
 type State struct {
-	ID        string `json:"id"`
-	Tag       string `json:"tag,omitempty"`
-	Migration string `json:"migration,omitempty"`
-	Phase     string `json:"phase,omitempty"`
-	Digest    string `json:"digest,omitempty"`
+	ID        string `json:"id"                yaml:"id"`
+	Tag       string `json:"tag,omitempty"     yaml:"tag,omitempty"`
+	Migration string `json:"migration,omitempty" yaml:"migration,omitempty"`
+	Phase     string `json:"phase,omitempty"   yaml:"phase,omitempty"`
+	Digest    string `json:"digest,omitempty"  yaml:"digest,omitempty"`
 
 	// Deprecated releases can be updated from, but not to
-	Deprecated bool `json:"-"`
+	Deprecated bool `json:"-" yaml:"-"`
 }
 
 // UpdateGraph holds a graph of required update edges
 type UpdateGraph struct {
-	Channels []Channel `json:"channels,omitempty"`
+	Channels []Channel `json:"channels,omitempty" yaml:"channels,omitempty"`
 }
 
 // DefaultChannelForDatastore returns the first channel for a specific datastore.

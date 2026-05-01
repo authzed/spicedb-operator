@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/go-logr/zapr"
+	"github.com/goccy/go-yaml"
 	"github.com/jzelinskie/stringz"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -53,7 +54,6 @@ import (
 	"sigs.k8s.io/kind/pkg/cluster/nodeutils"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/fs"
-	"sigs.k8s.io/yaml"
 
 	"github.com/authzed/spicedb-operator/e2e/databases"
 	e2eutil "github.com/authzed/spicedb-operator/e2e/util"
