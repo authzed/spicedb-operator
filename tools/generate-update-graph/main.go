@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
 
 	"github.com/blang/semver/v4"
-	"github.com/goccy/go-yaml"
+	"sigs.k8s.io/yaml"
 
 	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/updates"
@@ -18,17 +17,17 @@ import (
 
 // DatastoreConfig holds per-datastore configuration for a version.
 type DatastoreConfig struct {
-	Migration  string `yaml:"migration,omitempty"`
-	Phase      string `yaml:"phase,omitempty"`
-	Deprecated bool   `yaml:"deprecated,omitempty"`
-	Waypoint   bool   `yaml:"waypoint,omitempty"`
+	Migration  string
+	Phase      string
+	Deprecated bool
+	Waypoint   bool
 }
 
 // Version is a single entry in the versions YAML file.
 type Version struct {
-	ID     string                     `yaml:"id"`
-	Tag    string                     `yaml:"tag"`
-	Config map[string]DatastoreConfig `yaml:"config"`
+	ID     string
+	Tag    string
+	Config map[string]DatastoreConfig
 }
 
 func main() {
@@ -55,20 +54,19 @@ func main() {
 }
 
 func readVersions(path string) ([]Version, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	dec := yaml.NewDecoder(f)
 	var versions []Version
-	for {
+	for _, doc := range strings.Split(string(data), "\n---\n") {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
 		var v Version
-		if err := dec.Decode(&v); err != nil {
-			if err == io.EOF {
-				break
-			}
+		if err := yaml.Unmarshal([]byte(doc), &v); err != nil {
 			return nil, err
 		}
 		if v.ID != "" {

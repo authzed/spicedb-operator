@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/goccy/go-yaml"
 	"github.com/jzelinskie/stringz"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
@@ -21,6 +20,7 @@ import (
 	kind "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/fs"
+	"sigs.k8s.io/yaml"
 )
 
 const versionsYamlFile = "magefiles/versions.yaml"
