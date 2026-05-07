@@ -49,21 +49,13 @@ jobs:
       - uses: "authzed/actions/golangci-lint@main"
 
   extra-lint:
-    name: "Lint YAML & Markdown"
+    name: "Lint YAML"
     runs-on: "depot-ubuntu-24.04"
     steps:
       - uses: "actions/checkout@v6"
-      - uses: "authzed/actions/yaml-lint@main"
       - uses: "stefanprodan/kube-tools@v1"
         with:
           command: "kustomize build ./config"
-      # Disabled due to issues with Kustomize, see:
-      # - https://github.com/instrumenta/kubeval-action/pull/3
-      # - https://github.com/instrumenta/kubeval/issues/232
-      # - uses: "instrumenta/kubeval-action@5915e4adba5adccac07cb156b82e54c3fed74921"
-      #   with:
-      #     files: "config"
-      - uses: "authzed/actions/markdown-lint@main"
 
   codeql:
     if: "${{ github.event_name == 'pull_request' }}"

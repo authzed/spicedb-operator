@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/jzelinskie/stringz"
@@ -19,7 +20,23 @@ import (
 	kind "sigs.k8s.io/kind/pkg/cluster"
 	"sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/fs"
+	"sigs.k8s.io/yaml"
 )
+
+const versionsYamlFile = "magefiles/versions.yaml"
+
+type datastoreConfig struct {
+	Migration  string `json:"migration,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	Deprecated bool   `json:"deprecated,omitempty"`
+	Waypoint   bool   `json:"waypoint,omitempty"`
+}
+
+type versionEntry struct {
+	ID     string                     `json:"id"`
+	Tag    string                     `json:"tag"`
+	Config map[string]datastoreConfig `json:"config"`
+}
 
 var Aliases = map[string]interface{}{
 	"test":     Test.Unit,
@@ -124,13 +141,76 @@ func (Gen) Graph() error {
 	return sh.RunV("go", "generate", "./tools/generate-update-graph/main.go")
 }
 
-// If the update graph definition
-func (g Gen) generateGraphIfSourcesChanged() error {
-	regen, err := target.Dir("proposed-update-graph.yaml", "tools/generate-update-graph")
+// Append_version appends a new entry to the version list given a docker tag of a
+// SpiceDB release, automatically discovering the migration head for each datastore.
+func (Gen) Append_version(tag string) error {
+	mg.Deps(checkDocker)
+
+	existing, err := os.ReadFile(versionsYamlFile)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, line := range strings.Split(string(existing), "\n") {
+		if line == "tag: "+tag {
+			return fmt.Errorf("version %s is already in the version list", tag)
+		}
+	}
+
+	versionOutput, err := sh.Output("docker", "run", "--rm", "--platform=linux/amd64",
+		"ghcr.io/authzed/spicedb:"+tag, "spicedb", "version")
+	if err != nil {
+		return fmt.Errorf("failed to get version from image: %w", err)
+	}
+	// Output format: "spicedb v1.52.0"
+	parts := strings.Fields(versionOutput)
+	if len(parts) < 2 {
+		return fmt.Errorf("unexpected version output: %q", versionOutput)
+	}
+	id := parts[1]
+
+	cfg := make(map[string]datastoreConfig)
+	for _, ds := range []string{"postgres", "cockroachdb", "spanner", "mysql"} {
+		migration, err := sh.Output("docker", "run", "--rm", "--platform=linux/amd64",
+			"ghcr.io/authzed/spicedb:"+tag, "spicedb",
+			"datastore", "head", "--log-level=error", "--datastore-engine="+ds)
+		if err != nil {
+			return fmt.Errorf("failed to get migration head for %s: %w", ds, err)
+		}
+		cfg[ds] = datastoreConfig{Migration: strings.TrimSpace(migration)}
+	}
+	cfg["memory"] = datastoreConfig{}
+
+	v := versionEntry{ID: id, Tag: tag, Config: cfg}
+	vBytes, err := yaml.Marshal(v)
 	if err != nil {
 		return err
 	}
-	if regen {
+
+	f, err := os.OpenFile(versionsYamlFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString("---\n"); err != nil {
+		return err
+	}
+	_, err = f.Write(vBytes)
+	return err
+}
+
+// generateGraphIfSourcesChanged regenerates the update graph if versions.yaml or
+// the generator source have changed since the last generation.
+func (g Gen) generateGraphIfSourcesChanged() error {
+	versionsChanged, err := target.Path("proposed-update-graph.yaml", versionsYamlFile)
+	if err != nil {
+		return err
+	}
+	generatorChanged, err := target.Dir("proposed-update-graph.yaml", "tools/generate-update-graph")
+	if err != nil {
+		return err
+	}
+	if versionsChanged || generatorChanged {
 		return g.Graph()
 	}
 	return nil
