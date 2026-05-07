@@ -1,0 +1,35 @@
+Comparing:
+  OLD: old-proposed-update-graph.yaml
+  NEW: proposed-update-graph.yaml
+
+=== Per-channel comparison ===
+
+  cockroachdb/stable: DIFFERS
+    Edge v1.30.0-phase1 -> ADDED targets:   ['v1.31.0', 'v1.32.0', 'v1.33.1', 'v1.34.0', 'v1.35.3', 'v1.36.2']
+    Edge v1.37.1 -> REMOVED targets: ['v1.39.1', 'v1.40.1', 'v1.42.1', 'v1.45.4', 'v1.47.1', 'v1.48.0', 'v1.49.2', 'v1.51.1']
+    Node v1.30.0-phase1 field diffs: {'phase': (None, 'write-both-read-new')}
+
+  memory/stable: IDENTICAL
+
+  mysql/stable: DIFFERS
+    Edge v1.37.1 -> REMOVED targets: ['v1.39.1', 'v1.40.1', 'v1.42.1', 'v1.45.4', 'v1.47.1', 'v1.48.0', 'v1.49.2', 'v1.51.1']
+
+  postgres/stable: DIFFERS
+    Edge v1.14.0-phase2 -> ADDED targets:   ['v1.14.1', 'v1.15.0', 'v1.16.2', 'v1.17.0', 'v1.18.0', 'v1.19.1', 'v1.21.0', 'v1.22.2', 'v1.23.1', 'v1.24.0', 'v1.25.0', 'v1.26.0', 'v1.29.5', 'v1.30.0', 'v1.31.0', 'v1.32.0', 'v1.33.1', 'v1.34.0', 'v1.35.3', 'v1.36.2']
+    Edge v1.37.1 -> REMOVED targets: ['v1.39.1', 'v1.40.1', 'v1.42.1', 'v1.45.4', 'v1.47.1', 'v1.48.0', 'v1.49.2', 'v1.51.1']
+
+  spanner/stable: DIFFERS
+    Nodes only in NEW: ['v1.51.1']
+    Edge v1.22.2-phase2 -> ADDED targets:   ['v1.23.1', 'v1.24.0', 'v1.25.0', 'v1.26.0', 'v1.29.5-phase1']
+    Edge v1.29.5-phase1 -> ADDED targets:   ['v1.30.0', 'v1.31.0', 'v1.32.0', 'v1.33.1', 'v1.34.0', 'v1.35.3', 'v1.36.2']
+    Edge v1.37.1 -> REMOVED targets: ['v1.39.1', 'v1.40.1', 'v1.42.1', 'v1.45.4', 'v1.47.1', 'v1.48.0', 'v1.49.2']
+    Edge v1.38.0 -> ADDED targets:   ['v1.51.1']
+    Edge v1.39.1 -> ADDED targets:   ['v1.51.1']
+    Edge v1.40.1 -> ADDED targets:   ['v1.51.1']
+    Edge v1.42.1 -> ADDED targets:   ['v1.51.1']
+    Edge v1.45.4 -> ADDED targets:   ['v1.51.1']
+    Edge v1.47.1 -> ADDED targets:   ['v1.51.1']
+    Edge v1.48.0 -> ADDED targets:   ['v1.51.1']
+    Edge v1.49.2 -> ADDED targets:   ['v1.51.1']
+    Node v1.29.5-phase1 field diffs: {'phase': (None, 'write-both-read-new')}
+    Node v1.49.2 field diffs: {'tag': ('v1.51.1', 'v1.49.2')}
