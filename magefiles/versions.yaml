@@ -107,13 +107,17 @@ tag: v1.38.0
 config:
   cockroachdb:
     migration: add-transaction-metadata-table
+    waypoint: true
   memory: {}
   mysql:
     migration: add_metadata_to_transaction_table
+    waypoint: true
   postgres:
     migration: add-metadata-to-transaction-table
+    waypoint: true
   spanner:
     migration: add-transaction-metadata-table
+    waypoint: true
 ---
 id: v1.37.1
 tag: v1.37.1
@@ -133,13 +137,17 @@ tag: v1.36.2
 config:
   cockroachdb:
     migration: add-integrity-relationtuple-table
+    waypoint: true
   memory: {}
   mysql:
     migration: add_relationship_counters_table
+    waypoint: true
   postgres:
     migration: create-relationships-counters-table
+    waypoint: true
   spanner:
     migration: add-relationship-counter-table
+    waypoint: true
 ---
 id: v1.35.3
 tag: v1.35.3
