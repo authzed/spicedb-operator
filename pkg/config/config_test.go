@@ -949,7 +949,7 @@ func TestNewConfig(t *testing.T) {
 					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": true	
+						"skipMigrations": true
 					}
 				`),
 				},
@@ -1038,7 +1038,7 @@ func TestNewConfig(t *testing.T) {
 					Config: json.RawMessage(`
 					{
 						"datastoreEngine": "cockroachdb",
-						"skipMigrations": "true"	
+						"skipMigrations": "true"
 					}
 				`),
 				},
@@ -2649,7 +2649,7 @@ metadata:
 				Patches: []v1alpha1.Patch{{
 					Kind: "Deployment",
 					Patch: json.RawMessage(`
-      spec: 
+      spec:
         template: null
 `),
 				}},
@@ -2728,7 +2728,7 @@ metadata:
 				Patches: []v1alpha1.Patch{{
 					Kind: "Job",
 					Patch: json.RawMessage(`
-      spec: 
+      spec:
         template: null
 `),
 				}},
@@ -3183,9 +3183,11 @@ metadata:
 func TestPDB(t *testing.T) {
 	resources := newFakeResources()
 	tests := []struct {
-		name    string
-		cluster v1alpha1.ClusterSpec
-		wantPDB *applypolicyv1.PodDisruptionBudgetApplyConfiguration
+		name           string
+		cluster        v1alpha1.ClusterSpec
+		wantPDB        *applypolicyv1.PodDisruptionBudgetApplyConfiguration
+		wantPDBDisabled bool
+		wantErr        error
 	}{
 		{
 			name: "pdb sets maxUnavailable to 1",
@@ -3257,6 +3259,164 @@ metadata:
 						}),
 					).WithMaxUnavailable(intstr.FromInt32(1))),
 		},
+		{
+			name: "invalid pdb config returns error",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": "foo"
+					}
+				`),
+			},
+			wantErr: fmt.Errorf("expected object for key %q", pdbKey),
+		},
+		{
+			name: "invalid pdb.disabled value returns error",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"disabled": 1
+						}
+					}
+				`),
+			},
+			wantErr: fmt.Errorf("expected bool or string for key disabled"),
+		},
+		{
+			name: "pdb disabled",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"disabled": true
+						}
+					}
+				`),
+			},
+			wantPDBDisabled: true,
+		},
+		{
+			name: "pdb with custom maxUnavailable integer",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"maxUnavailable": "2"
+						}
+					}
+				`),
+			},
+			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(
+					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
+						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
+							metadata.KubernetesInstanceLabelKey: "test-spicedb",
+						}),
+					).WithMaxUnavailable(intstr.FromInt32(2))),
+		},
+		{
+			name: "pdb with custom maxUnavailable percentage",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"maxUnavailable": "50%"
+						}
+					}
+				`),
+			},
+			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(
+					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
+						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
+							metadata.KubernetesInstanceLabelKey: "test-spicedb",
+						}),
+					).WithMaxUnavailable(intstr.FromString("50%"))),
+		},
+		{
+			name: "pdb with custom minAvailable",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"minAvailable": "3"
+						}
+					}
+				`),
+			},
+			wantPDB: applypolicyv1.PodDisruptionBudget("test-spicedb", "test").
+				WithLabels(metadata.LabelsForComponent("test", metadata.ComponentPDBLabel)).
+				WithLabels(map[string]string{
+					metadata.KubernetesInstanceLabelKey:  "test-spicedb",
+					metadata.KubernetesNameLabelKey:      "test-spicedb",
+					metadata.KubernetesComponentLabelKey: metadata.ComponentSpiceDBLabelValue,
+					metadata.KubernetesVersionLabelKey:   "v1",
+				}).
+				WithOwnerReferences(applymetav1.OwnerReference().
+					WithName("test").
+					WithKind(v1alpha1.SpiceDBClusterKind).
+					WithAPIVersion(v1alpha1.SchemeGroupVersion.String()).
+					WithUID("1")).
+				WithSpec(
+					applypolicyv1.PodDisruptionBudgetSpec().WithSelector(
+						applymetav1.LabelSelector().WithMatchLabels(map[string]string{
+							metadata.KubernetesInstanceLabelKey: "test-spicedb",
+						}),
+					).WithMinAvailable(intstr.FromInt32(3))),
+		},
+		{
+			name: "pdb with both maxUnavailable and minAvailable returns error",
+			cluster: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config: json.RawMessage(`
+					{
+						"datastoreEngine": "cockroachdb",
+						"pdb": {
+							"maxUnavailable": "1",
+							"minAvailable": "1"
+						}
+					}
+				`),
+			},
+			wantErr: fmt.Errorf("only one of pdb.maxUnavailable or pdb.minAvailable can be set"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3273,14 +3433,21 @@ metadata:
 				Spec: tt.cluster,
 			}
 			got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
+			if tt.wantErr != nil {
+				require.ErrorContains(t, err, tt.wantErr.Error())
+				return
+			}
 			require.NoError(t, err)
 
-			wantPDB, err := json.Marshal(tt.wantPDB)
-			require.NoError(t, err)
-			gotPDB, err := json.Marshal(got.PodDisruptionBudget())
-			require.NoError(t, err)
+			require.Equal(t, tt.wantPDBDisabled, got.PDB.Disabled)
 
-			require.JSONEq(t, string(wantPDB), string(gotPDB))
+			if tt.wantPDB != nil {
+				wantPDB, err := json.Marshal(tt.wantPDB)
+				require.NoError(t, err)
+				gotPDB, err := json.Marshal(got.PodDisruptionBudget())
+				require.NoError(t, err)
+				require.JSONEq(t, string(wantPDB), string(gotPDB))
+			}
 		})
 	}
 }

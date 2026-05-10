@@ -6,10 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/authzed/controller-idioms/handler"
+	queuefake "github.com/authzed/controller-idioms/queue/fake"
 	"github.com/authzed/controller-idioms/typed"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic/fake"
 	kfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -17,6 +22,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 )
 
@@ -285,6 +291,124 @@ func TestCredentialSecretsForCluster(t *testing.T) {
 				},
 			}
 			require.Equal(t, tt.expect, credentialSecretsForCluster(cluster))
+		})
+	}
+}
+
+func TestEnsurePDB(t *testing.T) {
+	var nextKey handler.Key = "next"
+	maxUnavailable2 := intstr.FromInt32(2)
+	minAvailable50pct := intstr.FromString("50%")
+
+	tests := []struct {
+		name        string
+		pdbConfig   config.PDBConfig
+		existingPDB *policyv1.PodDisruptionBudget
+
+		expectNext   bool
+		expectApply  bool
+		expectDelete bool
+	}{
+		{
+			name:        "calls next without creating PDB when disabled",
+			pdbConfig:   config.PDBConfig{Disabled: true},
+			expectNext:  true,
+			expectApply: false,
+		},
+		{
+			name:        "creates PDB with default max unavailable when not disabled",
+			pdbConfig:   config.PDBConfig{},
+			expectApply: true,
+			expectNext:  true,
+		},
+		{
+			name:        "creates PDB with custom MaxUnavailable",
+			pdbConfig:   config.PDBConfig{MaxUnavailable: &maxUnavailable2},
+			expectApply: true,
+			expectNext:  true,
+		},
+		{
+			name:        "creates PDB with MinAvailable",
+			pdbConfig:   config.PDBConfig{MinAvailable: &minAvailable50pct},
+			expectApply: true,
+			expectNext:  true,
+		},
+		{
+			name:      "deletes managed PDB when disabled",
+			pdbConfig: config.PDBConfig{Disabled: true},
+			existingPDB: &policyv1.PodDisruptionBudget{
+				TypeMeta: metav1.TypeMeta{Kind: "PodDisruptionBudget", APIVersion: "policy/v1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster-pdb",
+					Namespace: "test-ns",
+					Labels:    metadata.LabelsForComponent("test-cluster", metadata.ComponentPDBLabel),
+				},
+			},
+			expectDelete: true,
+			expectNext:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			registry := typed.NewRegistry()
+			broadcaster := record.NewBroadcaster()
+			dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
+			if tt.existingPDB != nil {
+				dclient = fake.NewSimpleDynamicClient(scheme.Scheme, tt.existingPDB)
+			}
+			kclient := kfake.NewClientset()
+			c, err := NewController(ctx, registry, dclient, kclient, nil, "", "", broadcaster, nil)
+			require.NoError(t, err)
+
+			ctrls := &queuefake.FakeInterface{}
+			var called handler.Key
+			nextHandler := handler.NewHandlerFromFunc(func(_ context.Context) {
+				called = nextKey
+			}, nextKey)
+
+			cfg := &config.Config{
+				SpiceConfig: config.SpiceConfig{
+					Name:      "test-cluster",
+					Namespace: "test-ns",
+					PDB:       tt.pdbConfig,
+				},
+			}
+
+			// CtxCacheNamespace must be "" to match the all-namespaces factory key
+			// registered when NewController is called with nil namespaces.
+			ctx = CtxCacheNamespace.WithValue(ctx, "")
+			ctx = CtxClusterNN.WithValue(ctx, types.NamespacedName{Name: "test-cluster", Namespace: "test-ns"})
+			ctx = CtxConfig.WithValue(ctx, cfg)
+			ctx = QueueOps.WithValue(ctx, ctrls)
+
+			h := c.ensurePDB(nextHandler)
+			h.Handle(ctx)
+
+			applyFound := false
+			deleteFound := false
+			for _, a := range kclient.Actions() {
+				if a.GetResource().Resource != "poddisruptionbudgets" {
+					continue
+				}
+				switch a.GetVerb() {
+				case "patch":
+					applyFound = true
+				case "delete":
+					deleteFound = true
+				}
+			}
+
+			require.Equal(t, tt.expectApply, applyFound, "applyPDB call")
+			require.Equal(t, tt.expectDelete, deleteFound, "deletePDB call")
+			if tt.expectNext {
+				require.Equal(t, nextKey, called, "next handler called")
+			} else {
+				require.NotEqual(t, nextKey, called, "next handler not called")
+			}
 		})
 	}
 }
