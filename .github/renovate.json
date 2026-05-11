@@ -5,6 +5,13 @@
     "tekton",
     "dockerfile"
   ],
+
+  "ignorePaths": [
+    ".github/workflows/build-test.yaml",
+    ".github/workflows/lint.yaml",
+    "Dockerfile",
+    "Dockerfile.release"
+  ],
   "packageRules": [
     {
       "matchManagers": ["dockerfile"],
