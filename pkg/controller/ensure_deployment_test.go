@@ -29,6 +29,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 
 		migrationHash       string
 		secretHash          string
+		skipSecretHash      bool
 		existingDeployments []*appsv1.Deployment
 		pods                []*corev1.Pod
 		currentStatus       *v1alpha1.SpiceDBCluster
@@ -46,6 +47,18 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			name:               "creates if no deployments",
 			migrationHash:      "testtesttesttest",
 			secretHash:         "secret",
+			expectApply:        true,
+			expectRequeueAfter: true,
+		},
+		{
+			// Regression test for https://github.com/authzed/spicedb-operator/issues/415
+			// When all credential refs are configured with `skip: true`, ConfigChangedHandler
+			// never sets CtxSecretHash because there is nothing to hash. The handler must
+			// tolerate an unset/empty secret hash instead of panicking via MustValue on a
+			// defaulting context key.
+			name:               "creates if no deployments and secret hash is unset",
+			migrationHash:      "testtesttesttest",
+			skipSecretHash:     true,
 			expectApply:        true,
 			expectRequeueAfter: true,
 		},
@@ -385,7 +398,9 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			ctx = QueueOps.WithValue(ctx, ctrls)
 			ctx = CtxCluster.WithValue(ctx, tt.currentStatus)
 			ctx = CtxMigrationHash.WithValue(ctx, tt.migrationHash)
-			ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
+			if !tt.skipSecretHash {
+				ctx = CtxSecretHash.WithValue(ctx, tt.secretHash)
+			}
 			ctx = CtxDeployments.WithValue(ctx, tt.existingDeployments)
 
 			var called handler.Key

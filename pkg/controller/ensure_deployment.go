@@ -43,7 +43,10 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	}
 
 	migrationHash := CtxMigrationHash.MustValue(ctx)
-	secretHash := CtxSecretHash.MustValue(ctx)
+	// secretHash may be empty when all credentials are configured with `skip: true`,
+	// since there is nothing to hash in that case. Use Value (not MustValue) so we
+	// fall back to the zero value rather than panic.
+	secretHash := CtxSecretHash.Value(ctx)
 	config := CtxConfig.MustValue(ctx)
 	newDeployment := config.Deployment(migrationHash, secretHash)
 	deploymentHash := hash.Object(newDeployment)
