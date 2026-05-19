@@ -24,10 +24,11 @@ import (
 
 func TestSecretAdopterHandler(t *testing.T) {
 	type applyCall struct {
-		called bool
-		input  *applycorev1.SecretApplyConfiguration
-		result *corev1.Secret
-		err    error
+		called           bool
+		input            *applycorev1.SecretApplyConfiguration
+		wantFieldManager string // if non-empty, the ApplyOptions.FieldManager must equal this
+		result           *corev1.Secret
+		err              error
 	}
 
 	secretNotFound := func(_ string) error {
@@ -51,6 +52,7 @@ func TestSecretAdopterHandler(t *testing.T) {
 	tests := []struct {
 		name                   string
 		secretName             string
+		credentialType         string
 		cluster                types.NamespacedName
 		secretInCache          *corev1.Secret
 		cacheErr               error
@@ -123,6 +125,112 @@ func TestSecretAdopterHandler(t *testing.T) {
 							Namespace: "test",
 							Labels: map[string]string{
 								metadata.OperatorManagedLabelKey: metadata.OperatorManagedLabelValue,
+							},
+							Annotations: map[string]string{
+								metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+							},
+						},
+					},
+				},
+			},
+			expectEvents: []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
+			expectNext:   true,
+		},
+		{
+			name:           "secret needs adopting with credential type label",
+			secretName:     "secret",
+			credentialType: metadata.CredentialTypeDatastoreURI,
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			cacheErr:       secretNotFound("test"),
+			secretsInIndex: []*corev1.Secret{},
+			applyCalls: []*applyCall{
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithLabels(map[string]string{
+							metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+							metadata.CredentialTypeDatastoreURILabelKey: "true",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+								metadata.CredentialTypeDatastoreURILabelKey: "true",
+							},
+						},
+					},
+				},
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithAnnotations(map[string]string{
+							metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+								metadata.CredentialTypeDatastoreURILabelKey: "true",
+							},
+							Annotations: map[string]string{
+								metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+							},
+						},
+					},
+				},
+			},
+			expectEvents: []string{"Normal SecretAdoptedBySpiceDB Secret was referenced as the secret source for SpiceDBCluster test/test; it has been labelled to mark it as part of the configuration for that controller."},
+			expectNext:   true,
+		},
+		{
+			// Each credential role must use a role-qualified field manager so that
+			// two handlers adopting the same shared secret don't release each
+			// other's labels via SSA field-manager ownership.
+			name:           "labels apply uses role-qualified field manager",
+			secretName:     "secret",
+			credentialType: metadata.CredentialTypeDatastoreURI,
+			cluster: types.NamespacedName{
+				Namespace: "test",
+				Name:      "test",
+			},
+			cacheErr:       secretNotFound("test"),
+			secretsInIndex: []*corev1.Secret{},
+			applyCalls: []*applyCall{
+				{
+					wantFieldManager: metadata.FieldManager + "-" + metadata.CredentialTypeDatastoreURI,
+					input: applycorev1.Secret("secret", "test").
+						WithLabels(map[string]string{
+							metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+							metadata.CredentialTypeDatastoreURILabelKey: "true",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+								metadata.CredentialTypeDatastoreURILabelKey: "true",
+							},
+						},
+					},
+				},
+				{
+					input: applycorev1.Secret("secret", "test").
+						WithAnnotations(map[string]string{
+							metadata.OwnerAnnotationKeyPrefix + "test": "owned",
+						}),
+					result: &corev1.Secret{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "secret",
+							Namespace: "test",
+							Labels: map[string]string{
+								metadata.OperatorManagedLabelKey:            metadata.OperatorManagedLabelValue,
+								metadata.CredentialTypeDatastoreURILabelKey: "true",
 							},
 							Annotations: map[string]string{
 								metadata.OwnerAnnotationKeyPrefix + "test": "owned",
@@ -282,7 +390,12 @@ func TestSecretAdopterHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrls := &fake.FakeInterface{}
-			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{metadata.OwningClusterIndex: metadata.GetClusterKeyFromMeta})
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+				metadata.OwningClusterIndex:                 metadata.GetClusterKeyFromMeta,
+				metadata.OwningClusterDatastoreURIIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypeDatastoreURI),
+				metadata.OwningClusterPresharedKeyIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypePresharedKey),
+				metadata.OwningClusterMigrationSecretsIndex: metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypeMigrationSecrets),
+			})
 			IndexAddUnstructured(t, indexer, tt.secretsInIndex)
 
 			recorder := record.NewFakeRecorder(1)
@@ -297,16 +410,20 @@ func TestSecretAdopterHandler(t *testing.T) {
 					require.Equal(t, tt.expectObjectMissingErr, err)
 				},
 				typed.NewIndexer[*corev1.Secret](indexer),
-				func(_ context.Context, secret *applycorev1.SecretApplyConfiguration, _ metav1.ApplyOptions) (result *corev1.Secret, err error) {
+				func(_ context.Context, secret *applycorev1.SecretApplyConfiguration, opts metav1.ApplyOptions) (result *corev1.Secret, err error) {
 					defer func() { applyCallIndex++ }()
 					call := tt.applyCalls[applyCallIndex]
 					call.called = true
 					require.Equal(t, call.input, secret, "error on call %d", applyCallIndex)
+					if call.wantFieldManager != "" {
+						require.Equal(t, call.wantFieldManager, opts.FieldManager, "field manager on call %d", applyCallIndex)
+					}
 					return call.result, call.err
 				},
 				func(_ context.Context, _ types.NamespacedName) error {
 					return tt.secretExistsErr
 				},
+				tt.credentialType,
 				handler.NewHandlerFromFunc(func(_ context.Context) {
 					nextCalled = true
 				}, "testnext"),

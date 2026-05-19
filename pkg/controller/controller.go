@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -181,7 +182,6 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 
 		for _, gvr := range []schema.GroupVersionResource{
 			appsv1.SchemeGroupVersion.WithResource("deployments"),
-			corev1.SchemeGroupVersion.WithResource("secrets"),
 			corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
 			corev1.SchemeGroupVersion.WithResource("services"),
 			corev1.SchemeGroupVersion.WithResource("pods"),
@@ -201,6 +201,27 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 			}); err != nil {
 				return nil, err
 			}
+		}
+		// Secrets get per-type indexes (one per credential role) so that each
+		// adoption handler only sees secrets of its own type and never
+		// misidentifies another role's secret as stale. OwningClusterIndex is
+		// kept for the legacy SecretRef path and for syncExternalResource, which
+		// uses it to re-enqueue the owning cluster when any secret changes.
+		secretsInf := externalInformerFactory.ForResource(corev1.SchemeGroupVersion.WithResource("secrets")).Informer()
+		if err := secretsInf.AddIndexers(cache.Indexers{
+			metadata.OwningClusterIndex:                 metadata.GetClusterKeyFromMeta,
+			metadata.OwningClusterDatastoreURIIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypeDatastoreURI),
+			metadata.OwningClusterPresharedKeyIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypePresharedKey),
+			metadata.OwningClusterMigrationSecretsIndex: metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypeMigrationSecrets),
+		}); err != nil {
+			return nil, err
+		}
+		if _, err := secretsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    func(obj any) { c.syncExternalResource(obj) },
+			UpdateFunc: func(_, obj any) { c.syncExternalResource(obj) },
+			DeleteFunc: func(obj any) { c.syncExternalResource(obj) },
+		}); err != nil {
+			return nil, err
 		}
 		externalInformerFactories = append(externalInformerFactories, externalInformerFactory)
 	}
@@ -414,6 +435,40 @@ func credentialSecretNames(cluster *v1alpha1.SpiceDBCluster) []string {
 	return names
 }
 
+type credentialSecret struct {
+	name     string
+	credType string
+}
+
+// credentialSecretsForCluster returns one entry per non-skipped credential ref,
+// preserving the credential type for each. Unlike credentialSecretNames, the
+// same name may appear more than once when a secret is shared across multiple
+// roles — each role runs its own adoption handler with its own type label.
+func credentialSecretsForCluster(cluster *v1alpha1.SpiceDBCluster) []credentialSecret {
+	creds := cluster.Spec.Credentials
+	if creds == nil && cluster.Spec.SecretRef != "" {
+		return []credentialSecret{{name: cluster.Spec.SecretRef, credType: ""}}
+	}
+	if creds == nil {
+		return nil
+	}
+	roleSecrets := []struct {
+		ref      *v1alpha1.CredentialRef
+		credType string
+	}{
+		{creds.DatastoreURI, metadata.CredentialTypeDatastoreURI},
+		{creds.PresharedKey, metadata.CredentialTypePresharedKey},
+		{creds.MigrationSecrets, metadata.CredentialTypeMigrationSecrets},
+	}
+	var result []credentialSecret
+	for _, rs := range roleSecrets {
+		if rs.ref != nil && !rs.ref.Skip && rs.ref.SecretName != "" {
+			result = append(result, credentialSecret{name: rs.ref.SecretName, credType: rs.credType})
+		}
+	}
+	return result
+}
+
 // syncExternalResource is called when a dependent resource is updated:
 // It queues the owning SpiceDBCluster for reconciliation based on the labels.
 // No other reconciliation should take place here; we keep a single state
@@ -576,21 +631,35 @@ func (c *Controller) selfPauseCluster(...handler.Handler) handler.Handler {
 func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 	secretsGVR := corev1.SchemeGroupVersion.WithResource("secrets")
 	return handler.NewHandlerFromFunc(func(ctx context.Context) {
-		names := CtxSecretNames.Value(ctx)
-		if len(names) == 0 {
+		cluster := CtxCluster.MustValue(ctx)
+		pairs := credentialSecretsForCluster(cluster)
+		if len(pairs) == 0 {
 			handler.Handlers(next).MustOne().Handle(ctx)
 			return
 		}
-		cluster := CtxCluster.MustValue(ctx)
-		for _, name := range names {
+		for _, cs := range pairs {
+			credType := cs.credType
 			secretCtx := CtxSecretNN.WithValue(ctx, types.NamespacedName{
-				Name:      name,
+				Name:      cs.name,
 				Namespace: cluster.Namespace,
 			})
 			NewSecretAdoptionHandler(
 				c.Recorder,
 				func(ctx context.Context) (*corev1.Secret, error) {
-					return typed.MustListerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
+					secret, err := typed.MustListerForKey[*corev1.Secret](c.Registry, typed.NewRegistryKey(DependentFactoryKey(CtxCacheNamespace.Value(ctx)), secretsGVR)).ByNamespace(CtxSecretNN.MustValue(ctx).Namespace).Get(CtxSecretNN.MustValue(ctx).Name)
+					if err != nil {
+						return nil, err
+					}
+					// If the secret lacks this role's per-type label key, return
+					// NotFound so the adoption handler applies the full label set.
+					// This migrates secrets from operator versions that did not
+					// set per-role labels.
+					if lk := metadata.LabelKeyForCredentialType(credType); lk != "" {
+						if _, ok := secret.Labels[lk]; !ok {
+							return nil, apierrors.NewNotFound(corev1.SchemeGroupVersion.WithResource("secrets").GroupResource(), CtxSecretNN.MustValue(ctx).Name)
+						}
+					}
+					return secret, nil
 				},
 				func(ctx context.Context, err error) {
 					cluster := CtxCluster.MustValue(ctx)
@@ -618,6 +687,7 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 					_, err := c.kclient.CoreV1().Secrets(nn.Namespace).Get(ctx, nn.Name, metav1.GetOptions{})
 					return err
 				},
+				credType,
 				handler.NoopHandler,
 			).Handle(secretCtx)
 			if errors.Is(secretCtx.Err(), context.Canceled) {
