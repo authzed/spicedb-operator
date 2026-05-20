@@ -20,7 +20,7 @@ jobs:
       graphchange: "${{ steps.graph-filter.outputs.graphchange }}"
     steps:
       - uses: "actions/checkout@v6"
-      - uses: "dorny/paths-filter@v3"
+      - uses: "dorny/paths-filter@v4"
         id: "filter"
         with:
           filters: |
@@ -33,7 +33,7 @@ jobs:
               - "pkg/**"
               - "e2e/**"
               - "internal/**"
-      - uses: "dorny/paths-filter@v3"
+      - uses: "dorny/paths-filter@v4"
         id: "graph-filter"
         with:
           filters: |
@@ -83,10 +83,10 @@ jobs:
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
-      - uses: "docker/setup-qemu-action@v3"
-      - uses: "docker/setup-buildx-action@v3"
+      - uses: "docker/setup-qemu-action@v4"
+      - uses: "docker/setup-buildx-action@v4"
       - name: "Run Unit Tests"
-        uses: "magefile/mage-action@v3"
+        uses: "magefile/mage-action@v4"
         with:
           version: "latest"
           args: "test:unit"
@@ -114,10 +114,10 @@ jobs:
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
-      - uses: "docker/setup-qemu-action@v3"
-      - uses: "docker/setup-buildx-action@v3"
+      - uses: "docker/setup-qemu-action@v4"
+      - uses: "docker/setup-buildx-action@v4"
       - name: "Run E2E Tests"
-        uses: "magefile/mage-action@v3"
+        uses: "magefile/mage-action@v4"
         with:
           version: "latest"
           args: "test:e2e"
@@ -130,7 +130,7 @@ jobs:
           files: |
             config/update-graph.yaml
       - name: "Commit validated update graph"
-        uses: "EndBug/add-and-commit@v9"
+        uses: "EndBug/add-and-commit@v10"
         if: |
           steps.verify-changed-graph.outputs.files_changed == 'true'
         with:
