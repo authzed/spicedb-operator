@@ -30,9 +30,16 @@ var Aliases = map[string]interface{}{
 type Test mg.Namespace
 
 // Runs the unit tests
-func (Test) Unit() error {
+func (t Test) Unit() error {
 	fmt.Println("running unit tests")
-	return sh.RunV(goCmdForTests(), "test", "-race", "-timeout", "30m", "./...")
+	args := []string{"test", "-race", "-timeout", "30m"}
+	args = append(args, t.coverageFlags()...)
+	args = append(args, "./...")
+	return sh.RunV(goCmdForTests(), args...)
+}
+
+func (Test) coverageFlags() []string {
+	return []string{"-coverpkg=./...", "-covermode=atomic", "-coverprofile=coverage.txt"}
 }
 
 const (
@@ -58,6 +65,9 @@ func (Test) E2e() error {
 		return err
 	}
 
+	ginkgoArgs := []string{"tool", "github.com/onsi/ginkgo/v2/ginkgo"}
+	ginkgoArgs = append(ginkgoArgs, Test{}.coverageFlags()...)
+	ginkgoArgs = append(ginkgoArgs, "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e")
 	if err := runDirWithV("magefiles", map[string]string{
 		"PROVISION":            "true",
 		"SPICEDB_CMD":          os.Getenv("SPICEDB_CMD"),
@@ -66,7 +76,7 @@ func (Test) E2e() error {
 		"IMAGES":               os.Getenv("IMAGES"),
 		"PROPOSED_GRAPH_FILE":  e2eProposedGraph,
 		"VALIDATED_GRAPH_FILE": e2eValidatedGraph,
-	}, "go", "tool", "github.com/onsi/ginkgo/v2/ginkgo", "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e"); err != nil {
+	}, "go", ginkgoArgs...); err != nil {
 		return err
 	}
 
