@@ -214,6 +214,13 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	errs := make([]error, 0)
 	warnings := make([]error, 0)
 
+	for _, k := range []string{"version", "channel"} {
+		if _, ok := config[k]; ok {
+			warnings = append(warnings, fmt.Errorf(".spec.config.%s is ignored; use .spec.%s instead", k, k))
+			delete(config, k)
+		}
+	}
+
 	spiceConfig := SpiceConfig{
 		Name:                         cluster.Name,
 		Namespace:                    cluster.Namespace,
