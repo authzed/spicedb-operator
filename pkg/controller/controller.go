@@ -557,9 +557,28 @@ func (c *Controller) ensurePDB(next ...handler.Handler) handler.Handler {
 			},
 		)
 
+		cfg := CtxConfig.MustValue(ctx)
+
+		// If PDB is disabled, delete any existing PDB and skip creation
+		if cfg.PDB.Disabled {
+			clusterName := CtxClusterNN.MustValue(ctx).Name
+			expectedLabels := metadata.LabelsForComponent(clusterName, metadata.ComponentPDBLabel)
+			for _, pdb := range pdbComponent.List(ctx, CtxClusterNN.MustValue(ctx)) {
+				if !hasAllLabels(pdb.Labels, expectedLabels) {
+					logr.FromContextOrDiscard(ctx).V(4).Info("skipping pdb deletion: missing operator labels", "namespace", pdb.Namespace, "name", pdb.Name)
+					continue
+				}
+				nn := types.NamespacedName{Name: pdb.Name, Namespace: pdb.Namespace}
+				if err := deletePDB(ctx, nn); err != nil && !apierrors.IsNotFound(err) {
+					logr.FromContextOrDiscard(ctx).Error(err, "error deleting pdb")
+				}
+			}
+			handler.Handlers(next).MustOne().Handle(ctx)
+			return
+		}
+
 		// build the handler that ensures the PDB with the proper definition
 		// exists and run it
-		cfg := CtxConfig.MustValue(ctx)
 		component.NewEnsureComponentByHash(
 			component.NewHashableComponent(pdbComponent, hash.NewObjectHash(), "authzed.com/controller-component-hash"),
 			CtxClusterNN,
@@ -953,4 +972,13 @@ func (c *Controller) ensureService(next ...handler.Handler) handler.Handler {
 		}
 		handler.Handlers(next).MustOne().Handle(ctx)
 	}, "ensureService")
+}
+
+func hasAllLabels(actual, expected map[string]string) bool {
+	for k, v := range expected {
+		if actual[k] != v {
+			return false
+		}
+	}
+	return true
 }
