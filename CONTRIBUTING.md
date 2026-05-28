@@ -106,6 +106,65 @@ Run unit tests:
 mage test:unit
 ```
 
+### Trying local changes
+
+Once you have a build, you'll usually want to run the operator against a real Kubernetes cluster to validate your changes end-to-end.
+The instructions below assume you're working from the root of a clone of this repository.
+
+#### In a [kind](https://kind.sigs.k8s.io) cluster
+
+This is the recommended path for local development because it doesn't require pushing images to an external registry.
+
+1. Build the operator image locally:
+
+   ```sh
+   docker build --tag spicedb-operator:dev .
+   ```
+
+2. Create a kind cluster if you don't already have one, and load the image into it:
+
+   ```sh
+   kind create cluster --name spicedb-operator-dev
+   kind load docker-image spicedb-operator:dev --name spicedb-operator-dev
+   ```
+
+3. Deploy the operator manifests, overriding the image tag to your locally built one:
+
+   ```sh
+   kubectl apply --server-side -k config
+   kubectl -n spicedb-operator set image deployment/spicedb-operator \
+     spicedb-operator=spicedb-operator:dev
+   ```
+
+4. After rebuilding and reloading the image, restart the operator pod to pick up the new image:
+
+   ```sh
+   docker build --tag spicedb-operator:dev .
+   kind load docker-image spicedb-operator:dev --name spicedb-operator-dev
+   kubectl -n spicedb-operator delete pod -l app=spicedb-operator
+   ```
+
+Tail the operator logs while iterating:
+
+```sh
+kubectl -n spicedb-operator logs -f deployment/spicedb-operator
+```
+
+#### In a remote / full-fledged cluster
+
+If you need to test against a cluster that can't pull from your local Docker daemon, push the image to a registry the cluster can reach.
+
+```sh
+REGISTRY=ghcr.io/<your-org>
+docker build --tag ${REGISTRY}/spicedb-operator:dev .
+docker push ${REGISTRY}/spicedb-operator:dev
+kubectl -n spicedb-operator set image deployment/spicedb-operator \
+  spicedb-operator=${REGISTRY}/spicedb-operator:dev
+kubectl -n spicedb-operator rollout restart deployment/spicedb-operator
+```
+
+If the operator isn't already installed on the cluster, install it first as described in the [README](README.md#getting-started), then run the commands above to swap in your local image.
+
 ### Adding dependencies
 
 This project does not use anything other than the standard [Go modules] toolchain for managing dependencies.
