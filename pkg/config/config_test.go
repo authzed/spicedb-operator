@@ -3183,11 +3183,11 @@ metadata:
 func TestPDB(t *testing.T) {
 	resources := newFakeResources()
 	tests := []struct {
-		name           string
-		cluster        v1alpha1.ClusterSpec
-		wantPDB        *applypolicyv1.PodDisruptionBudgetApplyConfiguration
+		name            string
+		cluster         v1alpha1.ClusterSpec
+		wantPDB         *applypolicyv1.PodDisruptionBudgetApplyConfiguration
 		wantPDBDisabled bool
-		wantErr        error
+		wantErr         error
 	}{
 		{
 			name: "pdb sets maxUnavailable to 1",
