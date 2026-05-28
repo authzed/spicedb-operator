@@ -135,8 +135,7 @@ func TestControllerNamespacing(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
+			ctx := t.Context()
 			registry := typed.NewRegistry()
 			broadcaster := record.NewBroadcaster()
 			dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
@@ -351,8 +350,7 @@ func TestEnsurePDB(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			t.Cleanup(cancel)
+			ctx := t.Context()
 
 			registry := typed.NewRegistry()
 			broadcaster := record.NewBroadcaster()
