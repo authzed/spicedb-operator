@@ -25,6 +25,7 @@ var Aliases = map[string]interface{}{
 	"test":     Test.Unit,
 	"e2e":      Test.E2e,
 	"generate": Gen.All,
+	"lint":     Lint.All,
 }
 
 type Test mg.Namespace
@@ -148,7 +149,7 @@ func (g Gen) generateGraphIfSourcesChanged() error {
 
 func checkDocker() error {
 	if !hasBinary("docker") {
-		return fmt.Errorf("docker must be installed to run e2e tests")
+		return fmt.Errorf("docker must be installed and running")
 	}
 	err := sh.Run("docker", "ps")
 	if err == nil || sh.ExitStatus(err) == 0 {
