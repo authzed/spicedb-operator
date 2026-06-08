@@ -69,7 +69,11 @@ func (m *MemorySource) Subgraph(head string) (Source, error) {
 	// copy the ordered node list from `to` onward
 	var index int
 	if len(head) > 0 {
-		index = m.Nodes[head]
+		var ok bool
+		index, ok = m.Nodes[head]
+		if !ok {
+			return nil, fmt.Errorf("version %q is not in the update graph", head)
+		}
 	}
 	orderedNodes := make([]State, len(m.OrderedNodes)-index)
 	copy(orderedNodes, m.OrderedNodes[index:len(m.OrderedNodes)])

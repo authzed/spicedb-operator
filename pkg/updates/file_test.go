@@ -632,6 +632,44 @@ func TestComputeTarget(t *testing.T) {
 			},
 			expectedState: State{ID: "v1.0.1"},
 		},
+		{
+			// A pinned version that isn't a node in the graph must error rather than
+			// silently re-rooting at (and marching to) the channel head.
+			name: "explicit version not in the update graph errors instead of advancing to head",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
+			currentVersion:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			version:           "v2.0.0",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget:    &v1alpha1.SpiceDBVersion{Name: "v1.0.0", Channel: "cockroachdb"},
+			expectedState:     State{},
+			expectedErr:       "v2.0.0",
+		},
+		{
+			// Same unknown pinned version, but on a fresh install (no current version).
+			// It must error rather than installing an empty/unknown target.
+			name: "explicit version not in the update graph errors on fresh install",
+			graph: &UpdateGraph{Channels: []Channel{{
+				Name:     "cockroachdb",
+				Metadata: map[string]string{"datastore": "cockroachdb"},
+				Edges:    EdgeSet{"v1.0.0": {"v1.0.1"}},
+				Nodes:    []State{{ID: "v1.0.1"}, {ID: "v1.0.0"}},
+			}}},
+			engine:            "cockroachdb",
+			channel:           "cockroachdb",
+			operatorImageName: "ghcr.io/authzed/spicedb",
+			version:           "v2.0.0",
+			expectedBaseImage: "ghcr.io/authzed/spicedb",
+			expectedTarget:    &v1alpha1.SpiceDBVersion{Channel: "cockroachdb"},
+			expectedState:     State{},
+			expectedErr:       "v2.0.0",
+		},
 	}
 
 	for _, tt := range table {

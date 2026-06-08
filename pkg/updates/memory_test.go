@@ -348,3 +348,19 @@ func TestMemorySourceState(t *testing.T) {
 		})
 	}
 }
+
+// TestSubgraphRejectsUnknownHead ensures that re-rooting the graph at a version
+// that is not a node returns an error, rather than silently falling back to the
+// channel head. A missing key in the node map yields index 0 (the head), so an
+// unknown pinned version would otherwise resolve to "latest" with no error and
+// march the cluster forward.
+func TestSubgraphRejectsUnknownHead(t *testing.T) {
+	m, err := NewMemorySource(
+		[]State{{ID: "v2", Tag: "tag", Migration: "migration"}, {ID: "v1", Tag: "tag", Migration: "migration"}},
+		EdgeSet{"v1": {"v2"}},
+	)
+	require.NoError(t, err)
+
+	_, err = m.Subgraph("does-not-exist")
+	require.Error(t, err, "Subgraph must reject an unknown head instead of silently resolving to the channel head")
+}
