@@ -275,6 +275,10 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 	// If version is explicit, and there's no current version yet, just install
 	if len(version) > 0 && (currentVersion == nil || len(currentVersion.Name) == 0) {
 		state = updateSource.State(version)
+		if len(state.ID) == 0 {
+			err = fmt.Errorf("version %q is not in the update graph", version)
+			return baseImage, target, State{}, err
+		}
 		target.Name = state.ID
 		target.Attributes = []v1alpha1.SpiceDBVersionAttributes{v1alpha1.SpiceDBVersionAttributesMigration}
 		return baseImage, target, state, err
@@ -288,6 +292,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 	}
 
 	var currentState State
+	var notInChannel bool
 	if currentVersion != nil {
 		currentState = updateSource.State(currentVersion.Name)
 
@@ -303,6 +308,7 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 			currentState = source.State(currentVersion.Name)
 			target.Channel = currentVersion.Channel
 			target.Attributes = append(target.Attributes, v1alpha1.SpiceDBVersionAttributesNotInChannel)
+			notInChannel = true
 		}
 	}
 
@@ -323,7 +329,11 @@ func (g *UpdateGraph) ComputeTarget(operatorImageName, clusterBaseImage, image, 
 
 	// If currentVersion is set, we only use the subset of the update graph that leads
 	// to that currentVersion.
-	if currentVersion != nil && len(version) > 0 {
+	//
+	// Skip this when the current version isn't in the target channel (a channel
+	// switch that hasn't happened yet): the pinned version legitimately isn't a node
+	// here, and we stay on the current version below rather than erroring.
+	if currentVersion != nil && len(version) > 0 && !notInChannel {
 		updateSource, err = updateSource.Subgraph(version)
 		if err != nil {
 			err = fmt.Errorf("error finding update path from %s to %s", currentVersion.Name, version)
