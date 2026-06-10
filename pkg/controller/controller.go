@@ -48,7 +48,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
 	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -100,6 +99,7 @@ type Controller struct {
 	kclient     kubernetes.Interface
 	resources   openapi.Resources
 	mainHandler handler.Handler
+	logger      logr.Logger
 
 	// config
 	configLock     sync.RWMutex
@@ -108,7 +108,7 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
+func NewController(ctx context.Context, logger logr.Logger, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	// If no namespaces are provided, watch all namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}
@@ -120,9 +120,10 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		resources:  resources,
 		namespaces: namespaces,
 		baseImage:  baseImage,
+		logger:     logger,
 	}
 	c.OwnedResourceController = manager.NewOwnedResourceController(
-		textlogger.NewLogger(textlogger.NewConfig()),
+		logger,
 		v1alpha1.SpiceDBClusterResourceName,
 		v1alpha1ClusterGVR,
 		QueueOps,
@@ -131,7 +132,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 		c.syncOwnedResource,
 	)
 
-	fileInformerFactory, err := fileinformer.NewFileInformerFactory(textlogger.NewLogger(textlogger.NewConfig()))
+	fileInformerFactory, err := fileinformer.NewFileInformerFactory(logger)
 	if err != nil {
 		return nil, err
 	}
@@ -300,8 +301,7 @@ func (c *Controller) loadConfig(path string) {
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
-	logger.V(3).Info("loading config", "path", path)
+	c.logger.V(3).Info("loading config", "path", path)
 
 	file, err := os.Open(path)
 	if err != nil {
@@ -328,18 +328,18 @@ func (c *Controller) loadConfig(path string) {
 			c.config = cfg
 			// Override ImageName with flag if provided
 			if c.baseImage != "" {
-				logger.V(3).Info("overriding graph-defined base image with startup flag", "baseImage", c.baseImage)
+				c.logger.V(3).Info("overriding graph-defined base image with startup flag", "baseImage", c.baseImage)
 				c.config.ImageName = c.baseImage
 			}
 		}()
 		c.lastConfigHash.Store(h)
 	} else {
 		// config hasn't changed
-		logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
+		c.logger.V(4).Info("config hasn't changed", "old hash", c.lastConfigHash.Load(), "new hash", h)
 		return
 	}
 
-	logger.V(3).Info("updated config", "path", path, "config", c.config)
+	c.logger.V(3).Info("updated config", "path", path, "config", c.config)
 
 	// requeue all clusters
 	for _, ns := range c.namespaces {
@@ -380,7 +380,7 @@ func (c *Controller) syncOwnedResource(ctx context.Context, gvr schema.GroupVers
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
+	logger := c.logger.WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(cluster).MarshalLog(),
@@ -480,7 +480,7 @@ func (c *Controller) syncExternalResource(obj interface{}) {
 		return
 	}
 
-	logger := textlogger.NewLogger(textlogger.NewConfig()).WithValues(
+	logger := c.logger.WithValues(
 		"syncID", middleware.NewSyncID(5),
 		"controller", c.Name(),
 		"obj", klog.KObj(objMeta),
