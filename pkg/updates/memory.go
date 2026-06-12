@@ -76,7 +76,7 @@ func (m *MemorySource) Subgraph(head string) (Source, error) {
 		}
 	}
 	orderedNodes := make([]State, len(m.OrderedNodes)-index)
-	copy(orderedNodes, m.OrderedNodes[index:len(m.OrderedNodes)])
+	copy(orderedNodes, m.OrderedNodes[index:])
 
 	nodeSet := make(map[string]int, len(orderedNodes))
 	for i, n := range orderedNodes {

@@ -21,10 +21,11 @@ import (
 	"sigs.k8s.io/kind/pkg/fs"
 )
 
-var Aliases = map[string]interface{}{
+var Aliases = map[string]any{
 	"test":     Test.Unit,
 	"e2e":      Test.E2e,
 	"generate": Gen.All,
+	"lint":     Lint.All,
 }
 
 type Test mg.Namespace
@@ -32,7 +33,8 @@ type Test mg.Namespace
 // Runs the unit tests
 func (t Test) Unit() error {
 	fmt.Println("running unit tests")
-	args := []string{"test", "-race", "-timeout", "30m"}
+	args := make([]string, 0, 10)
+	args = append(args, []string{"test", "-race", "-timeout", "30m"}...)
 	args = append(args, t.coverageFlags()...)
 	args = append(args, "./...")
 	return sh.RunV(goCmdForTests(), args...)
@@ -65,7 +67,8 @@ func (Test) E2e() error {
 		return err
 	}
 
-	ginkgoArgs := []string{"tool", "github.com/onsi/ginkgo/v2/ginkgo"}
+	ginkgoArgs := make([]string, 0, 20)
+	ginkgoArgs = append(ginkgoArgs, []string{"tool", "github.com/onsi/ginkgo/v2/ginkgo"}...)
 	ginkgoArgs = append(ginkgoArgs, Test{}.coverageFlags()...)
 	ginkgoArgs = append(ginkgoArgs, "--tags=e2e", "-p", "-r", "-vv", "--fail-fast", "--randomize-all", "--flake-attempts=3", "../e2e")
 	if err := runDirWithV("magefiles", map[string]string{
@@ -95,7 +98,7 @@ func (Test) E2e() error {
 }
 
 // Removes the kind cluster used for end-to-end tests
-func (Test) Clean_e2e() error {
+func (Test) CleanE2e() error {
 	mg.Deps(checkDocker)
 	fmt.Println("removing saved cluster state")
 	if err := os.RemoveAll("./e2e/cluster-state"); err != nil {
@@ -111,12 +114,12 @@ type Gen mg.Namespace
 
 // Run all generators in parallel
 func (g Gen) All() error {
-	mg.Deps(g.Api, g.Graph)
+	mg.Deps(g.API, g.Graph)
 	return nil
 }
 
 // Run kube api codegen
-func (Gen) Api() error {
+func (Gen) API() error {
 	fmt.Println("generating apis")
 	if err := runDirV("magefiles", "go", "tool", "sigs.k8s.io/controller-tools/cmd/controller-gen", "crd", "object", "rbac:roleName=spicedb-operator-role", "paths=../pkg/apis/...", "output:crd:artifacts:config=../config/crds", "output:rbac:artifacts:config=../config/rbac"); err != nil {
 		return err
@@ -148,7 +151,7 @@ func (g Gen) generateGraphIfSourcesChanged() error {
 
 func checkDocker() error {
 	if !hasBinary("docker") {
-		return fmt.Errorf("docker must be installed to run e2e tests")
+		return fmt.Errorf("docker must be installed and running")
 	}
 	err := sh.Run("docker", "ps")
 	if err == nil || sh.ExitStatus(err) == 0 {
@@ -170,7 +173,7 @@ func goCmdForTests() string {
 }
 
 func fileEqual(a, b string) (bool, error) {
-	aFile, err := os.Open(a)
+	aFile, err := os.Open(a) //nolint:gosec
 	if err != nil {
 		return false, err
 	}
@@ -179,7 +182,7 @@ func fileEqual(a, b string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	bFile, err := os.Open(b)
+	bFile, err := os.Open(b) //nolint:gosec
 	if err != nil {
 		return false, err
 	}

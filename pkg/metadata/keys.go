@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/authzed/controller-idioms/adopt"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -12,6 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
+
+	"github.com/authzed/controller-idioms/adopt"
 )
 
 const (
@@ -80,7 +81,7 @@ func GVRMetaNamespaceKeyer(gvr schema.GroupVersionResource, key string) string {
 	return fmt.Sprintf("%s.%s.%s::%s", gvr.Resource, gvr.Version, gvr.Group, key)
 }
 
-func GVRMetaNamespaceKeyFunc(gvr schema.GroupVersionResource, obj interface{}) (string, error) {
+func GVRMetaNamespaceKeyFunc(gvr schema.GroupVersionResource, obj any) (string, error) {
 	if d, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		return d.Key, nil
 	}

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/authzed/controller-idioms/pause"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/pause"
 	"github.com/authzed/controller-idioms/queue/fake"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"

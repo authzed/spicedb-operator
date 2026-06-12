@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/authzed/controller-idioms/handler"
-	"github.com/authzed/controller-idioms/hash"
-	"github.com/authzed/controller-idioms/queue/fake"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
+	"github.com/authzed/controller-idioms/queue/fake"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )

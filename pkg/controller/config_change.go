@@ -5,10 +5,11 @@ import (
 	"context"
 	"slices"
 
-	"github.com/authzed/controller-idioms/handler"
-	"github.com/authzed/controller-idioms/hash"
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
