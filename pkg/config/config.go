@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/authzed/controller-idioms/hash"
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/fatih/camelcase"
 	"github.com/gosimple/slug"
@@ -27,6 +26,8 @@ import (
 	applypolicyv1 "k8s.io/client-go/applyconfigurations/policy/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
 	"k8s.io/kubectl/pkg/util/openapi"
+
+	"github.com/authzed/controller-idioms/hash"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
@@ -322,7 +323,6 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	}
 
 	if credentials != nil {
-		// Resolve DatastoreURI credential
 		if credentials.DatastoreURI == nil {
 			errs = append(errs, fmt.Errorf("credentials.datastoreURI must be set (use skip: true to opt out)"))
 		} else if credentials.DatastoreURI.Skip {

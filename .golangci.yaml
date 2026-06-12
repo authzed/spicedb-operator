@@ -1,5 +1,10 @@
 ---
 version: "2"
+run:
+  allow-parallel-runners: true
+  build-tags:
+    - "e2e"
+    - "mage"
 linters:
   enable:
     - "bidichk"
@@ -26,6 +31,8 @@ linters:
     - "whitespace"
   settings:
     staticcheck:
+      checks:
+        - "all"
       dot-import-whitelist:
         - "github.com/onsi/ginkgo/v2"
         - "github.com/onsi/gomega"
@@ -42,9 +49,23 @@ linters:
       - "examples$"
 formatters:
   enable:
+    - "gci"
+    - "gofmt"
     - "gofumpt"
     - "goimports"
   settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+        - pattern: "a[b:len(a)]"
+          replacement: "a[b:]"
+    gci:
+      sections:
+        - "standard"
+        - "default"
+        - "prefix(github.com/authzed)"
+        - "localmodule"
     goimports:
       local-prefixes:
         - "github.com/authzed/spicedb-operator"

@@ -27,14 +27,8 @@ func (l Lint) Go() error {
 	if err := (Gen{}).All(); err != nil {
 		return err
 	}
-	mg.SerialDeps(l.Gofumpt, l.Golangcilint, l.Tidy)
+	mg.SerialDeps(l.Golangcilint, l.Tidy)
 	return nil
-}
-
-// Gofumpt Run gofumpt
-func (Lint) Gofumpt() error {
-	fmt.Println("formatting go")
-	return sh.RunV("go", "tool", "mvdan.cc/gofumpt", "-w", ".")
 }
 
 // Golangcilint Run golangci-lint
@@ -42,7 +36,8 @@ func (Lint) Golangcilint() error {
 	fmt.Println("running golangci-lint")
 	return sh.RunV("go", "run",
 		"github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+golangciLintVersion,
-		"run", "--fix")
+		"run", "--fix",
+		"-c", ".golangci.yaml")
 }
 
 // Tidy Run go mod tidy on every module in the repo.

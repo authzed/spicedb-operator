@@ -6,9 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/authzed/controller-idioms/handler"
-	queuefake "github.com/authzed/controller-idioms/queue/fake"
-	"github.com/authzed/controller-idioms/typed"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -20,6 +17,10 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+
+	"github.com/authzed/controller-idioms/handler"
+	queuefake "github.com/authzed/controller-idioms/queue/fake"
+	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/config"
