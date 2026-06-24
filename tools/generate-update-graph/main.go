@@ -374,7 +374,7 @@ func mysqlChannel() updates.Channel {
 
 func spannerChannel() updates.Channel {
 	releases := []updates.State{
-		{ID: "v1.52.0", Tag: "v1.54.0", Migration: "add-expiration-support"},
+		{ID: "v1.54.0", Tag: "v1.54.0", Migration: "add-expiration-support"},
 		{ID: "v1.51.1", Tag: "v1.52.0", Migration: "add-expiration-support"},
 		{ID: "v1.49.2", Tag: "v1.51.1", Migration: "add-expiration-support"},
 		{ID: "v1.48.0", Tag: "v1.48.0", Migration: "add-expiration-support"},
