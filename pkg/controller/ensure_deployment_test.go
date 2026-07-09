@@ -24,6 +24,7 @@ import (
 func TestEnsureDeploymentHandler(t *testing.T) {
 	now := metav1.Now()
 	var nextKey handler.Key = "next"
+	applyErr := fmt.Errorf("apply error")
 	tests := []struct {
 		name string
 
@@ -34,20 +35,56 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 		pods                []*corev1.Pod
 		currentStatus       *v1alpha1.SpiceDBCluster
 		replicas            int32
+		applyErr            error
 
-		expectNext         handler.Key
-		expectStatus       *v1alpha1.SpiceDBCluster
-		expectRequeueErr   error
-		expectRequeueAfter bool
-		expectApply        bool
-		expectDelete       bool
-		expectPatchStatus  bool
+		expectNext          handler.Key
+		expectStatus        *v1alpha1.SpiceDBCluster
+		expectRequeueErr    error
+		expectRequeueAPIErr error
+		expectRequeueAfter  bool
+		expectApply         bool
+		expectDelete        bool
+		expectPatchStatus   bool
 	}{
 		{
 			name:               "creates if no deployments",
 			migrationHash:      "testtesttesttest",
 			secretHash:         "secret",
 			expectApply:        true,
+			expectRequeueAfter: true,
+		},
+		{
+			name:              "reports apply failure on status",
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			applyErr:          applyErr,
+			expectApply:       true,
+			expectPatchStatus: true,
+			expectStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolloutError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             v1alpha1.ConditionReasonApplyFailed,
+				Message:            "Error applying deployment: apply error",
+			}}}},
+			expectRequeueAPIErr: applyErr,
+		},
+		{
+			name: "clears apply failure once apply succeeds",
+			currentStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{Conditions: []metav1.Condition{{
+				Type:               v1alpha1.ConditionTypeRolloutError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: now,
+				Reason:             v1alpha1.ConditionReasonApplyFailed,
+				Message:            "Error applying deployment: apply error",
+			}}}},
+			migrationHash:     "testtesttesttest",
+			secretHash:        "secret",
+			expectApply:       true,
+			expectPatchStatus: true,
+			expectStatus: &v1alpha1.SpiceDBCluster{Status: v1alpha1.ClusterStatus{
+				Conditions: []metav1.Condition{},
+			}},
 			expectRequeueAfter: true,
 		},
 		{
@@ -407,7 +444,7 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			h := &DeploymentHandler{
 				applyDeployment: func(_ context.Context, _ *applyappsv1.DeploymentApplyConfiguration) (*appsv1.Deployment, error) {
 					applyCalled = true
-					return nil, nil
+					return nil, tt.applyErr
 				},
 				deleteDeployment: func(_ context.Context, _ types.NamespacedName) error {
 					deleteCalled = true
@@ -438,6 +475,10 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 			if tt.expectRequeueErr != nil {
 				require.Equal(t, 1, ctrls.RequeueErrCallCount())
 				require.Equal(t, tt.expectRequeueErr, ctrls.RequeueErrArgsForCall(0))
+			}
+			if tt.expectRequeueAPIErr != nil {
+				require.Equal(t, 1, ctrls.RequeueAPIErrCallCount())
+				require.Equal(t, tt.expectRequeueAPIErr, ctrls.RequeueAPIErrArgsForCall(0))
 			}
 			require.Equal(t, tt.expectRequeueAfter, ctrls.RequeueAfterCallCount() == 1)
 		})
