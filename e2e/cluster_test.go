@@ -405,6 +405,12 @@ var _ = Describe("SpiceDBClusters", func() {
 					}
 				})
 
+				AfterEach(func() {
+					// wait for the resources holding datastore connections to be
+					// GCd before the database is dropped in DeferCleanup
+					AssertDependentResourceCleanup(cluster.Name, "spicedb")
+				})
+
 				It("reports un-recovered pod errors on the status", func() {
 					var lastCluster *v1alpha1.SpiceDBCluster
 					var condition *metav1.Condition
