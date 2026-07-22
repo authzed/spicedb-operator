@@ -25,6 +25,10 @@ func (c *Controller) PatchStatus(ctx context.Context, patch *v1alpha1.SpiceDBClu
 }
 
 func (c *Controller) Patch(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error {
+	// an apply patch that carries a resourceVersion is rejected with a conflict
+	// if the object has changed at all - e.g. by a status patch earlier in the
+	// same reconcile (as in self-pause), which would make this patch always fail
+	patch.ResourceVersion = ""
 	data, err := json.Marshal(patch)
 	if err != nil {
 		return err

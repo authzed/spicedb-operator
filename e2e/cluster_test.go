@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 
+	"github.com/authzed/controller-idioms/pause"
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/e2e/databases"
@@ -226,6 +227,37 @@ var _ = Describe("SpiceDBClusters", func() {
 		})
 	})
 
+	Describe("With a failing migration job", func() {
+		BeforeEach(func() {
+			config["datastoreEngine"] = "postgres"
+			// a datastore that can never be reached, so the migration job can
+			// never succeed
+			secret.StringData["datastore_uri"] = "postgresql://spicedb:testtesttesttest@localhost:1/spicedb?sslmode=disable"
+			// fail the job on the first attempt instead of waiting out the
+			// default backoff policy
+			cluster.Spec.Patches = []v1alpha1.Patch{{
+				Kind:  "Job",
+				Patch: json.RawMessage(`{"spec": {"activeDeadlineSeconds": 1, "backoffLimit": 0}}`),
+			}}
+		})
+
+		It("self-pauses the cluster", func() {
+			ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+			defer cancel()
+
+			var paused *metav1.Condition
+			var labelled bool
+			Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: cluster.Name, Namespace: testNamespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
+				logr.FromContextOrDiscard(ctx).Info("watch event", "labels", c.Labels, "status", c.Status)
+				paused = c.FindStatusCondition(pause.ConditionTypePaused)
+				_, labelled = c.Labels[metadata.PausedControllerSelectorKey]
+				return paused == nil || !labelled
+			})
+			Expect(labelled).To(BeTrue(), "expected the %s label on the cluster", metadata.PausedControllerSelectorKey)
+			Expect(paused).ToNot(BeNil(), "expected the Paused condition on the status")
+		})
+	})
+
 	Describe("With a database", func() {
 		var db *databases.LogicalDatabase
 
@@ -371,6 +403,12 @@ var _ = Describe("SpiceDBClusters", func() {
 					for k, v := range db.ExtraConfig {
 						config[k] = v
 					}
+				})
+
+				AfterEach(func() {
+					// wait for the resources holding datastore connections to be
+					// GCd before the database is dropped in DeferCleanup
+					AssertDependentResourceCleanup(cluster.Name, "spicedb")
 				})
 
 				It("reports un-recovered pod errors on the status", func() {
