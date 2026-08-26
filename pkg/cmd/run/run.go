@@ -2,8 +2,12 @@ package run
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -50,6 +54,9 @@ type Options struct {
 	MetricNamespace string
 
 	WatchNamespaces []string
+
+	// LogFormat specifies the log format: "text" or "json"
+	LogFormat string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -59,6 +66,7 @@ func RecommendedOptions() *Options {
 		DebugFlags:      ctrlmanageropts.RecommendedDebuggingOptions(),
 		DebugAddress:    ":8080",
 		MetricNamespace: "spicedb_operator",
+		LogFormat:       "text",
 	}
 }
 
@@ -91,6 +99,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
 	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
 	globalFlags.StringVar(&o.BaseImage, "base-image", "", "default base image for SpiceDB containers")
+	globalFlags.StringVar(&o.LogFormat, "log-format", o.LogFormat, "log format: text or json")
 
 	for _, f := range namedFlagSets.FlagSets {
 		cmd.Flags().AddFlagSet(f)
@@ -104,7 +113,15 @@ func NewCmdRun(o *Options) *cobra.Command {
 
 // Validate checks the set of flags provided by the user.
 func (o *Options) Validate() error {
-	return errors.NewAggregate(o.DebugFlags.Validate())
+	validationErrors := []error{}
+
+	// Allow empty string to use default
+	if o.LogFormat != "" && o.LogFormat != "text" && o.LogFormat != "json" {
+		validationErrors = append(validationErrors, fmt.Errorf("invalid log format %q: must be 'text' or 'json'", o.LogFormat))
+	}
+
+	validationErrors = append(validationErrors, o.DebugFlags.Validate()...)
+	return errors.NewAggregate(validationErrors)
 }
 
 // Run performs the apply operation.
@@ -115,7 +132,27 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
+	// Configure logger based on format
+	// Use default if empty
+	logFormat := o.LogFormat
+	if logFormat == "" {
+		logFormat = "text"
+	}
+
+	var logger logr.Logger
+	if logFormat == "json" {
+		// Use zap with JSON encoder
+		zapConfig := zap.NewProductionConfig()
+		zapConfig.DisableStacktrace = true
+		zapLog, err := zapConfig.Build()
+		if err != nil {
+			return fmt.Errorf("failed to create JSON logger: %w", err)
+		}
+		logger = zapr.NewLogger(zapLog)
+	} else {
+		// Use default text logger
+		logger = textlogger.NewLogger(textlogger.NewConfig())
+	}
 
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
@@ -161,7 +198,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	patchMetaResolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
+	ctrl, err := controller.NewController(ctx, logger, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2/textlogger"
 
 	"github.com/authzed/controller-idioms/handler"
 	queuefake "github.com/authzed/controller-idioms/queue/fake"
@@ -145,7 +146,8 @@ func TestControllerNamespacing(t *testing.T) {
 			broadcaster := record.NewBroadcaster()
 			dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
 			kclient := kfake.NewClientset()
-			c, err := NewController(ctx, registry, dclient, kclient, nil, "", "", broadcaster, tt.watchedNamespaces)
+			logger := textlogger.NewLogger(textlogger.NewConfig())
+			c, err := NewController(ctx, logger, registry, dclient, kclient, nil, "", "", broadcaster, tt.watchedNamespaces)
 			require.NoError(t, err)
 			queue := newKeyRecordingQueue(workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()))
 			c.Queue = queue
@@ -372,7 +374,7 @@ func TestEnsurePDB(t *testing.T) {
 				dclient = fake.NewSimpleDynamicClient(scheme.Scheme, tt.existingPDB)
 			}
 			kclient := kfake.NewClientset()
-			c, err := NewController(ctx, registry, dclient, kclient, nil, "", "", broadcaster, nil)
+			c, err := NewController(ctx, textlogger.NewLogger(textlogger.NewConfig()), registry, dclient, kclient, nil, "", "", broadcaster, nil)
 			require.NoError(t, err)
 
 			ctrls := &queuefake.FakeInterface{}
