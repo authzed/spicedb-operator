@@ -80,7 +80,7 @@ zed --insecure --endpoint=localhost:50051 --token=averysecretpresharedkey schema
 
 ## Where To Go From Here
 
-- Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, and Ingress.
+- Check out the [examples](examples) directory to see how to configure `SpiceDBCluster` for production, including datastore backends, TLS, Ingress, and operator features like JSON logging.
 - Learn how to use SpiceDB via the [docs](https://docs.authzed.com/) and [playground](https://play.authzed.com/).
 - Ask questions and join the community in [discord](https://authzed.com/discord).
 

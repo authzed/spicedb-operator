@@ -1,0 +1,142 @@
+# Example deployment of SpiceDB Operator with JSON logging enabled
+#
+# This manifest shows how to configure the operator to output logs in JSON format
+# for better integration with log aggregation systems like ELK stack.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spicedb-operator
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spicedb-operator
+  namespace: spicedb-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spicedb-operator
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "secrets", "services", "serviceaccounts", "endpoints", "events", "configmaps", "pods"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["authzed.com"]
+  resources: ["spicedbclusters"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["authzed.com"]
+  resources: ["spicedbclusters/status"]
+  verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spicedb-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spicedb-operator
+subjects:
+- kind: ServiceAccount
+  name: spicedb-operator
+  namespace: spicedb-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spicedb-operator
+  namespace: spicedb-operator
+  labels:
+    app: spicedb-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spicedb-operator
+  template:
+    metadata:
+      labels:
+        app: spicedb-operator
+    spec:
+      serviceAccountName: spicedb-operator
+      containers:
+      - name: spicedb-operator
+        image: authzed/spicedb-operator:latest
+        args:
+        - "run"
+        - "--log-format=json"  # Enable JSON logging
+        - "--debug-address=:8080"
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Optional: Service to expose metrics endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: spicedb-operator-metrics
+  namespace: spicedb-operator
+  labels:
+    app: spicedb-operator
+spec:
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: spicedb-operator
+---
+# Optional: ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spicedb-operator
+  namespace: spicedb-operator
+  labels:
+    app: spicedb-operator
+spec:
+  selector:
+    matchLabels:
+      app: spicedb-operator
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
