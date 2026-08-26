@@ -25,6 +25,7 @@ const (
 	ConditionTypeRolloutError        = "RolloutError"
 
 	ConditionReasonMissingSecret = "MissingSecret"
+	ConditionReasonApplyFailed   = "ApplyFailed"
 )
 
 func NewValidatingConfigCondition(secretHash string) metav1.Condition {
@@ -104,5 +105,15 @@ func NewPodErrorCondition(message string) metav1.Condition {
 		Reason:             "PodError",
 		LastTransitionTime: metav1.NewTime(time.Now()),
 		Message:            message,
+	}
+}
+
+func NewApplyFailedCondition(err error) metav1.Condition {
+	return metav1.Condition{
+		Type:               ConditionTypeRolloutError,
+		Status:             metav1.ConditionTrue,
+		Reason:             ConditionReasonApplyFailed,
+		LastTransitionTime: metav1.NewTime(time.Now()),
+		Message:            fmt.Sprintf("Error applying deployment: %s", err),
 	}
 }

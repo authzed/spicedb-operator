@@ -88,8 +88,25 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 			),
 		)
 		if err != nil {
+			// surface the failure on the status so it's visible without
+			// reading operator logs, e.g. when a user-provided patch results
+			// in a deployment the API server rejects
+			currentStatus.SetStatusCondition(v1alpha1.NewApplyFailedCondition(err))
+			if patchErr := m.patchStatus(ctx, currentStatus); patchErr != nil {
+				QueueOps.RequeueAPIErr(ctx, patchErr)
+				return
+			}
 			QueueOps.RequeueAPIErr(ctx, err)
 			return
+		}
+
+		// clear any error from a previous failed apply
+		if cond := currentStatus.FindStatusCondition(v1alpha1.ConditionTypeRolloutError); cond != nil && cond.Reason == v1alpha1.ConditionReasonApplyFailed {
+			currentStatus.RemoveStatusCondition(v1alpha1.ConditionTypeRolloutError)
+			if err := m.patchStatus(ctx, currentStatus); err != nil {
+				QueueOps.RequeueAPIErr(ctx, err)
+				return
+			}
 		}
 		ctx = CtxCurrentSpiceDeployment.WithValue(ctx, deployment)
 	}
