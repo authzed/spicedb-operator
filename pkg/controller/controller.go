@@ -99,7 +99,7 @@ type Controller struct {
 	namespaces  []string
 	client      dynamic.Interface
 	kclient     kubernetes.Interface
-	resources   openapi.Resources
+	resources   openapi.OpenAPIResourcesGetter
 	mainHandler handler.Handler
 
 	// config
@@ -109,7 +109,7 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.Resources, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.OpenAPIResourcesGetter, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	// If no namespaces are provided, watch all namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}

@@ -37,7 +37,9 @@ type patchTestCase[K any] struct {
 
 func runPatchTests[K any](t *testing.T, cases []patchTestCase[K]) {
 	// https://github.com/kubernetes/kubernetes/blob/v1.30.2/api/openapi-spec/swagger.json
-	resources := openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.30.2.json"))
+	resources := StaticResourcesGetter{
+		Resources: openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.30.2.json")),
+	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			count, patched, err := ApplyPatches(tt.object, tt.out, tt.patches, resources)

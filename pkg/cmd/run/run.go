@@ -132,11 +132,6 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		}
 	}
 
-	resources, err := f.OpenAPISchema()
-	if err != nil {
-		return err
-	}
-
 	registry := typed.NewRegistry()
 	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
 	broadcaster := record.NewBroadcaster()
@@ -155,7 +150,11 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
+	// The factory is passed rather than the resolved schema: it satisfies
+	// openapi.OpenAPIResourcesGetter and memoizes, so the cluster's OpenAPI v2
+	// document (~100MiB of retained heap) is only fetched and parsed if a
+	// SpiceDBCluster actually uses a strategic merge patch.
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, f, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}

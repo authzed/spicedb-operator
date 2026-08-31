@@ -142,8 +142,9 @@ func (r RawConfig) Pop(key string) string {
 type Config struct {
 	MigrationConfig
 	SpiceConfig
-	Patches   []v1alpha1.Patch
-	Resources openapi.Resources
+	Patches []v1alpha1.Patch
+	// Resources loads the cluster's OpenAPI schema on demand; see ApplyPatches.
+	Resources openapi.OpenAPIResourcesGetter
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -201,7 +202,7 @@ type PDBConfig struct {
 }
 
 // NewConfig checks that the values in the config + the secrets are sane
-func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secrets map[string]*corev1.Secret, resources openapi.Resources) (*Config, Warning, error) {
+func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, secrets map[string]*corev1.Secret, resources openapi.OpenAPIResourcesGetter) (*Config, Warning, error) {
 	if cluster.Spec.Config == nil {
 		return nil, nil, fmt.Errorf("couldn't parse empty config")
 	}

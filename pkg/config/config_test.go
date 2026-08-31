@@ -33,8 +33,10 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
-func newFakeResources() *openapitesting.FakeResources {
-	return openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json"))
+func newFakeResources() StaticResourcesGetter {
+	return StaticResourcesGetter{
+		Resources: openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json")),
+	}
 }
 
 // singleSecretMap wraps a single secret in a map using the given name key.

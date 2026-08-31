@@ -20,7 +20,7 @@ const EventInvalidSpiceDBConfig = "InvalidSpiceDBConfig"
 
 type ValidateConfigHandler struct {
 	recorder    record.EventRecorder
-	resources   openapi.Resources
+	resources   openapi.OpenAPIResourcesGetter
 	patchStatus func(ctx context.Context, patch *v1alpha1.SpiceDBCluster) error
 	next        handler.ContextHandler
 }

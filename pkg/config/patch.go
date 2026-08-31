@@ -18,11 +18,27 @@ import (
 
 const wildcard = "*"
 
+// StaticResourcesGetter adapts an already-resolved openapi.Resources to the
+// lazy openapi.OpenAPIResourcesGetter interface, for callers that have the
+// schema in hand and don't need it loaded on demand.
+type StaticResourcesGetter struct {
+	Resources openapi.Resources
+}
+
+func (s StaticResourcesGetter) OpenAPISchema() (openapi.Resources, error) {
+	return s.Resources, nil
+}
+
 // ApplyPatches applies a set of patches to an object.
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
 // that occurred.
-func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resources openapi.Resources) (int, bool, error) {
+//
+// resourcesGetter is only consulted for strategic merge patches, which need the
+// cluster's OpenAPI schema to determine merge keys. Resolving that schema costs
+// on the order of 100MiB of retained heap, so it is deliberately passed as a
+// getter and resolved on first use rather than eagerly at operator startup.
+func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resourcesGetter openapi.OpenAPIResourcesGetter) (int, bool, error) {
 	// marshal object to json for patching
 	encoded, err := json.Marshal(object)
 	if err != nil {
@@ -72,6 +88,13 @@ func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resources open
 				gv, err := schema.ParseGroupVersion(*typeMeta.APIVersion)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
+					continue
+				}
+				// Resolved here, at the only point that needs it. The getter
+				// memoizes, so this is a cheap call after the first.
+				resources, err := resourcesGetter.OpenAPISchema()
+				if err != nil {
+					errs = append(errs, fmt.Errorf("error applying patch %d, couldn't load OpenAPI schema: %w", i, err))
 					continue
 				}
 				gvkSchema := resources.LookupResource(gv.WithKind(*typeMeta.Kind))
