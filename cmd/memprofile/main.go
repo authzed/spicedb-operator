@@ -9,13 +9,11 @@
 //	baseline    process start: runtime, scheme registration, client construction
 //	discovery   REST config + discovery/dynamic/typed clients
 //	controller  controller.NewController() -- informers, handler chain, caches
-//	openapi-v3  the group-versions the operator patches, resolved via OpenAPI v3
-//	openapi-v2  the whole cluster's OpenAPI v2 document, which v3 replaced
+//	openapi     the group-versions the operator patches, resolved via OpenAPI v3
 //
 // The operator resolves no schema until a SpiceDBCluster uses a strategic merge
-// patch, so --stage=controller (the default) reflects a normal startup. The two
-// openapi stages measure what a patch-using cluster pays, under v3 (today) and
-// v2 (before). Use --stage=all for all of them.
+// patch, so --stage=controller (the default) reflects a normal startup, and
+// --stage=openapi measures what a patch-using cluster additionally pays.
 //
 // The number to compare against the container's memory limit is Max RSS, which
 // is the kernel high-water mark the OOM killer actually acts on. HeapAlloc
@@ -25,9 +23,8 @@
 // Usage:
 //
 //	go run ./cmd/memprofile                       # normal startup path
-//	go run ./cmd/memprofile --stage=openapi-v3    # today's schema cost
-//	go run ./cmd/memprofile --stage=openapi-v2    # the cost v3 replaced
-//	go run ./cmd/memprofile --stage=all           # all phases, cheapest first
+//	go run ./cmd/memprofile --stage=openapi       # the schema cost when patching
+//	go run ./cmd/memprofile --stage=all           # all phases
 //	go run ./cmd/memprofile --profile-dir=/tmp/p  # per-phase heap profiles
 //
 // Then, to see what is holding the retained bytes:
@@ -55,7 +52,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/openapi3"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
@@ -69,25 +65,17 @@ import (
 // Every stage builds on `discovery`, since the clients are needed throughout.
 // `controller` is the operator's real startup path and deliberately resolves no
 // schema at all, because the operator defers that until a cluster uses a
-// strategic merge patch. The two openapi stages force a resolution so the
-// deferred cost is measurable and the v2/v3 choice is comparable:
-//
-//	openapi-v3  what the operator resolves today: only the group-versions it
-//	            patches, via config.V3PatchMetaResolver
-//	openapi-v2  what it used to resolve: a description of every resource in the
-//	            cluster, via Factory.OpenAPISchema
-//
-// `all` runs controller, then v3, then v2, in that order, so each phase's RSS
-// is read before the next and larger one inflates it.
+// strategic merge patch. `openapi` forces the resolution of every group-version
+// the operator patches, so that deferred cost is measurable. `all` runs
+// controller first, so its RSS is read before the openapi phase inflates it.
 const (
 	stageDiscovery  = "discovery"
-	stageOpenAPIV2  = "openapi-v2"
-	stageOpenAPIV3  = "openapi-v3"
+	stageOpenAPI    = "openapi"
 	stageController = "controller"
 	stageAll        = "all"
 )
 
-var stageOrder = []string{stageDiscovery, stageOpenAPIV3, stageOpenAPIV2, stageController, stageAll}
+var stageOrder = []string{stageDiscovery, stageOpenAPI, stageController, stageAll}
 
 // patchedKinds names one kind per group-version the operator patches, so the v3
 // stage fetches exactly the group-versions a real patch would.
@@ -103,7 +91,6 @@ type options struct {
 	stage            string
 	profileDir       string
 	cacheSyncWait    time.Duration
-	probeWireSize    bool
 	reportAPISurface bool
 }
 
@@ -131,8 +118,6 @@ retained heap per phase, and allocation churn per phase.`),
 		"if set, write a heap profile per phase into this directory for `go tool pprof`")
 	flags.DurationVar(&o.cacheSyncWait, "cache-sync-timeout", 90*time.Second,
 		"how long the controller phase waits for informer caches to sync before giving up")
-	flags.BoolVar(&o.probeWireSize, "wire", false,
-		"additionally download the raw OpenAPI v2 document to report its wire size; this inflates Max RSS, so do not combine it with a run whose RSS number you intend to trust")
 	flags.BoolVar(&o.reportAPISurface, "api-surface", true,
 		"report the cluster's API surface (group/resource/CRD counts), which is what the openapi phase's cost scales with")
 
@@ -240,8 +225,8 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 		r.snap(stageController)
 	}
 
-	// --- openapi-v3: the schema cost a patch-using cluster pays today ---
-	if o.stage == stageOpenAPIV3 || o.stage == stageAll {
+	// --- openapi: the schema cost a patch-using cluster pays ---
+	if o.stage == stageOpenAPI || o.stage == stageAll {
 		resolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
 		for _, gvk := range patchedKinds {
 			if _, err := resolver.LookupPatchMeta(gvk); err != nil {
@@ -253,27 +238,7 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 		}
 		// Retained exactly as Config.PatchMeta retains it for the process life.
 		r.retain(resolver)
-		r.snap(stageOpenAPIV3)
-	}
-
-	// --- openapi-v2: the whole-cluster cost this replaced ---
-	if o.stage == stageOpenAPIV2 || o.stage == stageAll {
-		if o.probeWireSize {
-			size, err := probeOpenAPIWireSize(ctx, restConfig)
-			if err != nil {
-				return fmt.Errorf("probing OpenAPI v2 wire size: %w", err)
-			}
-			fmt.Printf("openapi v2 wire size (protobuf, as discovery fetches it): %s\n", humanBytes(size))
-		}
-
-		resources, err := f.OpenAPISchema()
-		if err != nil {
-			return fmt.Errorf("fetching OpenAPI schema: %w", err)
-		}
-		// Keep the result reachable so the snapshot measures what a cluster
-		// using strategic merge patches would retain, not garbage.
-		r.retain(resources)
-		r.snap(stageOpenAPIV2)
+		r.snap(stageOpenAPI)
 	}
 
 	r.report(apiSurface)
@@ -367,31 +332,9 @@ func (r *reporter) report(apiSurface string) {
 	runtime.KeepAlive(r.retained)
 }
 
-// probeOpenAPIWireSize fetches the OpenAPI v2 document with the same content
-// negotiation client-go's discovery client uses, and reports its size on the
-// wire. The bytes are dropped before returning, but Max RSS keeps the high-water
-// mark, which is why this is opt-in.
-func probeOpenAPIWireSize(ctx context.Context, restConfig *rest.Config) (uint64, error) {
-	// Borrow the discovery client's REST client, which is already configured
-	// with the serializer and content type negotiation this path needs.
-	d, err := discovery.NewDiscoveryClientForConfig(rest.CopyConfig(restConfig))
-	if err != nil {
-		return 0, err
-	}
-	raw, err := d.RESTClient().Get().
-		AbsPath("/openapi/v2").
-		SetHeader("Accept", "application/com.github.proto-openapi.spec.v2@v1.0+protobuf").
-		Do(ctx).
-		Raw()
-	if err != nil {
-		return 0, err
-	}
-	return uint64(len(raw)), nil
-}
-
-// describeAPISurface counts what the OpenAPI document has to describe. The
-// openapi phase's cost scales with these numbers, not with the number of
-// SpiceDBClusters, which is why a small deployment can still OOM.
+// describeAPISurface counts the cluster's API surface. It is reported for
+// context: a whole-cluster schema would scale with these numbers, whereas the
+// per-group-version resolution the operator uses does not.
 func describeAPISurface(d discovery.DiscoveryInterface) (string, error) {
 	lists, err := d.ServerPreferredResources()
 	// ServerPreferredResources returns partial results alongside an error when

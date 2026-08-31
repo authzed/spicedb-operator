@@ -153,10 +153,8 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 
 	// Strategic merge patches need the apiserver's schema to find merge keys.
-	// Resolving it via OpenAPI v3 fetches only the group-versions actually
-	// patched, and only once a cluster uses such a patch; the v2 alternative
-	// downloads and parses a description of every resource in the cluster,
-	// which costs ~100MiB of retained heap regardless of what is patched.
+	// We use the openAPIv3 client to fetch only those resources that are necessary
+	// for the patches.
 	openAPIV3Client, err := f.OpenAPIV3Client()
 	if err != nil {
 		return err

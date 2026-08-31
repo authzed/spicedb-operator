@@ -112,6 +112,36 @@ func AssertHealthySpiceDBClusterFunc(ctx context.Context, namespace string, kcli
 	}
 }
 
+// AssertDeploymentPatchedFunc asserts that a strategic merge patch actually
+// reached the SpiceDB deployment, rather than merely failing to error.
+// The container check is the primary part of the assertion.
+func AssertDeploymentPatchedFunc(ctx context.Context, namespace string, kclient kubernetes.Interface) func(owner string, labels map[string]string, envName, envValue string) {
+	return func(owner string, labels map[string]string, envName, envValue string) {
+		ctx, cancel := context.WithCancel(ctx)
+		DeferCleanup(cancel)
+
+		Eventually(func(g Gomega) {
+			deps, err := kclient.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("%s=%s,%s=%s", metadata.ComponentLabelKey, metadata.ComponentSpiceDBLabelValue, metadata.OwnerLabelKey, owner),
+			})
+			g.Expect(err).To(Succeed())
+			g.Expect(len(deps.Items)).To(Equal(1))
+			deployment := deps.Items[0]
+
+			for k, v := range labels {
+				g.Expect(deployment.GetLabels()).To(HaveKeyWithValue(k, v))
+			}
+
+			containers := deployment.Spec.Template.Spec.Containers
+			g.Expect(len(containers)).To(Equal(1))
+			g.Expect(containers[0].Name).To(Equal("spicedb"))
+			g.Expect(containers[0].Image).ToNot(BeEmpty(),
+				"image was dropped, so containers were replaced instead of merged by name")
+			g.Expect(containers[0].Env).To(ContainElement(corev1.EnvVar{Name: envName, Value: envValue}))
+		}).Should(Succeed())
+	}
+}
+
 func AssertDependentResourceCleanupFunc(ctx context.Context, namespace string, kclient kubernetes.Interface) func(owner, secretName string) {
 	return func(owner, secretName string) {
 		ctx, cancel := context.WithCancel(ctx)

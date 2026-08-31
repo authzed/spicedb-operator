@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/openapi3"
 	"k8s.io/kube-openapi/pkg/validation/spec"
-	"k8s.io/kubectl/pkg/util/openapi"
 )
 
 // groupVersionKindExtensionKey is the OpenAPI extension recording which
@@ -19,11 +18,10 @@ const groupVersionKindExtensionKey = "x-kubernetes-group-version-kind"
 // keys and patch strategies that decide whether a list in a patch is merged
 // with the existing list or replaces it wholesale.
 //
-// It exists so that the OpenAPI version backing that answer is an
-// implementation detail, and so that resolution stays per-GVK and on demand.
-// Both matter for memory: the OpenAPI v2 document describes the entire cluster
-// and costs ~100MiB of retained heap to parse, whereas v3 is served per
-// group-version and the operator only ever patches a handful of them.
+// Resolution is per-GVK and on demand so that only the group-versions actually
+// patched are ever fetched and parsed. That is what keeps the operator's
+// footprint small: a whole-cluster schema costs ~100MiB of retained heap, while
+// the five group-versions this operator patches cost single-digit MiB.
 type PatchMetaResolver interface {
 	LookupPatchMeta(gvk schema.GroupVersionKind) (strategicpatch.LookupPatchMeta, error)
 }
@@ -141,44 +139,4 @@ func gvksFromMaps(maps []map[string]string) []schema.GroupVersionKind {
 		})
 	}
 	return gvks
-}
-
-// V2PatchMetaResolver resolves patch metadata from a whole-cluster OpenAPI v2
-// schema.
-//
-// This is the pre-v3 behavior, kept because the patch test fixtures are pinned
-// v2 swagger documents and because it is the fallback for apiservers that don't
-// serve OpenAPI v3 (before Kubernetes 1.24). Prefer V3PatchMetaResolver: this
-// one cannot avoid parsing a description of every resource in the cluster.
-type V2PatchMetaResolver struct {
-	getter openapi.OpenAPIResourcesGetter
-}
-
-var _ PatchMetaResolver = (*V2PatchMetaResolver)(nil)
-
-func NewV2PatchMetaResolver(getter openapi.OpenAPIResourcesGetter) *V2PatchMetaResolver {
-	return &V2PatchMetaResolver{getter: getter}
-}
-
-func (r *V2PatchMetaResolver) LookupPatchMeta(gvk schema.GroupVersionKind) (strategicpatch.LookupPatchMeta, error) {
-	resources, err := r.getter.OpenAPISchema()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't load OpenAPI v2 schema: %w", err)
-	}
-	// A nil schema is passed through rather than treated as an error: it means
-	// the document doesn't describe this kind, and strategic merge then falls
-	// back to replacing lists instead of merging them. That is long-standing
-	// behavior here and is preserved deliberately.
-	return strategicpatch.NewPatchMetaFromOpenAPI(resources.LookupResource(gvk)), nil
-}
-
-// StaticResourcesGetter adapts an already-resolved openapi.Resources to the
-// lazy openapi.OpenAPIResourcesGetter interface, for callers that have the
-// schema in hand and don't need it loaded on demand.
-type StaticResourcesGetter struct {
-	Resources openapi.Resources
-}
-
-func (s StaticResourcesGetter) OpenAPISchema() (openapi.Resources, error) {
-	return s.Resources, nil
 }

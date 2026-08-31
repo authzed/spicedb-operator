@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -25,19 +24,12 @@ import (
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	applypolicyv1 "k8s.io/client-go/applyconfigurations/policy/v1"
 	applyrbacv1 "k8s.io/client-go/applyconfigurations/rbac/v1"
-	openapitesting "k8s.io/kubectl/pkg/util/openapi/testing"
 	"k8s.io/utils/ptr"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 	"github.com/authzed/spicedb-operator/pkg/metadata"
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
-
-func newFakeResources() PatchMetaResolver {
-	return NewV2PatchMetaResolver(StaticResourcesGetter{
-		Resources: openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json")),
-	})
-}
 
 // singleSecretMap wraps a single secret in a map using the given name key.
 // Pass an empty name to use "" as the map key (which preserves the original
@@ -71,7 +63,7 @@ func TestToEnvVarName(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
 		status       v1alpha1.ClusterStatus
@@ -2361,7 +2353,7 @@ func TestNewConfig(t *testing.T) {
 }
 
 func TestNewConfig_Credentials(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 
 	// globalConfig with a cockroachdb channel used for all credentials tests
 	credGlobalConfig := OperatorConfig{
@@ -2649,7 +2641,7 @@ func TestGraphDiffSanity(t *testing.T) {
 }
 
 func TestDeployment(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name           string
 		cluster        v1alpha1.ClusterSpec
@@ -2896,7 +2888,7 @@ metadata:
 }
 
 func TestMigrationJob(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name       string
 		cluster    v1alpha1.ClusterSpec
@@ -3081,7 +3073,7 @@ metadata:
 }
 
 func TestService(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name        string
 		cluster     v1alpha1.ClusterSpec
@@ -3192,7 +3184,7 @@ metadata:
 }
 
 func TestRole(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name     string
 		cluster  v1alpha1.ClusterSpec
@@ -3263,7 +3255,7 @@ metadata:
 }
 
 func TestRoleBinding(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name            string
 		cluster         v1alpha1.ClusterSpec
@@ -3331,7 +3323,7 @@ metadata:
 }
 
 func TestServiceAccount(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name               string
 		cluster            v1alpha1.ClusterSpec
@@ -3392,7 +3384,7 @@ metadata:
 }
 
 func TestPDB(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name            string
 		cluster         v1alpha1.ClusterSpec
@@ -3664,7 +3656,7 @@ metadata:
 }
 
 func TestVersionLabels(t *testing.T) {
-	resources := newFakeResources()
+	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name               string
 		cluster            v1alpha1.ClusterSpec
