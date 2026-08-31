@@ -11,34 +11,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
 
 const wildcard = "*"
 
-// StaticResourcesGetter adapts an already-resolved openapi.Resources to the
-// lazy openapi.OpenAPIResourcesGetter interface, for callers that have the
-// schema in hand and don't need it loaded on demand.
-type StaticResourcesGetter struct {
-	Resources openapi.Resources
-}
-
-func (s StaticResourcesGetter) OpenAPISchema() (openapi.Resources, error) {
-	return s.Resources, nil
-}
-
 // ApplyPatches applies a set of patches to an object.
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
 // that occurred.
 //
-// resourcesGetter is only consulted for strategic merge patches, which need the
-// cluster's OpenAPI schema to determine merge keys. Resolving that schema costs
-// on the order of 100MiB of retained heap, so it is deliberately passed as a
-// getter and resolved on first use rather than eagerly at operator startup.
-func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resourcesGetter openapi.OpenAPIResourcesGetter) (int, bool, error) {
+// resolver is only consulted for strategic merge patches, which need the
+// apiserver's schema to determine merge keys. json6902 patches and clusters
+// with no patches never touch it, so it is passed as a resolver and consulted
+// on demand rather than resolved eagerly at operator startup.
+func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resolver PatchMetaResolver) (int, bool, error) {
 	// marshal object to json for patching
 	encoded, err := json.Marshal(object)
 	if err != nil {
@@ -90,15 +78,15 @@ func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resourcesGette
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue
 				}
-				// Resolved here, at the only point that needs it. The getter
-				// memoizes, so this is a cheap call after the first.
-				resources, err := resourcesGetter.OpenAPISchema()
+				// Resolved here, at the only point that needs it, and with the
+				// GVK in hand -- which is what lets the v3 resolver fetch a
+				// single group-version instead of the whole cluster's schema.
+				lookupPatchMeta, err := resolver.LookupPatchMeta(gv.WithKind(*typeMeta.Kind))
 				if err != nil {
-					errs = append(errs, fmt.Errorf("error applying patch %d, couldn't load OpenAPI schema: %w", i, err))
+					errs = append(errs, fmt.Errorf("error applying patch %d, couldn't resolve patch metadata: %w", i, err))
 					continue
 				}
-				gvkSchema := resources.LookupResource(gv.WithKind(*typeMeta.Kind))
-				patched, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(encoded, jsonPatch, strategicpatch.NewPatchMetaFromOpenAPI(gvkSchema))
+				patched, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(encoded, jsonPatch, lookupPatchMeta)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue

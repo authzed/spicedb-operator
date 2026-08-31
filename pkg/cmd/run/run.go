@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/openapi3"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -28,6 +29,7 @@ import (
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 )
@@ -150,11 +152,18 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	// The factory is passed rather than the resolved schema: it satisfies
-	// openapi.OpenAPIResourcesGetter and memoizes, so the cluster's OpenAPI v2
-	// document (~100MiB of retained heap) is only fetched and parsed if a
-	// SpiceDBCluster actually uses a strategic merge patch.
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, f, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
+	// Strategic merge patches need the apiserver's schema to find merge keys.
+	// Resolving it via OpenAPI v3 fetches only the group-versions actually
+	// patched, and only once a cluster uses such a patch; the v2 alternative
+	// downloads and parses a description of every resource in the cluster,
+	// which costs ~100MiB of retained heap regardless of what is patched.
+	openAPIV3Client, err := f.OpenAPIV3Client()
+	if err != nil {
+		return err
+	}
+	patchMetaResolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
+
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}

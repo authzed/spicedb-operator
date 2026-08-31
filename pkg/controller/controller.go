@@ -40,7 +40,6 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
-	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/controller-idioms/adopt"
 	"github.com/authzed/controller-idioms/cachekeys"
@@ -99,7 +98,7 @@ type Controller struct {
 	namespaces  []string
 	client      dynamic.Interface
 	kclient     kubernetes.Interface
-	resources   openapi.OpenAPIResourcesGetter
+	resolver    config.PatchMetaResolver
 	mainHandler handler.Handler
 
 	// config
@@ -109,7 +108,7 @@ type Controller struct {
 	lastConfigHash atomic.Uint64
 }
 
-func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resources openapi.OpenAPIResourcesGetter, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
+func NewController(ctx context.Context, registry *typed.Registry, dclient dynamic.Interface, kclient kubernetes.Interface, resolver config.PatchMetaResolver, configFilePath, baseImage string, broadcaster record.EventBroadcaster, namespaces []string) (*Controller, error) {
 	// If no namespaces are provided, watch all namespaces
 	if len(namespaces) == 0 {
 		namespaces = []string{metav1.NamespaceAll}
@@ -118,7 +117,7 @@ func NewController(ctx context.Context, registry *typed.Registry, dclient dynami
 	c := Controller{
 		client:     dclient,
 		kclient:    kclient,
-		resources:  resources,
+		resolver:   resolver,
 		namespaces: namespaces,
 		baseImage:  baseImage,
 	}
@@ -762,7 +761,7 @@ func (c *Controller) validateConfig(next ...handler.Handler) handler.Handler {
 	return handler.NewTypeHandler(&ValidateConfigHandler{
 		patchStatus: c.PatchStatus,
 		recorder:    c.Recorder,
-		resources:   c.resources,
+		resolver:    c.resolver,
 		next:        handler.Handlers(next).MustOne(),
 	})
 }

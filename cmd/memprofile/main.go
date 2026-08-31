@@ -9,12 +9,13 @@
 //	baseline    process start: runtime, scheme registration, client construction
 //	discovery   REST config + discovery/dynamic/typed clients
 //	controller  controller.NewController() -- informers, handler chain, caches
-//	openapi     Factory.OpenAPISchema() -- parses the cluster's OpenAPI v2 spec
+//	openapi-v3  the group-versions the operator patches, resolved via OpenAPI v3
+//	openapi-v2  the whole cluster's OpenAPI v2 document, which v3 replaced
 //
-// The operator defers the openapi phase until a SpiceDBCluster actually uses a
-// strategic merge patch, so --stage=controller (the default) reflects a normal
-// startup and --stage=openapi measures the cost that deferral avoids. Use
-// --stage=all to see both.
+// The operator resolves no schema until a SpiceDBCluster uses a strategic merge
+// patch, so --stage=controller (the default) reflects a normal startup. The two
+// openapi stages measure what a patch-using cluster pays, under v3 (today) and
+// v2 (before). Use --stage=all for all of them.
 //
 // The number to compare against the container's memory limit is Max RSS, which
 // is the kernel high-water mark the OOM killer actually acts on. HeapAlloc
@@ -23,10 +24,11 @@
 //
 // Usage:
 //
-//	go run ./cmd/memprofile                      # normal startup path
-//	go run ./cmd/memprofile --stage=openapi      # the deferred schema cost
-//	go run ./cmd/memprofile --stage=all          # both, controller first
-//	go run ./cmd/memprofile --profile-dir=/tmp/p # write per-phase heap profiles
+//	go run ./cmd/memprofile                       # normal startup path
+//	go run ./cmd/memprofile --stage=openapi-v3    # today's schema cost
+//	go run ./cmd/memprofile --stage=openapi-v2    # the cost v3 replaced
+//	go run ./cmd/memprofile --stage=all           # all phases, cheapest first
+//	go run ./cmd/memprofile --profile-dir=/tmp/p  # per-phase heap profiles
 //
 // Then, to see what is holding the retained bytes:
 //
@@ -48,9 +50,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/openapi3"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
@@ -58,23 +62,42 @@ import (
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/cmd/run"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 )
 
 // Every stage builds on `discovery`, since the clients are needed throughout.
-// `controller` is the operator's real startup path and deliberately does NOT
-// resolve the OpenAPI schema, because the operator defers that until a cluster
-// actually uses a strategic merge patch. `openapi` forces that resolution so
-// the deferred cost can still be measured; `all` reports both, in that order,
-// so the controller path's RSS is read before the openapi probe inflates it.
+// `controller` is the operator's real startup path and deliberately resolves no
+// schema at all, because the operator defers that until a cluster uses a
+// strategic merge patch. The two openapi stages force a resolution so the
+// deferred cost is measurable and the v2/v3 choice is comparable:
+//
+//	openapi-v3  what the operator resolves today: only the group-versions it
+//	            patches, via config.V3PatchMetaResolver
+//	openapi-v2  what it used to resolve: a description of every resource in the
+//	            cluster, via Factory.OpenAPISchema
+//
+// `all` runs controller, then v3, then v2, in that order, so each phase's RSS
+// is read before the next and larger one inflates it.
 const (
 	stageDiscovery  = "discovery"
-	stageOpenAPI    = "openapi"
+	stageOpenAPIV2  = "openapi-v2"
+	stageOpenAPIV3  = "openapi-v3"
 	stageController = "controller"
 	stageAll        = "all"
 )
 
-var stageOrder = []string{stageDiscovery, stageOpenAPI, stageController, stageAll}
+var stageOrder = []string{stageDiscovery, stageOpenAPIV3, stageOpenAPIV2, stageController, stageAll}
+
+// patchedKinds names one kind per group-version the operator patches, so the v3
+// stage fetches exactly the group-versions a real patch would.
+var patchedKinds = []schema.GroupVersionKind{
+	{Group: "", Version: "v1", Kind: "Service"},
+	{Group: "apps", Version: "v1", Kind: "Deployment"},
+	{Group: "batch", Version: "v1", Kind: "Job"},
+	{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "Role"},
+	{Group: "policy", Version: "v1", Kind: "PodDisruptionBudget"},
+}
 
 type options struct {
 	stage            string
@@ -183,9 +206,14 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 		return nil
 	}
 
+	openAPIV3Client, err := f.OpenAPIV3Client()
+	if err != nil {
+		return err
+	}
+
 	// --- controller: the operator's real startup path ---
-	// The factory is handed over as the lazy openapi.OpenAPIResourcesGetter,
-	// exactly as pkg/cmd/run does, so nothing here resolves the schema.
+	// A v3 resolver is handed over exactly as pkg/cmd/run does, so nothing here
+	// resolves any schema.
 	if o.stage == stageController || o.stage == stageAll {
 		syncCtx, cancel := context.WithTimeout(ctx, o.cacheSyncWait)
 		defer cancel()
@@ -195,7 +223,7 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 			typed.NewRegistry(),
 			dclient,
 			kclient,
-			f,
+			config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client)),
 			"", // no operator config file; the update graph is measured separately
 			"",
 			record.NewBroadcaster(),
@@ -212,8 +240,24 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 		r.snap(stageController)
 	}
 
-	// --- openapi: the cost the operator now defers ---
-	if o.stage == stageOpenAPI || o.stage == stageAll {
+	// --- openapi-v3: the schema cost a patch-using cluster pays today ---
+	if o.stage == stageOpenAPIV3 || o.stage == stageAll {
+		resolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
+		for _, gvk := range patchedKinds {
+			if _, err := resolver.LookupPatchMeta(gvk); err != nil {
+				// A cluster may legitimately lack a group-version (policy/v1 on
+				// very old servers); report and keep going so the rest is still
+				// measured.
+				fmt.Fprintf(os.Stderr, "warning: couldn't resolve %s: %v\n", gvk, err)
+			}
+		}
+		// Retained exactly as Config.PatchMeta retains it for the process life.
+		r.retain(resolver)
+		r.snap(stageOpenAPIV3)
+	}
+
+	// --- openapi-v2: the whole-cluster cost this replaced ---
+	if o.stage == stageOpenAPIV2 || o.stage == stageAll {
 		if o.probeWireSize {
 			size, err := probeOpenAPIWireSize(ctx, restConfig)
 			if err != nil {
@@ -229,7 +273,7 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 		// Keep the result reachable so the snapshot measures what a cluster
 		// using strategic merge patches would retain, not garbage.
 		r.retain(resources)
-		r.snap(stageOpenAPI)
+		r.snap(stageOpenAPIV2)
 	}
 
 	r.report(apiSurface)

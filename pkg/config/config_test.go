@@ -33,10 +33,10 @@ import (
 	"github.com/authzed/spicedb-operator/pkg/updates"
 )
 
-func newFakeResources() StaticResourcesGetter {
-	return StaticResourcesGetter{
+func newFakeResources() PatchMetaResolver {
+	return NewV2PatchMetaResolver(StaticResourcesGetter{
 		Resources: openapitesting.NewFakeResources(filepath.Join("testdata", "swagger.1.26.3.json")),
-	}
+	})
 }
 
 // singleSecretMap wraps a single secret in a map using the given name key.
@@ -2339,7 +2339,7 @@ func TestNewConfig(t *testing.T) {
 				Status: tt.args.status,
 			}
 			if tt.want != nil {
-				tt.want.Resources = resources
+				tt.want.PatchMeta = resources
 			}
 			got, gotWarning, err := NewConfig(cluster, &global, singleSecretMap(tt.args.cluster.SecretRef, tt.args.secret), resources)
 			require.EqualValues(t, errors.NewAggregate(tt.wantErrs), err)
