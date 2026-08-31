@@ -24,6 +24,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -405,20 +406,40 @@ func Provision(name string) (string, func(), error) {
 	return kubeconfig, deprovision, nil
 }
 
-// SnapshotFailHandler dumps cluster state when a test fails
-// It prints SpiceDBClusters, Pods, and Jobs from all namespaces with the prefix
-// "test".
+// SnapshotFailHandler dumps cluster state when a test fails.
+// It saves the resources below, plus container logs, from the per-spec "test"
+// namespaces and the shared database namespaces.
 func SnapshotFailHandler(message string, callerSkip ...int) {
 	defer Fail(message, callerSkip...)
 
 	gvrs := []schema.GroupVersionResource{
 		v1alpha1ClusterGVR,
 		corev1.SchemeGroupVersion.WithResource("pods"),
-		corev1.SchemeGroupVersion.WithResource("jobs"),
+		batchv1.SchemeGroupVersion.WithResource("jobs"),
 		corev1.SchemeGroupVersion.WithResource("secrets"),
+		// Events explain pods that never start -- failed scheduling, image
+		// pulls, or volumes that can't be provisioned -- and PVCs show whether
+		// the requested storage was actually satisfied.
+		corev1.SchemeGroupVersion.WithResource("events"),
+		corev1.SchemeGroupVersion.WithResource("persistentvolumeclaims"),
 	}
 
 	SaveClusterState("./cluster-state/", gvrs)
+}
+
+// dumpNamespacePrefixes selects which namespaces are worth capturing on
+// failure. The database namespaces matter as much as the per-spec ones: a
+// database that never becomes ready fails specs in BeforeEach, and nothing in
+// the test namespaces explains why.
+var dumpNamespacePrefixes = []string{"test", "postgres-", "mysql-", "cockroachdb-"}
+
+func shouldDumpNamespace(name string) bool {
+	for _, prefix := range dumpNamespacePrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // SaveClusterState saves the resources defined by `gvrs` to the specified directory.
@@ -441,9 +462,11 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 	namespaces, err := k.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		GinkgoWriter.Println("error fetching namespaces", err)
+		// Return since we can make no further assertions here
+		return
 	}
 	for _, n := range namespaces.Items {
-		if !strings.HasPrefix(n.Name, "test") {
+		if !shouldDumpNamespace(n.Name) {
 			continue
 		}
 		GinkgoWriter.Println("dumping namespace", n.Name)
@@ -465,6 +488,7 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 			objs, err := c.Resource(gvr).Namespace(n.Name).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				GinkgoWriter.Println("error fetching", gvr.Resource, "from namespace", n.Name, err)
+				continue
 			}
 			for _, item := range objs.Items {
 				cluster, err := yaml.Marshal(item)
@@ -476,6 +500,60 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 				if err != nil {
 					GinkgoWriter.Println("error writing", gvr.Resource, item.GetName(), item.GetNamespace(), err)
 					continue
+				}
+			}
+		}
+
+		savePodLogs(ctx, k, namespacePath, n.Name)
+	}
+}
+
+// savePodLogs writes the container logs for every pod in a namespace. Object
+// YAML shows that a container is running; only its logs show why a process
+// inside it never started listening.
+func savePodLogs(ctx context.Context, k kubernetes.Interface, namespacePath, namespace string) {
+	pods, err := k.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		GinkgoWriter.Println("error listing pods for logs in namespace", namespace, err)
+		return
+	}
+
+	logPath := filepath.Join(namespacePath, "logs")
+	if err := os.MkdirAll(logPath, 0o700); err != nil {
+		GinkgoWriter.Println("error making log directory for namespace", namespace, err)
+		return
+	}
+
+	for _, pod := range pods.Items {
+		containers := make([]corev1.Container, 0, len(pod.Spec.InitContainers)+len(pod.Spec.Containers))
+		containers = append(containers, pod.Spec.InitContainers...)
+		containers = append(containers, pod.Spec.Containers...)
+
+		for _, container := range containers {
+			// The previous instance's logs are the useful ones for a container
+			// that is crash-looping, since the current instance may have only
+			// just started.
+			for _, previous := range []bool{false, true} {
+				name := pod.Name + "-" + container.Name + ".log"
+				if previous {
+					name = pod.Name + "-" + container.Name + "-previous.log"
+				}
+
+				logs, err := k.CoreV1().Pods(namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+					Container: container.Name,
+					Previous:  previous,
+				}).DoRaw(ctx)
+				if err != nil {
+					// Having no previous instance is the normal case, so only
+					// report a failure to read the current logs.
+					if !previous {
+						GinkgoWriter.Println("error fetching logs for", pod.Name, container.Name, err)
+					}
+					continue
+				}
+
+				if err := os.WriteFile(filepath.Join(logPath, name), logs, 0o700); err != nil {
+					GinkgoWriter.Println("error writing logs for", pod.Name, container.Name, err)
 				}
 			}
 		}
