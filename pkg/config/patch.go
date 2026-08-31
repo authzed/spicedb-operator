@@ -18,17 +18,6 @@ import (
 
 const wildcard = "*"
 
-// StaticResourcesGetter adapts an already-resolved openapi.Resources to the
-// lazy openapi.OpenAPIResourcesGetter interface, for callers that have the
-// schema in hand and don't need it loaded on demand.
-type StaticResourcesGetter struct {
-	Resources openapi.Resources
-}
-
-func (s StaticResourcesGetter) OpenAPISchema() (openapi.Resources, error) {
-	return s.Resources, nil
-}
-
 // ApplyPatches applies a set of patches to an object.
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
