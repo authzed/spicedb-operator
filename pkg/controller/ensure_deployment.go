@@ -140,16 +140,18 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 		}
 	}
 
-	// wait for deployment to be available
-	if cachedDeployment.Status.AvailableReplicas != config.Replicas ||
-		cachedDeployment.Status.ReadyReplicas != config.Replicas ||
-		cachedDeployment.Status.UpdatedReplicas != config.Replicas ||
-		cachedDeployment.Status.ObservedGeneration != cachedDeployment.Generation {
+	// wait for deployment to be available. Measure against the Deployment's own
+	// spec.replicas rather than config.replicas: when replicas are managed
+	// externally (an autoscaler scaling the Deployment after a spec.patches
+	// entry removes /spec/replicas) the operator no longer sets the field, and
+	// comparing to config.replicas would report a rollout that never completes.
+	desiredReplicas := desiredDeploymentReplicas(cachedDeployment, config.Replicas)
+	if !deploymentRolloutComplete(cachedDeployment, desiredReplicas) {
 		currentStatus.SetStatusCondition(v1alpha1.NewRollingCondition(
 			fmt.Sprintf("Waiting for deployment to be available: %d/%d available, %d/%d ready, %d/%d updated, %d/%d generation.",
-				cachedDeployment.Status.AvailableReplicas, config.Replicas,
-				cachedDeployment.Status.ReadyReplicas, config.Replicas,
-				cachedDeployment.Status.UpdatedReplicas, config.Replicas,
+				cachedDeployment.Status.AvailableReplicas, desiredReplicas,
+				cachedDeployment.Status.ReadyReplicas, desiredReplicas,
+				cachedDeployment.Status.UpdatedReplicas, desiredReplicas,
 				cachedDeployment.Status.ObservedGeneration, cachedDeployment.Generation,
 			)))
 		if err := m.patchStatus(ctx, currentStatus); err != nil {
@@ -172,4 +174,30 @@ func (m *DeploymentHandler) Handle(ctx context.Context) {
 	}
 
 	m.next.Handle(ctx)
+}
+
+// desiredDeploymentReplicas returns the replica count dep is being driven to.
+// It is the live Deployment's spec.replicas when set: the operator omits that
+// field from its server-side apply when replicas are managed externally (for
+// example an autoscaler scaling the Deployment after a spec.patches entry
+// removes /spec/replicas), so the live value, rather than the operator's
+// configured count, is what a rollout must be measured against. Falls back to
+// configured when the live field is unset.
+func desiredDeploymentReplicas(dep *appsv1.Deployment, configured int32) int32 {
+	if dep.Spec.Replicas != nil {
+		return *dep.Spec.Replicas
+	}
+	return configured
+}
+
+// deploymentRolloutComplete reports whether dep has finished rolling out to
+// desired replicas, using the same signals as `kubectl rollout status`: the
+// latest generation has been observed, every desired replica has been updated
+// to the current pod template and is available, and no replicas from a
+// previous revision remain.
+func deploymentRolloutComplete(dep *appsv1.Deployment, desired int32) bool {
+	return dep.Status.ObservedGeneration == dep.Generation &&
+		dep.Status.UpdatedReplicas == desired &&
+		dep.Status.Replicas == dep.Status.UpdatedReplicas &&
+		dep.Status.AvailableReplicas == dep.Status.UpdatedReplicas
 }
