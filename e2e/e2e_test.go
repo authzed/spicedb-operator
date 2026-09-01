@@ -24,6 +24,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 	"github.com/spf13/afero"
 	"go.uber.org/zap"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -414,7 +415,7 @@ func SnapshotFailHandler(message string, callerSkip ...int) {
 	gvrs := []schema.GroupVersionResource{
 		v1alpha1ClusterGVR,
 		corev1.SchemeGroupVersion.WithResource("pods"),
-		corev1.SchemeGroupVersion.WithResource("jobs"),
+		batchv1.SchemeGroupVersion.WithResource("jobs"),
 		corev1.SchemeGroupVersion.WithResource("secrets"),
 	}
 
@@ -465,6 +466,7 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 			objs, err := c.Resource(gvr).Namespace(n.Name).List(ctx, metav1.ListOptions{})
 			if err != nil {
 				GinkgoWriter.Println("error fetching", gvr.Resource, "from namespace", n.Name, err)
+				continue
 			}
 			for _, item := range objs.Items {
 				cluster, err := yaml.Marshal(item)
