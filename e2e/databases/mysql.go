@@ -121,8 +121,16 @@ func (p *MySQLProvider) running(ctx context.Context) error {
 		return err
 	}
 
-	if _, err := p.kclient.AppsV1().StatefulSets(p.namespace).Get(ctx, "mysql", metav1.GetOptions{}); err != nil {
+	statefulSet, err := p.kclient.AppsV1().StatefulSets(p.namespace).Get(ctx, "mysql", metav1.GetOptions{})
+	if err != nil {
 		return err
+	}
+
+	// The StatefulSet existing says nothing about the database accepting
+	// connections. Waiting on a ready replica means a pod that never starts
+	// surfaces here, instead of 5 minutes later as a connection refused.
+	if statefulSet.Status.ReadyReplicas < 1 {
+		return fmt.Errorf("statefulset %s/mysql has no ready replicas", p.namespace)
 	}
 
 	return nil

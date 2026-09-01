@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -491,7 +492,7 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 				continue
 			}
 			for _, item := range objs.Items {
-				cluster, err := yaml.Marshal(item)
+				cluster, err := yaml.Marshal(item.Object)
 				if err != nil {
 					GinkgoWriter.Println("error fetching", gvr.Resource, item.GetName(), item.GetNamespace(), err)
 					continue
@@ -506,6 +507,78 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 
 		savePodLogs(ctx, k, namespacePath, n.Name)
 	}
+}
+
+// unreadyLogTailLines is how much of a failing container's log to inline in the
+// test output: enough to carry a startup error, short enough not to bury the
+// rest of the failure.
+const unreadyLogTailLines = 40
+
+// reportUnreadyContainers prints why a container isn't ready, and the tail of
+// its log, to GinkgoWriter.
+//
+// The full logs are written to disk next to this, but those only reach someone
+// who downloads the CI artifact. A container that never starts is usually the
+// entire explanation for a failure, so it belongs in the test output itself
+// where it shows up in the job log.
+func reportUnreadyContainers(ctx context.Context, k kubernetes.Interface, pod *corev1.Pod) {
+	statuses := make([]corev1.ContainerStatus, 0, len(pod.Status.InitContainerStatuses)+len(pod.Status.ContainerStatuses))
+	statuses = append(statuses, pod.Status.InitContainerStatuses...)
+	statuses = append(statuses, pod.Status.ContainerStatuses...)
+
+	for _, status := range statuses {
+		if status.Ready {
+			continue
+		}
+		// A container that ran to completion is never Ready, but that is the
+		// expected end state for Job pods (cockroach's cluster-init) rather
+		// than something worth reporting.
+		if t := status.State.Terminated; t != nil && t.ExitCode == 0 {
+			continue
+		}
+
+		GinkgoWriter.Printf("pod %s/%s container %s NOT READY (restarts: %d)\n",
+			pod.Namespace, pod.Name, status.Name, status.RestartCount)
+		if w := status.State.Waiting; w != nil {
+			GinkgoWriter.Printf("  waiting: %s: %s\n", w.Reason, w.Message)
+		}
+		if t := status.State.Terminated; t != nil {
+			GinkgoWriter.Printf("  terminated: %s (exit %d): %s\n", t.Reason, t.ExitCode, t.Message)
+		}
+		if t := status.LastTerminationState.Terminated; t != nil {
+			GinkgoWriter.Printf("  previously terminated: %s (exit %d): %s\n", t.Reason, t.ExitCode, t.Message)
+		}
+
+		// Prefer the current instance, but a container that has just been
+		// restarted may not have written anything yet, so fall back to the
+		// previous one.
+		for _, previous := range []bool{false, true} {
+			tail := int64(unreadyLogTailLines)
+			logs, err := k.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+				Container: status.Name,
+				Previous:  previous,
+				TailLines: &tail,
+			}).DoRaw(ctx)
+			if err != nil || len(bytes.TrimSpace(logs)) == 0 {
+				continue
+			}
+
+			label := "last " + strconv.Itoa(unreadyLogTailLines) + " log lines"
+			if previous {
+				label = "last " + strconv.Itoa(unreadyLogTailLines) + " log lines (previous instance)"
+			}
+			GinkgoWriter.Printf("  %s:\n%s\n", label, indentLines(string(logs), "    "))
+			break
+		}
+	}
+}
+
+func indentLines(s, indent string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = indent + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 // savePodLogs writes the container logs for every pod in a namespace. Object
@@ -525,6 +598,8 @@ func savePodLogs(ctx context.Context, k kubernetes.Interface, namespacePath, nam
 	}
 
 	for _, pod := range pods.Items {
+		reportUnreadyContainers(ctx, k, &pod)
+
 		containers := make([]corev1.Container, 0, len(pod.Spec.InitContainers)+len(pod.Spec.Containers))
 		containers = append(containers, pod.Spec.InitContainers...)
 		containers = append(containers, pod.Spec.Containers...)
