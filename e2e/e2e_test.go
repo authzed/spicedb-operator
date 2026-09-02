@@ -406,9 +406,13 @@ func Provision(name string) (string, func(), error) {
 	return kubeconfig, deprovision, nil
 }
 
-// SnapshotFailHandler dumps cluster state when a test fails
-// It prints SpiceDBClusters, Pods, and Jobs from all namespaces with the prefix
-// "test".
+// dumpedNamespacePrefixes selects the namespaces saved by SaveClusterState:
+// the per-spec test namespaces and the shared database namespaces.
+var dumpedNamespacePrefixes = []string{"test", "postgres-", "mysql-", "cockroachdb-"}
+
+// SnapshotFailHandler dumps cluster state when a test fails.
+// It saves SpiceDBClusters, Pods, Jobs, and Secrets, along with pod logs and
+// events, from the test and database namespaces.
 func SnapshotFailHandler(message string, callerSkip ...int) {
 	defer Fail(message, callerSkip...)
 
@@ -444,7 +448,7 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 		GinkgoWriter.Println("error fetching namespaces", err)
 	}
 	for _, n := range namespaces.Items {
-		if !strings.HasPrefix(n.Name, "test") {
+		if !isDumpedNamespace(n.Name) {
 			continue
 		}
 		GinkgoWriter.Println("dumping namespace", n.Name)
@@ -481,5 +485,84 @@ func SaveClusterState(directory string, gvrs []schema.GroupVersionResource) {
 				}
 			}
 		}
+
+		savePodLogs(ctx, k, n.Name, filepath.Join(namespacePath, "logs"))
+		saveEvents(ctx, k, n.Name, filepath.Join(namespacePath, "events.yaml"))
+	}
+}
+
+func isDumpedNamespace(name string) bool {
+	for _, prefix := range dumpedNamespacePrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// savePodLogs writes the current log of every container in the namespace
+// to `<pod>-<container>.log`. If a container has restarted, the log of the
+// previous instance is written to `<pod>-<container>.previous.log`, which
+// is where a crash-looping container's error ends up.
+func savePodLogs(ctx context.Context, k kubernetes.Interface, namespace, directory string) {
+	pods, err := k.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		GinkgoWriter.Println("error fetching pods for logs from namespace", namespace, err)
+		return
+	}
+	if len(pods.Items) == 0 {
+		return
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		GinkgoWriter.Println("error making directory for logs", namespace, err)
+		return
+	}
+
+	for _, pod := range pods.Items {
+		statuses := make([]corev1.ContainerStatus, 0, len(pod.Status.InitContainerStatuses)+len(pod.Status.ContainerStatuses))
+		statuses = append(statuses, pod.Status.InitContainerStatuses...)
+		statuses = append(statuses, pod.Status.ContainerStatuses...)
+		for _, status := range statuses {
+			name := pod.Name + "-" + status.Name
+			savePodLog(ctx, k, namespace, pod.Name, status.Name, false, filepath.Join(directory, name+".log"))
+			if status.RestartCount > 0 {
+				savePodLog(ctx, k, namespace, pod.Name, status.Name, true, filepath.Join(directory, name+".previous.log"))
+			}
+		}
+	}
+}
+
+func savePodLog(ctx context.Context, k kubernetes.Interface, namespace, pod, container string, previous bool, path string) {
+	logs, err := k.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{
+		Container: container,
+		Previous:  previous,
+	}).DoRaw(ctx)
+	if err != nil {
+		GinkgoWriter.Println("error fetching logs for", namespace, pod, container, "previous:", previous, err)
+		return
+	}
+	if err := os.WriteFile(path, logs, 0o600); err != nil {
+		GinkgoWriter.Println("error writing logs for", namespace, pod, container, err)
+	}
+}
+
+// saveEvents writes the namespace's events, which carry scheduling and image
+// pull failures that don't show up in any object's status.
+func saveEvents(ctx context.Context, k kubernetes.Interface, namespace, path string) {
+	events, err := k.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		GinkgoWriter.Println("error fetching events from namespace", namespace, err)
+		return
+	}
+	if len(events.Items) == 0 {
+		return
+	}
+	out, err := yaml.Marshal(events.Items)
+	if err != nil {
+		GinkgoWriter.Println("error marshalling events from namespace", namespace, err)
+		return
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		GinkgoWriter.Println("error writing events from namespace", namespace, err)
 	}
 }
