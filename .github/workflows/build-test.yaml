@@ -101,13 +101,17 @@ jobs:
       needs.paths-filter.outputs.codechange == 'true' ||  needs.paths-filter.outputs.graphchange == 'true'
     name: "E2E Tests"
     runs-on: "depot-ubuntu-24.04-8"
+    env:
+      # the bot PAT is what allows pushing the validated graph back to the
+      # branch; it is unavailable to pull requests from forks
+      CAN_PUSH_GRAPH: "${{ secrets.AUTHZED_BOT_PAT != '' }}"
     steps:
       - uses: "actions/checkout@v6"
         if: |
           needs.paths-filter.outputs.graphchange == 'true'
         with:
           submodules: true
-          token: "${{ secrets.AUTHZED_BOT_PAT }}"
+          token: "${{ secrets.AUTHZED_BOT_PAT || github.token }}"
           repository: "${{ github.event.pull_request.head.repo.full_name }}"
           ref: "${{ github.event.pull_request.head.ref }}"
       - uses: "actions/checkout@v6"
@@ -140,7 +144,7 @@ jobs:
       - name: "Commit validated update graph"
         uses: "EndBug/add-and-commit@v9"
         if: |
-          steps.verify-changed-graph.outputs.files_changed == 'true'
+          env.CAN_PUSH_GRAPH == 'true' && steps.verify-changed-graph.outputs.files_changed == 'true'
         with:
           committer_name: "GitHub Actions"
           committer_email: "41898282+github-actions[bot]@users.noreply.github.com"
