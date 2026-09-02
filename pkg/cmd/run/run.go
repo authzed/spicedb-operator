@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/openapi3"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -28,6 +29,7 @@ import (
 	"github.com/authzed/controller-idioms/typed"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
+	"github.com/authzed/spicedb-operator/pkg/config"
 	"github.com/authzed/spicedb-operator/pkg/controller"
 	"github.com/authzed/spicedb-operator/pkg/crds"
 )
@@ -132,11 +134,6 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		}
 	}
 
-	resources, err := f.OpenAPISchema()
-	if err != nil {
-		return err
-	}
-
 	registry := typed.NewRegistry()
 	eventSink := &typedcorev1.EventSinkImpl{Interface: kclient.CoreV1().Events("")}
 	broadcaster := record.NewBroadcaster()
@@ -155,7 +152,16 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 		controllers = append(controllers, staticSpiceDBController)
 	}
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, resources, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
+	// Strategic merge patches need the apiserver's schema to find merge keys.
+	// We use the openAPIv3 client to fetch only those resources that are necessary
+	// for the patches.
+	openAPIV3Client, err := f.OpenAPIV3Client()
+	if err != nil {
+		return err
+	}
+	patchMetaResolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
+
+	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}

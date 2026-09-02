@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applymetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/kubectl/pkg/util/openapi"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
 )
@@ -22,7 +21,12 @@ const wildcard = "*"
 // It returns the number of patches applied, a bool indicating whether there
 // were matching patches and the input differed from the output, and any errors
 // that occurred.
-func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resources openapi.Resources) (int, bool, error) {
+//
+// resolver is only consulted for strategic merge patches, which need the
+// apiserver's schema to determine merge keys. json6902 patches and clusters
+// with no patches never touch it, so it is passed as a resolver and consulted
+// on demand rather than resolved eagerly at operator startup.
+func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resolver PatchMetaResolver) (int, bool, error) {
 	// marshal object to json for patching
 	encoded, err := json.Marshal(object)
 	if err != nil {
@@ -74,8 +78,15 @@ func ApplyPatches[K any](object, out K, patches []v1alpha1.Patch, resources open
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue
 				}
-				gvkSchema := resources.LookupResource(gv.WithKind(*typeMeta.Kind))
-				patched, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(encoded, jsonPatch, strategicpatch.NewPatchMetaFromOpenAPI(gvkSchema))
+				// Resolved here, at the only point that needs it, and with the
+				// GVK in hand -- which is what lets the v3 resolver fetch a
+				// single group-version instead of the whole cluster's schema.
+				lookupPatchMeta, err := resolver.LookupPatchMeta(gv.WithKind(*typeMeta.Kind))
+				if err != nil {
+					errs = append(errs, fmt.Errorf("error applying patch %d, couldn't resolve patch metadata: %w", i, err))
+					continue
+				}
+				patched, err := strategicpatch.StrategicMergePatchUsingLookupPatchMeta(encoded, jsonPatch, lookupPatchMeta)
 				if err != nil {
 					errs = append(errs, fmt.Errorf("error applying patch %d, to object: %w", i, err))
 					continue

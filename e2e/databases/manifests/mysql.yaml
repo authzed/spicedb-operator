@@ -16,12 +16,27 @@ spec:
       containers:
         - image: mysql:oracle # Support for arm64 and amd64
           name: mysql
+          # InnoDB's default direct/async I/O fails with EIO against the
+          # local-path volume, which lives on the kind node's overlayfs:
+          # initialization dies on the first sized write to ibdata1, leaving a
+          # half-written data directory that mysqld then refuses to reuse, so
+          # the pod crash-loops forever. Plain buffered I/O avoids it.
+          args:
+            - "--innodb-use-native-aio=0"
+            - "--innodb-flush-method=fsync"
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: password
           ports:
             - containerPort: 3306
               name: mysql
+          # Catch container failures early
+          readinessProbe:
+            tcpSocket:
+              port: mysql
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
           volumeMounts:
             - name: mysql-disk
               mountPath: /var/lib/mysql
@@ -32,7 +47,10 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 100Mi
+            # A freshly initialized datadir is ~105MiB, so this leaves headroom.
+            # Note the provisioner does not enforce this, so it is a statement
+            # of intent rather than a limit.
+            storage: 500Mi
 ---
 apiVersion: v1
 kind: Service
