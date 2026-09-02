@@ -76,6 +76,7 @@ func TestV3PatchMetaResolverLookup(t *testing.T) {
 
 	for _, gvk := range patchedKinds {
 		t.Run(gvk.Kind, func(t *testing.T) {
+			t.Parallel()
 			meta, err := resolver.LookupPatchMeta(gvk)
 			require.NoError(t, err)
 			require.NotNil(t, meta)

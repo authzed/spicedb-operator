@@ -112,10 +112,10 @@ func AssertHealthySpiceDBClusterFunc(ctx context.Context, namespace string, kcli
 	}
 }
 
-// AssertDeploymentPatchedFunc asserts that a strategic merge patch actually
+// AssertDeploymentEnvVar asserts that a strategic merge patch actually
 // reached the SpiceDB deployment, rather than merely failing to error.
 // The container check is the primary part of the assertion.
-func AssertDeploymentPatchedFunc(ctx context.Context, namespace string, kclient kubernetes.Interface) func(owner string, labels map[string]string, envName, envValue string) {
+func AssertDeploymentEnvVar(ctx context.Context, namespace string, kclient kubernetes.Interface) func(owner string, labels map[string]string, envName, envValue string) {
 	return func(owner string, labels map[string]string, envName, envValue string) {
 		ctx, cancel := context.WithCancel(ctx)
 		DeferCleanup(cancel)

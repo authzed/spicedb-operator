@@ -432,7 +432,7 @@ func SnapshotFailHandler(message string, callerSkip ...int) {
 // failure. The database namespaces matter as much as the per-spec ones: a
 // database that never becomes ready fails specs in BeforeEach, and nothing in
 // the test namespaces explains why.
-var dumpNamespacePrefixes = []string{"test", "postgres-", "mysql-", "cockroachdb-"}
+var dumpNamespacePrefixes = []string{"test", "postgres", "mysql", "cockroachdb"}
 
 func shouldDumpNamespace(name string) bool {
 	for _, prefix := range dumpNamespacePrefixes {
