@@ -164,6 +164,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -251,6 +252,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -336,6 +338,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -487,6 +490,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -555,6 +559,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -642,6 +647,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -729,6 +735,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -820,6 +827,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -914,6 +922,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1003,6 +1012,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1092,6 +1102,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1183,6 +1194,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1277,6 +1289,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1368,6 +1381,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1461,6 +1475,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1552,6 +1567,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1642,6 +1658,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1733,6 +1750,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1829,6 +1847,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -1929,6 +1948,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
@@ -2019,6 +2039,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{ //nolint:gosec  // this is a test
@@ -2110,6 +2131,7 @@ func TestNewConfig(t *testing.T) {
 					DatastoreURIRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					PresharedKeyRef:              ResolvedCredentialRef{SecretName: "test-secret", Key: "preshared_key"},
 					MigrationSecretsRef:          ResolvedCredentialRef{SecretName: "test-secret", Key: "migration_secrets"},
+					MigrationDatastoreURIRef:     ResolvedCredentialRef{SecretName: "test-secret", Key: "datastore_uri"},
 					ProjectLabels:                true,
 					ProjectAnnotations:           true,
 					Passthrough: map[string]string{
