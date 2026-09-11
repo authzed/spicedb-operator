@@ -64,6 +64,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		AssertMigrationJobCleanup      func(owner string)
 		AssertServiceAccount           func(name string, annotations map[string]string, owner string)
 		AssertPDB                      func(name, owner string)
+		AssertDeploymentPatched        func(owner string, labels map[string]string, envName, envValue string)
 		AssertHealthySpiceDBCluster    func(image, owner string, logMatcher types.GomegaMatcher)
 		AssertDependentResourceCleanup func(owner, secretName string)
 		AssertMigrationsCompleted      func(image, migration, phase, name, datastoreEngine string)
@@ -129,6 +130,7 @@ var _ = Describe("SpiceDBClusters", func() {
 		AssertMigrationJobCleanup = AssertMigrationJobCleanupFunc(ctx, testNamespace, kclient)
 		AssertServiceAccount = AssertServiceAccountFunc(ctx, testNamespace, kclient)
 		AssertPDB = AssertPDBFunc(ctx, testNamespace, kclient)
+		AssertDeploymentPatched = AssertDeploymentEnvVar(ctx, testNamespace, kclient)
 		AssertHealthySpiceDBCluster = AssertHealthySpiceDBClusterFunc(ctx, testNamespace, kclient)
 		AssertDependentResourceCleanup = AssertDependentResourceCleanupFunc(ctx, testNamespace, kclient)
 		AssertMigrationsCompleted = AssertMigrationsCompletedFunc(ctx, testNamespace, kclient, client)
@@ -351,6 +353,19 @@ var _ = Describe("SpiceDBClusters", func() {
 								"labels": {
 								  "added": "via-patch"
 								}
+							  },
+							  "spec": {
+								"template": {
+								  "spec": {
+									"containers": [{
+									  "name": "spicedb",
+									  "env": [{
+										"name": "ADDED_VIA_PATCH",
+										"value": "true"
+									  }]
+									}]
+								  }
+								}
 							  }
 							}`),
 						}}
@@ -380,6 +395,11 @@ var _ = Describe("SpiceDBClusters", func() {
 						By("creating the serviceaccount")
 						AssertServiceAccount("spicedb-non-default", map[string]string{"authzed.com/e2e": "true"}, cluster.Name)
 						AssertPDB(cluster.Name+"-spicedb", cluster.Name)
+
+						By("applying the strategic merge patch to the deployment")
+						AssertDeploymentPatched(cluster.Name,
+							map[string]string{"added": "via-patch"},
+							"ADDED_VIA_PATCH", "true")
 					})
 				})
 			})
