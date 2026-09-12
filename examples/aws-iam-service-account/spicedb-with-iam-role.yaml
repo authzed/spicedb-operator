@@ -1,0 +1,121 @@
+# Example: SpiceDB Cluster with AWS IAM Roles for Service Accounts (IRSA)
+#
+# This example demonstrates how to configure a SpiceDBCluster to use AWS IAM roles
+# for service accounts, enabling SpiceDB pods to authenticate to RDS using IAM
+# instead of storing database passwords.
+#
+# Prerequisites:
+# 1. EKS cluster with OIDC provider enabled
+# 2. IAM role created with trust policy for the service account
+# 3. RDS instance with IAM authentication enabled
+# 4. IAM policy granting rds-db:connect permission
+#
+# For more information about IRSA, see:
+# https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html
+
+---
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-with-irsa
+  namespace: default
+spec:
+  config:
+    # Configure the datastore (this example uses RDS PostgreSQL with IAM auth)
+    datastoreEngine: postgres
+
+    # REQUIRED for RDS IAM Authentication: Enable the AWS IAM credentials provider
+    # This tells SpiceDB to use IAM authentication instead of password-based auth
+    datastoreCredentialsProviderName: "aws-iam"
+
+    # The extraServiceAccountAnnotations field allows you to add annotations
+    # to the ServiceAccount created by the operator for SpiceDB pods.
+    # This annotation is essential for AWS IAM Roles for Service Accounts (IRSA).
+    extraServiceAccountAnnotations:
+      # This annotation tells EKS to associate the service account with an IAM role
+      # Replace the role ARN with your actual IAM role ARN
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/spicedb-rds-access-role"
+
+    # Optional: You can also add custom labels to the pods
+    extraPodLabels:
+      app.kubernetes.io/component: "authorization"
+      environment: "production"
+
+    # Optional: You can add annotations to the pods as well
+    extraPodAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9090"
+
+  secretName: spicedb-config
+
+---
+# Secret for SpiceDB configuration
+# When using IRSA with RDS IAM authentication, you don't need to store passwords
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spicedb-config
+  namespace: default
+stringData:
+  # Required: preshared key for SpiceDB API authentication
+  preshared_key: "your-very-secret-preshared-key"
+
+  # When using RDS with IAM authentication:
+  # - No password is needed in the URI
+  # - The database user must be configured for IAM auth in RDS
+  # - sslmode=require is recommended for security
+  datastore_uri: "postgresql://spicedb_user@your-rds-endpoint.region.rds.amazonaws.com:5432/spicedb?sslmode=require"
+
+---
+# Example: Using a custom service account name
+# Use this if you need to control the service account name for IAM trust policy matching
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-custom-sa
+  namespace: default
+spec:
+  config:
+    datastoreEngine: postgres
+    datastoreCredentialsProviderName: "aws-iam"
+
+    # Custom service account name - must match your IAM trust policy
+    # Trust policy should reference: system:serviceaccount:default:spicedb-custom-service-account
+    serviceAccountName: "spicedb-custom-service-account"
+
+    extraServiceAccountAnnotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/spicedb-rds-access-role"
+
+  secretName: spicedb-config
+
+---
+# Example: SpiceDB with IRSA but standard password authentication
+# Use this if you want IRSA for other AWS services but not for RDS auth
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: spicedb-irsa-no-rds-iam
+  namespace: default
+spec:
+  config:
+    datastoreEngine: postgres
+    # Note: datastoreCredentialsProviderName is NOT set, so password auth is used
+
+    extraServiceAccountAnnotations:
+      # The IAM role could grant access to other AWS services
+      # (e.g., for sidecars or init containers that need AWS access)
+      eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/spicedb-general-aws-role"
+
+  secretName: spicedb-config-with-password
+
+---
+# Secret with password-based authentication (for the non-IAM-auth example)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spicedb-config-with-password
+  namespace: default
+stringData:
+  preshared_key: "your-very-secret-preshared-key"
+  # Standard password-based connection URI
+  datastore_uri: "postgresql://spicedb_user:your-password@your-rds-endpoint.region.rds.amazonaws.com:5432/spicedb?sslmode=require"
