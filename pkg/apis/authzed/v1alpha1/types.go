@@ -124,6 +124,13 @@ type ClusterCredentials struct {
 	// MigrationSecrets configures the source for the migration secrets.
 	// +optional
 	MigrationSecrets *CredentialRef `json:"migrationSecrets,omitempty"`
+
+	// MigrationDatastoreURI configures a separate connection string for migrations.
+	// When set, migration jobs use this URI instead of DatastoreURI, enabling
+	// least-privilege credentials for the application while using elevated
+	// credentials only for migrations.
+	// +optional
+	MigrationDatastoreURI *CredentialRef `json:"migrationDatastoreURI,omitempty"`
 }
 
 // CredentialRef describes where to read a single credential value.
