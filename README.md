@@ -230,3 +230,18 @@ spec:
   config:
     image: ghcr.io/authzed/spicedb:v1.11.0-prerelease
 ```
+
+### The Update Graph
+
+Update channels are defined by an update graph, which the operator reads from the file passed to its `--config` flag.
+In the [default deployment](config/operator.yaml), this file is provided by the `update-graph` ConfigMap, which is generated from [update-graph.yaml](config/update-graph.yaml).
+The operator watches this file and picks up changes without a restart, and new releases of the operator ship with an updated graph that includes new SpiceDB versions.
+
+Each channel in the graph lists the SpiceDB versions available for a datastore engine and the edges between versions that are known to be safe to update between, including any required migrations and phased rollouts.
+When updating a cluster, the operator walks these edges from the current version to the target version instead of jumping directly, so that required intermediate steps are not skipped.
+
+The top-level `imageName` field in the graph defines the default image repository (`ghcr.io/authzed/spicedb`) that the tag or digest for each version is appended to; it is not a way to pin a specific version.
+To pull SpiceDB from a different registry (such as an internal mirror) while still following update channels, set `.spec.baseImage` on the `SpiceDBCluster`, or run the operator with the `--base-image` flag to change the default for all clusters, rather than editing the graph.
+Setting `.spec.config.image` to a specific tag or digest instead opts the cluster out of update channels entirely, as described in [Force Override](#force-override).
+
+If more than one of these is set, the operator picks the image repository in this order: `.spec.config.image`, then `.spec.baseImage`, then the `--base-image` flag, then `imageName` from the update graph.
