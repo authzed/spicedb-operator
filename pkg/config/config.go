@@ -222,6 +222,10 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 		}
 	}
 
+	if len(cluster.Name) > metadata.MaxGeneratedNameLength {
+		errs = append(errs, fmt.Errorf("metadata.name must be no more than %d characters, but is %d; it is recorded verbatim in the %q label of every dependent object", metadata.MaxGeneratedNameLength, len(cluster.Name), metadata.OwnerLabelKey))
+	}
+
 	spiceConfig := SpiceConfig{
 		Name:                         cluster.Name,
 		Namespace:                    cluster.Namespace,
@@ -803,7 +807,7 @@ func (c *Config) jobName(migrationHash string) string {
 	if len(migrationHash) < 15 {
 		size = len(migrationHash)
 	}
-	return fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:size])
+	return metadata.BoundedName(fmt.Sprintf("%s-migrate-%s", c.Name, migrationHash[:size]), metadata.MaxGeneratedNameLength)
 }
 
 func (c *Config) unpatchedMigrationJob(migrationHash string) *applybatchv1.JobApplyConfiguration {
@@ -1170,12 +1174,12 @@ func toEnvVarName(prefix string, key string) string {
 
 // deploymentName returns the name of the unpatchedDeployment given a SpiceDBCluster name
 func deploymentName(name string) string {
-	return fmt.Sprintf("%s-spicedb", name)
+	return metadata.BoundedName(fmt.Sprintf("%s-spicedb", name), metadata.MaxGeneratedNameLength)
 }
 
 // pdbName returns the name of the unpatchedPDB given a SpiceDBCluster name
 func pdbName(name string) string {
-	return fmt.Sprintf("%s-spicedb", name)
+	return metadata.BoundedName(fmt.Sprintf("%s-spicedb", name), metadata.MaxGeneratedNameLength)
 }
 
 // parseIntOrStringValue parses a string as an integer or, if that fails,
