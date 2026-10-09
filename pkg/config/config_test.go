@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	applyappsv1 "k8s.io/client-go/applyconfigurations/apps/v1"
 	applybatchv1 "k8s.io/client-go/applyconfigurations/batch/v1"
@@ -4142,4 +4143,54 @@ func TestRawConfigPop(t *testing.T) {
 			require.False(t, exists, "key should be removed after Pop")
 		})
 	}
+}
+
+func TestGeneratedNameLengths(t *testing.T) {
+	resources := newTestPatchMetaResolver()
+	secret := &corev1.Secret{Data: map[string][]byte{
+		"datastore_uri": []byte("uri"),
+		"preshared_key": []byte("psk"),
+	}}
+	newCluster := func(name string) *v1alpha1.SpiceDBCluster {
+		return &v1alpha1.SpiceDBCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: "test",
+				UID:       types.UID("1"),
+			},
+			Spec: v1alpha1.ClusterSpec{
+				SecretRef: "test-secret",
+				Config:    json.RawMessage(`{"datastoreEngine": "cockroachdb"}`),
+			},
+		}
+	}
+
+	t.Run("names derived from a max-length cluster name stay valid", func(t *testing.T) {
+		cluster := newCluster(strings.Repeat("a", metadata.MaxGeneratedNameLength))
+		got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
+		require.NoError(t, err)
+
+		for _, name := range []string{
+			deploymentName(cluster.Name),
+			pdbName(cluster.Name),
+			got.jobName("0123456789abcdef0123456789abcdef"),
+		} {
+			require.LessOrEqual(t, len(name), metadata.MaxGeneratedNameLength, "generated name %q is too long", name)
+			require.Empty(t, validation.IsDNS1123Subdomain(name), "generated name %q is not a valid object name", name)
+			require.Empty(t, validation.IsValidLabelValue(name), "generated name %q is not a valid label value", name)
+		}
+	})
+
+	t.Run("migration job names stay distinct after truncation", func(t *testing.T) {
+		cluster := newCluster(strings.Repeat("a", metadata.MaxGeneratedNameLength))
+		got, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
+		require.NoError(t, err)
+		require.NotEqual(t, got.jobName("hash-one"), got.jobName("hash-two"))
+	})
+
+	t.Run("cluster names that cannot be labelled are rejected", func(t *testing.T) {
+		cluster := newCluster(strings.Repeat("a", metadata.MaxGeneratedNameLength+1))
+		_, _, err := NewConfig(cluster, ptr.To(testGlobalConfig.Copy()), singleSecretMap("test-secret", secret), resources)
+		require.ErrorContains(t, err, "metadata.name must be no more than 63 characters")
+	})
 }
