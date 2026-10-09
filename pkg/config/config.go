@@ -1065,12 +1065,9 @@ func (c *Config) unpatchedPDB() *applypolicyv1.PodDisruptionBudgetApplyConfigura
 func (c *Config) commonLabels(name string) map[string]string {
 	version := ""
 	if c.SpiceDBVersion != nil && c.SpiceDBVersion.Name != "" {
-		// Dots are valid label characters in Kubernetes labels
-		slug.CustomSub = map[string]string{
-			".": "__dot__",
-		}
-		// Use slug to clean the version name (removes spaces, special characters, etc.)
-		versionValue := slug.Make(c.SpiceDBVersion.Name)
+		// Preserve valid label dots without changing slug's process-wide settings.
+		// Multiple controllers can build configurations at the same time.
+		versionValue := slug.Make(strings.ReplaceAll(c.SpiceDBVersion.Name, ".", "__dot__"))
 		// Replace the custom sub with a dot
 		versionValue = strings.ReplaceAll(versionValue, "__dot__", ".")
 

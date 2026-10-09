@@ -23,6 +23,8 @@ import (
 )
 
 func TestEnsureDeploymentHandler(t *testing.T) {
+	t.Parallel()
+
 	now := metav1.Now()
 	var nextKey handler.Key = "next"
 	applyErr := fmt.Errorf("apply error")
@@ -454,6 +456,8 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 			applyCalled := false
 			deleteCalled := false
@@ -524,6 +528,8 @@ func TestEnsureDeploymentHandler(t *testing.T) {
 }
 
 func TestDesiredDeploymentReplicas(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		specValue  *int32
@@ -536,6 +542,8 @@ func TestDesiredDeploymentReplicas(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			dep := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Replicas: tt.specValue}}
 			require.Equal(t, tt.expected, desiredDeploymentReplicas(dep, tt.configured))
 		})
@@ -543,6 +551,8 @@ func TestDesiredDeploymentReplicas(t *testing.T) {
 }
 
 func TestDeploymentRolloutComplete(t *testing.T) {
+	t.Parallel()
+
 	deployment := func(generation, observed int64, replicas, updated, available int32) *appsv1.Deployment {
 		return &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{Generation: generation},
@@ -570,6 +580,8 @@ func TestDeploymentRolloutComplete(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			require.Equal(t, tt.expected, deploymentRolloutComplete(tt.dep, tt.desired))
 		})
 	}

@@ -104,6 +104,7 @@ func init() {
 	SetDefaultConsistentlyPollingInterval(100 * time.Millisecond)
 }
 
+//nolint:paralleltest // Ginkgo controls the suite's scheduling and shared setup.
 func TestEndToEnd(t *testing.T) {
 	RunSpecs(t, "operator tests")
 }

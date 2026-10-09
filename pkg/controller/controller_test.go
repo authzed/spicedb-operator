@@ -55,6 +55,8 @@ func (q *keyRecordingQueue) AddRateLimited(item string) {
 }
 
 func TestControllerNamespacing(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name              string
 		watchedNamespaces []string
@@ -136,6 +138,8 @@ func TestControllerNamespacing(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := t.Context()
 			registry := typed.NewRegistry()
 			broadcaster := record.NewBroadcaster()
@@ -212,6 +216,8 @@ func TestControllerNamespacing(t *testing.T) {
 }
 
 func TestCredentialSecretsForCluster(t *testing.T) {
+	t.Parallel()
+
 	ref := func(name string) *v1alpha1.CredentialRef { return &v1alpha1.CredentialRef{SecretName: name} }
 	skipped := func(name string) *v1alpha1.CredentialRef {
 		return &v1alpha1.CredentialRef{SecretName: name, Skip: true}
@@ -284,6 +290,8 @@ func TestCredentialSecretsForCluster(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cluster := &v1alpha1.SpiceDBCluster{
 				Spec: v1alpha1.ClusterSpec{
 					Credentials: tt.credentials,
@@ -296,6 +304,8 @@ func TestCredentialSecretsForCluster(t *testing.T) {
 }
 
 func TestEnsurePDB(t *testing.T) {
+	t.Parallel()
+
 	var nextKey handler.Key = "next"
 	maxUnavailable2 := intstr.FromInt32(2)
 	minAvailable50pct := intstr.FromString("50%")
@@ -351,6 +361,8 @@ func TestEnsurePDB(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := t.Context()
 
 			registry := typed.NewRegistry()

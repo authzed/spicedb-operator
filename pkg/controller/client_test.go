@@ -20,6 +20,8 @@ import (
 // changed since it was read - e.g. by a status patch earlier in the same
 // reconcile, as in self-pause.
 func TestPatchOmitsResourceVersion(t *testing.T) {
+	t.Parallel()
+
 	dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
 	var payload []byte
 	dclient.PrependReactor("patch", "spicedbclusters", func(action k8stesting.Action) (bool, runtime.Object, error) {

@@ -23,6 +23,8 @@ import (
 )
 
 func TestSecretAdopterHandler(t *testing.T) {
+	t.Parallel()
+
 	type applyCall struct {
 		called           bool
 		input            *applycorev1.SecretApplyConfiguration
@@ -389,6 +391,8 @@ func TestSecretAdopterHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
 				metadata.OwningClusterIndex:                 metadata.GetClusterKeyFromMeta,

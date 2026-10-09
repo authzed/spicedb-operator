@@ -15,6 +15,8 @@ import (
 )
 
 func TestApplyPatches(t *testing.T) {
+	t.Parallel()
+
 	runPatchTests(t, patchBasicTests)
 	runPatchTests(t, patchFormatTests)
 	runPatchTests(t, workloadIdentityPatchTests)

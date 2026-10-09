@@ -20,6 +20,8 @@ import (
 )
 
 func TestRunMigrationHandler(t *testing.T) {
+	t.Parallel()
+
 	testHash := "hashhashhashhashhash"
 	matchingJob := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
@@ -88,6 +90,8 @@ func TestRunMigrationHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			tt := tt
 			ctrls := &fake.FakeInterface{}
 			applyCalled := false

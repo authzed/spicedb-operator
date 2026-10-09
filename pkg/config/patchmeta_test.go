@@ -72,6 +72,8 @@ func testDeployment() *applyappsv1.DeploymentApplyConfiguration {
 }
 
 func TestV3PatchMetaResolverLookup(t *testing.T) {
+	t.Parallel()
+
 	resolver := newTestPatchMetaResolver()
 
 	for _, gvk := range patchedKinds {
@@ -87,6 +89,8 @@ func TestV3PatchMetaResolverLookup(t *testing.T) {
 // TestV3PatchMetaResolverUnknownKind covers a kind missing from a group-version
 // that does exist, which is the index miss rather than a failed fetch.
 func TestV3PatchMetaResolverUnknownKind(t *testing.T) {
+	t.Parallel()
+
 	_, err := newTestPatchMetaResolver().LookupPatchMeta(schema.GroupVersionKind{
 		Group: "apps", Version: "v1", Kind: "NotAThing",
 	})
@@ -94,6 +98,8 @@ func TestV3PatchMetaResolverUnknownKind(t *testing.T) {
 }
 
 func TestV3PatchMetaResolverMissingGroupVersion(t *testing.T) {
+	t.Parallel()
+
 	_, err := newTestPatchMetaResolver().LookupPatchMeta(schema.GroupVersionKind{
 		Group: "nonexistent.example.com", Version: "v1", Kind: "Widget",
 	})
@@ -104,6 +110,8 @@ func TestV3PatchMetaResolverMissingGroupVersion(t *testing.T) {
 // must yield the container merge key, so that patching one container leaves the
 // other in place.
 func TestV3PatchMetaResolverHonorsMergeKeys(t *testing.T) {
+	t.Parallel()
+
 	out := testDeployment()
 	count, patched, err := ApplyPatches(testDeployment(), out, containerMergePatch, newTestPatchMetaResolver())
 	require.NoError(t, err)
@@ -121,6 +129,8 @@ func TestV3PatchMetaResolverHonorsMergeKeys(t *testing.T) {
 // makes per-GVK resolution affordable: without it every patch on every
 // reconcile would re-fetch and re-parse a group-version document.
 func TestV3PatchMetaResolverFetchesEachGroupVersionOnce(t *testing.T) {
+	t.Parallel()
+
 	counter := &countingRoot{Root: openapi3.NewRoot(openapitest.NewFileClient(filepath.Join("testdata", testFixtureDir)))}
 	resolver := NewV3PatchMetaResolver(counter)
 
@@ -140,6 +150,8 @@ func TestV3PatchMetaResolverFetchesEachGroupVersionOnce(t *testing.T) {
 // TestV3PatchMetaResolverCachesFailures ensures a group-version that cannot be
 // fetched isn't retried on every reconcile.
 func TestV3PatchMetaResolverCachesFailures(t *testing.T) {
+	t.Parallel()
+
 	counter := &countingRoot{Root: openapi3.NewRoot(openapitest.NewFileClient(filepath.Join("testdata", testFixtureDir)))}
 	resolver := NewV3PatchMetaResolver(counter)
 	missing := schema.GroupVersionKind{Group: "nonexistent.example.com", Version: "v1", Kind: "Widget"}
@@ -186,6 +198,8 @@ func (c *countingRoot) callCounts() map[schema.GroupVersion]int {
 // is the test that would catch a regression in that arrangement. Run under
 // -race for it to mean anything.
 func TestV3PatchMetaResolverConcurrentLookups(t *testing.T) {
+	t.Parallel()
+
 	counter := &countingRoot{Root: openapi3.NewRoot(
 		openapitest.NewFileClient(filepath.Join("testdata", testFixtureDir)),
 	)}
