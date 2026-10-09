@@ -34,10 +34,26 @@ func (l Lint) Go() error {
 // Golangcilint Run golangci-lint
 func (Lint) Golangcilint() error {
 	fmt.Println("running golangci-lint")
-	return sh.RunV("go", "run",
+	if err := sh.RunV("go", "run",
 		"github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+golangciLintVersion,
 		"run", "--fix",
-		"-c", ".golangci.yaml")
+		"-c", ".golangci.yaml"); err != nil {
+		return err
+	}
+
+	return (Lint{}).Paralleltest()
+}
+
+// Paralleltest checks scheduling in modules outside the root lint build.
+func (Lint) Paralleltest() error {
+	for _, dir := range []string{"e2e", "tools"} {
+		if err := runDirV(dir, "go", "run",
+			"github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+golangciLintVersion,
+			"run", "--enable-only", "paralleltest", "-c", "../.golangci.yaml"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Tidy Run go mod tidy on every module in the repo.
