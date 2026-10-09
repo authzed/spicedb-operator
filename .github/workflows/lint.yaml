@@ -51,12 +51,10 @@ jobs:
         uses: "authzed/actions/golangci-lint@main"
         with:
           working_directory: "e2e"
-          args: "--config ../.golangci.parallel.yaml"
       - name: "Check parallel scheduling in tools"
         uses: "authzed/actions/golangci-lint@main"
         with:
           working_directory: "tools"
-          args: "--config ../.golangci.parallel.yaml"
 
   extra-lint:
     name: "Lint YAML & Markdown"

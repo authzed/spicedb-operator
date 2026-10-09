@@ -294,7 +294,11 @@ func (r *reporter) snap(label string) {
 			fmt.Fprintf(os.Stderr, "warning: could not write heap profile %s: %v\n", path, err)
 			return
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not close heap profile %s: %v\n", path, err)
+			}
+		}()
 		if err := pprof.WriteHeapProfile(f); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not write heap profile %s: %v\n", path, err)
 		}
