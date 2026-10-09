@@ -9,6 +9,8 @@ import (
 )
 
 func TestEdgesFromPatterns(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		patterns map[string]string
@@ -88,6 +90,8 @@ func TestEdgesFromPatterns(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := edgesFromPatterns(tt.patterns, tt.releases)
 			for from, to := range tt.want {
 				require.ElementsMatch(t, to, got[from])

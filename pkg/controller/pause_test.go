@@ -19,6 +19,8 @@ import (
 )
 
 func TestPauseHandler(t *testing.T) {
+	t.Parallel()
+
 	var nextKey handler.Key = "next"
 	tests := []struct {
 		name string
@@ -97,6 +99,8 @@ func TestPauseHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 			recorder := record.NewFakeRecorder(1)
 			patchCalled := false

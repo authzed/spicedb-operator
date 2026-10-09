@@ -18,6 +18,8 @@ import (
 )
 
 func TestWaitForMigrationsHandler(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 
@@ -54,6 +56,8 @@ func TestWaitForMigrationsHandler(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 
 			ctx := CtxConfig.WithValue(context.Background(), &config.Config{MigrationConfig: config.MigrationConfig{TargetSpiceDBImage: "test"}})
