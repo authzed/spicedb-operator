@@ -21,15 +21,18 @@ jobs:
       - uses: "authzed/actions/setup-go@main"
         with:
           go-version: "${{ env.GO_VERSION }}"
-      # using this instead of the authzed/actions version because `.`
-      # properly ignores counterfeiter codegen
-      - working-directory: "magefiles"
+      - name: "Go Format"
+        # using this instead of the authzed/actions version because `.`
+        # properly ignores counterfeiter codegen
+        working-directory: "magefiles"
         run: "go run mvdan.cc/gofumpt -w ."
-      - uses: "magefile/mage-action@v3"
+      - name: "Codegen"
+        uses: "magefile/mage-action@v3"
         with:
           version: "latest"
           args: "generate"
-      - uses: "chainguard-dev/actions/nodiff@main"
+      - name: "Verify Gofumpt"
+        uses: "chainguard-dev/actions/nodiff@main"
         with:
           fixup-command: "gofumpt"
       - uses: "authzed/actions/go-mod-tidy@main"
