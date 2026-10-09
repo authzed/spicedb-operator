@@ -1,0 +1,12 @@
+---
+version: "2"
+# Nested modules are outside the root module's full lint build.
+run:
+  allow-parallel-runners: true
+  build-tags:
+    - "e2e"
+    - "mage"
+linters:
+  default: "none"
+  enable:
+    - "paralleltest"

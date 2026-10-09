@@ -47,11 +47,16 @@ jobs:
           working_directory: "./e2e"
       - uses: "authzed/actions/go-generate@main"
       - uses: "authzed/actions/golangci-lint@main"
-      - name: "Check parallel scheduling in nested modules"
-        uses: "magefile/mage-action@v3"
+      - name: "Check parallel scheduling in e2e"
+        uses: "authzed/actions/golangci-lint@main"
         with:
-          version: "latest"
-          args: "-w . lint:paralleltest"
+          working_directory: "e2e"
+          args: "--config ../.golangci.parallel.yaml"
+      - name: "Check parallel scheduling in tools"
+        uses: "authzed/actions/golangci-lint@main"
+        with:
+          working_directory: "tools"
+          args: "--config ../.golangci.parallel.yaml"
 
   extra-lint:
     name: "Lint YAML & Markdown"
