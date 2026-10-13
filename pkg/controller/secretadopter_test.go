@@ -124,6 +124,8 @@ func newTestControllerForSecretAdopter(
 }
 
 func TestControllerSecretAdopter(t *testing.T) {
+	t.Parallel()
+
 	const testNamespace = "test"
 	const clusterName = "mycluster"
 
@@ -265,6 +267,8 @@ func TestControllerSecretAdopter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c, patchedCh := newTestControllerForSecretAdopter(t, testNamespace, tt.secretsInRegistry, cache.Indexers{
 				metadata.OwningClusterDatastoreURIIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypeDatastoreURI),
 				metadata.OwningClusterPresharedKeyIndex:     metadata.GetClusterKeyFromMetaForType(metadata.CredentialTypePresharedKey),
@@ -339,6 +343,8 @@ func TestControllerSecretAdopter(t *testing.T) {
 // credential type in the index, so it never treats another type's secret as
 // an extra to clean up.
 func TestSecretAdopterPerTypeIndexIsolation(t *testing.T) {
+	t.Parallel()
+
 	const testNamespace = "test"
 	const clusterName = "mycluster"
 
@@ -406,6 +412,8 @@ func TestSecretAdopterPerTypeIndexIsolation(t *testing.T) {
 // credential roles is handled independently for each role: both type labels must
 // be applied, and once they are no adoption API calls should be issued.
 func TestSecretAdopterSharedSecret(t *testing.T) {
+	t.Parallel()
+
 	const testNamespace = "test"
 	const clusterName = "mycluster"
 
@@ -475,6 +483,8 @@ func TestSecretAdopterSharedSecret(t *testing.T) {
 // The fix is to use a role-qualified field manager per handler so each handler
 // exclusively owns its own type label and the two never interfere.
 func TestSecretAdopterSharedSecretMigration(t *testing.T) {
+	t.Parallel()
+
 	const testNamespace = "test"
 	const clusterName = "mycluster"
 

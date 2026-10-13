@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var emptyConfig = RawConfig{}
-
 func TestStringKey(t *testing.T) {
+	t.Parallel()
+
 	for _, val := range []struct {
 		description string
 		value       any
@@ -19,8 +19,10 @@ func TestStringKey(t *testing.T) {
 		{"silently ignores unexpected type and returns default", 1, ""},
 	} {
 		t.Run(val.description, func(t *testing.T) {
+			t.Parallel()
+
 			sk := newStringKey("test")
-			config := emptyConfig
+			config := RawConfig{}
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}
@@ -33,6 +35,8 @@ func TestStringKey(t *testing.T) {
 }
 
 func TestBoolOrStringKey(t *testing.T) {
+	t.Parallel()
+
 	for _, val := range []struct {
 		description string
 		value       any
@@ -50,8 +54,10 @@ func TestBoolOrStringKey(t *testing.T) {
 		{"fails with unexpected type", int64(1), true, false, true},
 	} {
 		t.Run(val.description, func(t *testing.T) {
+			t.Parallel()
+
 			sk := newBoolOrStringKey("test", val.def)
-			config := emptyConfig
+			config := RawConfig{}
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}
@@ -70,6 +76,8 @@ func TestBoolOrStringKey(t *testing.T) {
 }
 
 func TestIntOrStringKey(t *testing.T) {
+	t.Parallel()
+
 	for _, val := range []struct {
 		description string
 		value       any
@@ -84,8 +92,10 @@ func TestIntOrStringKey(t *testing.T) {
 		{"fails when unexpected type", struct{}{}, 1, int64(1), true},
 	} {
 		t.Run(val.description, func(t *testing.T) {
+			t.Parallel()
+
 			sk := newIntOrStringKey("test", val.def)
-			config := emptyConfig
+			config := RawConfig{}
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}
@@ -104,6 +114,8 @@ func TestIntOrStringKey(t *testing.T) {
 }
 
 func TestMetadataSetKey(t *testing.T) {
+	t.Parallel()
+
 	input := map[string]any{"k": "v", "k2": "v2"}
 	invalidInput := map[string]any{"k": 1, "k2": "v2"}
 	empty := map[string]string{}
@@ -125,8 +137,10 @@ func TestMetadataSetKey(t *testing.T) {
 		{"recovers and warns on invalid map value", invalidInput, empty, map[string]string{"k2": "v2"}, true, false},
 	} {
 		t.Run(val.description, func(t *testing.T) {
+			t.Parallel()
+
 			k := metadataSetKey("test")
-			config := emptyConfig
+			config := RawConfig{}
 			if val.value != nil {
 				config = RawConfig{"test": val.value}
 			}

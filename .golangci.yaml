@@ -18,6 +18,7 @@ linters:
     - "importas"
     - "ineffassign"
     - "makezero"
+    - "paralleltest"
     - "prealloc"
     - "predeclared"
     - "promlinter"

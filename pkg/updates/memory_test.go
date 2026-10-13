@@ -8,6 +8,8 @@ import (
 )
 
 func TestMemorySource(t *testing.T) {
+	t.Parallel()
+
 	type want struct {
 		latest, next, nextDirect string
 	}
@@ -232,18 +234,26 @@ func TestMemorySource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m, err := NewMemorySource(tt.OrderedNodes, tt.Edges)
 			if err != nil {
 				require.Contains(t, err.Error(), tt.newErr)
 			}
 			for id, want := range tt.expectedForID {
 				t.Run(fmt.Sprintf("NextVersion(%s)", id), func(t *testing.T) {
+					t.Parallel()
+
 					require.Equal(t, want.next, m.NextVersion(id))
 				})
 				t.Run(fmt.Sprintf("NextVersionWithoutMigrations(%s)", id), func(t *testing.T) {
+					t.Parallel()
+
 					require.Equal(t, want.nextDirect, m.NextVersionWithoutMigrations(id))
 				})
 				t.Run(fmt.Sprintf("LatestVersion(%s)", id), func(t *testing.T) {
+					t.Parallel()
+
 					require.Equal(t, want.latest, m.LatestVersion(id))
 				})
 			}
@@ -252,12 +262,18 @@ func TestMemorySource(t *testing.T) {
 				require.NoError(t, err)
 				for id, want := range expected {
 					t.Run(fmt.Sprintf("head=%s,NextVersion(%s)", newHead, id), func(t *testing.T) {
+						t.Parallel()
+
 						require.Equal(t, want.next, s.NextVersion(id))
 					})
 					t.Run(fmt.Sprintf("head=%s,NextVersionWithoutMigrations(%s)", newHead, id), func(t *testing.T) {
+						t.Parallel()
+
 						require.Equal(t, want.nextDirect, s.NextVersionWithoutMigrations(id))
 					})
 					t.Run(fmt.Sprintf("head=%s,LatestVersion(%s)", newHead, id), func(t *testing.T) {
+						t.Parallel()
+
 						require.Equal(t, want.latest, s.LatestVersion(id))
 					})
 				}
@@ -267,6 +283,8 @@ func TestMemorySource(t *testing.T) {
 }
 
 func TestMemorySourceState(t *testing.T) {
+	t.Parallel()
+
 	type fields struct {
 		OrderedNodes []State
 		Edges        EdgeSet
@@ -339,6 +357,8 @@ func TestMemorySourceState(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			m, err := NewMemorySource(tt.fields.OrderedNodes, tt.fields.Edges)
 			if err != nil {
 				require.EqualError(t, err, tt.wantErr)
@@ -355,6 +375,8 @@ func TestMemorySourceState(t *testing.T) {
 // unknown pinned version would otherwise resolve to "latest" with no error and
 // march the cluster forward.
 func TestSubgraphRejectsUnknownHead(t *testing.T) {
+	t.Parallel()
+
 	m, err := NewMemorySource(
 		[]State{{ID: "v2", Tag: "tag", Migration: "migration"}, {ID: "v1", Tag: "tag", Migration: "migration"}},
 		EdgeSet{"v1": {"v2"}},

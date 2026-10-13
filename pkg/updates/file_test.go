@@ -9,6 +9,8 @@ import (
 )
 
 func TestDefaultChannelForDatastore(t *testing.T) {
+	t.Parallel()
+
 	graph := UpdateGraph{Channels: []Channel{
 		{
 			Name:     "postgres",
@@ -23,6 +25,8 @@ func TestDefaultChannelForDatastore(t *testing.T) {
 	}}
 
 	t.Run("common case", func(t *testing.T) {
+		t.Parallel()
+
 		channel, err := graph.DefaultChannelForDatastore("cockroachdb")
 		require.Nil(t, err)
 		require.Equal(t, "cockroachdb", channel)
@@ -33,6 +37,8 @@ func TestDefaultChannelForDatastore(t *testing.T) {
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
+		t.Parallel()
+
 		channel, err := graph.DefaultChannelForDatastore("POSTGRES")
 		require.Nil(t, err)
 		require.Equal(t, "postgres", channel)
@@ -40,6 +46,8 @@ func TestDefaultChannelForDatastore(t *testing.T) {
 }
 
 func TestAvailableVersions(t *testing.T) {
+	t.Parallel()
+
 	table := []struct {
 		name           string
 		graph          *UpdateGraph
@@ -156,6 +164,8 @@ func TestAvailableVersions(t *testing.T) {
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			versions, err := tt.graph.AvailableVersions(tt.engine, tt.currentVersion)
 
 			switch tt.expectedErr {
@@ -172,6 +182,8 @@ func TestAvailableVersions(t *testing.T) {
 }
 
 func TestComputeTarget(t *testing.T) {
+	t.Parallel()
+
 	table := []struct {
 		name              string
 		graph             *UpdateGraph
@@ -674,6 +686,8 @@ func TestComputeTarget(t *testing.T) {
 
 	for _, tt := range table {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			baseImage, target, state, err := tt.graph.ComputeTarget(
 				tt.operatorImageName,
 				tt.clusterBaseImage,
@@ -701,6 +715,8 @@ func TestComputeTarget(t *testing.T) {
 }
 
 func TestUpdateGraphDifference(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name                string
 		first, second, want []Channel
@@ -777,6 +793,8 @@ func TestUpdateGraphDifference(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			g := &UpdateGraph{
 				Channels: tt.first,
 			}
@@ -818,6 +836,8 @@ func ChannelEqual(t testing.TB, ac, bc Channel) {
 }
 
 func TestChannelRemoveNodes(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		before, want Channel
@@ -950,12 +970,16 @@ func TestChannelRemoveNodes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ChannelEqual(t, tt.before.RemoveNodes(tt.removeNodes), tt.want)
 		})
 	}
 }
 
 func TestChannelClone(t *testing.T) {
+	t.Parallel()
+
 	before := Channel{
 		Name:     "test",
 		Metadata: map[string]string{DatastoreMetadataKey: "test"},

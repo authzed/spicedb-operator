@@ -18,6 +18,8 @@ import (
 )
 
 func TestConfigChangedHandlerSecretHash(t *testing.T) {
+	t.Parallel()
+
 	secretA := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "alpha"},
 		Data: map[string][]byte{
@@ -192,6 +194,8 @@ func TestConfigChangedHandlerSecretHash(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 
 			cluster := tt.cluster
@@ -233,6 +237,8 @@ func TestConfigChangedHandlerSecretHash(t *testing.T) {
 }
 
 func TestConfigChangedHandlerStatusUpdate(t *testing.T) {
+	t.Parallel()
+
 	// pre-compute the hash that matches the secretRef "alpha" secret below,
 	// so we can construct a cluster whose status is already up-to-date.
 	type hashEntry struct{ Secret, Key, Value string }
@@ -329,6 +335,8 @@ func TestConfigChangedHandlerStatusUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrls := &fake.FakeInterface{}
 			patchCalled := false
 			var patchedCluster *v1alpha1.SpiceDBCluster

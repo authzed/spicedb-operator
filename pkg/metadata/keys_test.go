@@ -10,6 +10,8 @@ import (
 )
 
 func TestGetClusterKeyFromMetaForType(t *testing.T) {
+	t.Parallel()
+
 	ownerAnnotation := OwnerAnnotationKeyPrefix + "mycluster"
 	// secret creates a secret whose label set marks it as carrying the given
 	// credential type role. Key presence (not value) is what matters.
@@ -76,6 +78,8 @@ func TestGetClusterKeyFromMetaForType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			keys, err := GetClusterKeyFromMetaForType(tt.indexType)(tt.obj)
 			if tt.expectErr {
 				require.Error(t, err)
@@ -88,6 +92,8 @@ func TestGetClusterKeyFromMetaForType(t *testing.T) {
 }
 
 func TestLabelKeyForCredentialType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		credType  string
 		expectKey string
@@ -100,12 +106,16 @@ func TestLabelKeyForCredentialType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.credType, func(t *testing.T) {
+			t.Parallel()
+
 			require.Equal(t, tt.expectKey, LabelKeyForCredentialType(tt.credType))
 		})
 	}
 }
 
 func TestIndexNameForCredentialType(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		credType  string
 		expectIdx string
@@ -118,6 +128,8 @@ func TestIndexNameForCredentialType(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.credType, func(t *testing.T) {
+			t.Parallel()
+
 			require.Equal(t, tt.expectIdx, IndexNameForCredentialType(tt.credType))
 		})
 	}

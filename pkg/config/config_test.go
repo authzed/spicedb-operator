@@ -42,6 +42,8 @@ func singleSecretMap(name string, s *corev1.Secret) map[string]*corev1.Secret {
 }
 
 func TestToEnvVarName(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		prefix string
 		key    string
@@ -55,6 +57,8 @@ func TestToEnvVarName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.prefix+"/"+tt.key, func(t *testing.T) {
+			t.Parallel()
+
 			if got := toEnvVarName(tt.prefix, tt.key); got != tt.want {
 				t.Errorf("toEnvVarName() = %v, want %v", got, tt.want)
 			}
@@ -63,6 +67,8 @@ func TestToEnvVarName(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	type args struct {
 		cluster      v1alpha1.ClusterSpec
@@ -2320,6 +2326,8 @@ func TestNewConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			global := tt.args.globalConfig.Copy()
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2353,6 +2361,8 @@ func TestNewConfig(t *testing.T) {
 }
 
 func TestNewConfig_Credentials(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 
 	// globalConfig with a cockroachdb channel used for all credentials tests
@@ -2503,6 +2513,8 @@ func TestNewConfig_Credentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			global := credGlobalConfig.Copy()
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2582,15 +2594,18 @@ func envVarFromStrings(envs []string) []*applycorev1.EnvVarApplyConfiguration {
 }
 
 func TestPatchesApplyToAllObjects(t *testing.T) {
-	config := &Config{}
-	configType := reflect.TypeOf(config)
+	t.Parallel()
+
+	configType := reflect.TypeOf(&Config{})
 	for i := 0; i < configType.NumMethod(); i++ {
 		method := configType.Method(i)
 
 		// Every public method of Config should return an object
 		// that supports patching
 		t.Run(method.Name, func(t *testing.T) {
-			config.Patches = []v1alpha1.Patch{}
+			t.Parallel()
+
+			config := &Config{Patches: []v1alpha1.Patch{}}
 
 			// all args are strings
 			args := []reflect.Value{reflect.ValueOf(config)}
@@ -2633,6 +2648,8 @@ func GetConfig(fileName string) (cfg OperatorConfig) {
 }
 
 func TestGraphDiffSanity(t *testing.T) {
+	t.Parallel()
+
 	proposedGraph := GetConfig("../../proposed-update-graph.yaml")
 	validatedGraph := GetConfig("../../config/update-graph.yaml")
 	require.NotPanics(t, func() {
@@ -2641,6 +2658,8 @@ func TestGraphDiffSanity(t *testing.T) {
 }
 
 func TestDeployment(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name           string
@@ -2866,6 +2885,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			cluster := &v1alpha1.SpiceDBCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test",
@@ -2888,6 +2909,8 @@ metadata:
 }
 
 func TestMigrationJob(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name       string
@@ -3043,6 +3066,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3073,6 +3098,8 @@ metadata:
 }
 
 func TestService(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name        string
@@ -3158,6 +3185,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3184,6 +3213,8 @@ metadata:
 }
 
 func TestRole(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name     string
@@ -3229,6 +3260,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3255,6 +3288,8 @@ metadata:
 }
 
 func TestRoleBinding(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name            string
@@ -3297,6 +3332,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3323,6 +3360,8 @@ metadata:
 }
 
 func TestServiceAccount(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name               string
@@ -3358,6 +3397,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3384,6 +3425,8 @@ metadata:
 }
 
 func TestPDB(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name            string
@@ -3623,6 +3666,8 @@ metadata:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3656,6 +3701,8 @@ metadata:
 }
 
 func TestVersionLabels(t *testing.T) {
+	t.Parallel()
+
 	resources := newTestPatchMetaResolver()
 	tests := []struct {
 		name               string
@@ -3717,6 +3764,8 @@ func TestVersionLabels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			secret := &corev1.Secret{Data: map[string][]byte{
 				"datastore_uri": []byte("uri"),
 				"preshared_key": []byte("psk"),
@@ -3951,6 +4000,8 @@ var testGlobalConfig = OperatorConfig{
 }
 
 func TestToEnvVarApplyConfiguration_Skip(t *testing.T) {
+	t.Parallel()
+
 	// envVarNames extracts all env var names from an apply configuration slice.
 	envVarNames := func(envVars []*applycorev1.EnvVarApplyConfiguration) []string {
 		names := make([]string, 0, len(envVars))
@@ -4054,6 +4105,8 @@ func TestToEnvVarApplyConfiguration_Skip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			c := baseConfig()
 			c.DatastoreURIRef = tt.datastoreURIRef
 			c.PresharedKeyRef = tt.presharedKeyRef
@@ -4088,6 +4141,8 @@ func TestToEnvVarApplyConfiguration_Skip(t *testing.T) {
 }
 
 func TestRawConfigPop(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		config   RawConfig
@@ -4134,6 +4189,8 @@ func TestRawConfigPop(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := tt.config.Pop(tt.key)
 			require.Equal(t, tt.expected, result)
 
