@@ -52,7 +52,7 @@ func NewSecretAdoptionHandler(recorder record.EventRecorder, getFromCache func(c
 			return metadata.OwnerAnnotationKeyPrefix + owner.Name
 		},
 		OwnerFieldManagerFunc: func(owner types.NamespacedName) string {
-			return "spicedbcluster-owner-" + owner.Namespace + "-" + owner.Name
+			return metadata.BoundedName("spicedbcluster-owner-"+owner.Namespace+"-"+owner.Name, metadata.MaxFieldManagerLength)
 		},
 		ApplyFunc:  secretApplyFunc,
 		ExistsFunc: existsFunc,
