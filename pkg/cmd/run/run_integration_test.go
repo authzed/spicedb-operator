@@ -12,6 +12,8 @@ import (
 )
 
 func TestJSONLoggingOutput(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name           string
 		logFormat      string
@@ -36,6 +38,8 @@ func TestJSONLoggingOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Create a buffer to capture logs
 			var logBuffer bytes.Buffer
 
@@ -65,7 +69,7 @@ func TestJSONLoggingOutput(t *testing.T) {
 				output := logBuffer.String()
 				require.True(t, strings.TrimSpace(output) != "", "expected log output")
 
-				var logEntry map[string]interface{}
+				var logEntry map[string]any
 				err := json.Unmarshal([]byte(strings.TrimSpace(output)), &logEntry)
 				require.NoError(t, err, "log output should be valid JSON")
 				require.Equal(t, "test message", logEntry["msg"])
@@ -76,6 +80,8 @@ func TestJSONLoggingOutput(t *testing.T) {
 
 // TestJSONLoggingValidation verifies validation logic for log formats
 func TestJSONLoggingValidation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		logFormat string
@@ -105,6 +111,8 @@ func TestJSONLoggingValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			opts := RecommendedOptions()
 			opts.LogFormat = tt.logFormat
 

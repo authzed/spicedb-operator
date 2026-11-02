@@ -7,6 +7,8 @@ import (
 )
 
 func TestOptionsValidate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		options   *Options
@@ -44,6 +46,8 @@ func TestOptionsValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Set default debug flags to avoid nil pointer
 			tt.options.DebugFlags = RecommendedOptions().DebugFlags
 
