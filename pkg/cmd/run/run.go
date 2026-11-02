@@ -3,11 +3,14 @@ package run
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -124,6 +127,17 @@ func (o *Options) Validate() error {
 	return errors.NewAggregate(validationErrors)
 }
 
+// newLogger builds the operator logger for the given format, writing to w.
+// "json" produces structured JSON output; any other value uses the text logger.
+func newLogger(format string, w io.Writer) logr.Logger {
+	if format == "json" {
+		encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+		core := zapcore.NewCore(encoder, zapcore.AddSync(w), zapcore.InfoLevel)
+		return zapr.NewLogger(zap.New(core))
+	}
+	return textlogger.NewLogger(textlogger.NewConfig(textlogger.Output(w)))
+}
+
 // Run performs the apply operation.
 func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	restConfig, err := f.ToRESTConfig()
@@ -132,27 +146,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
-	// Configure logger based on format
-	// Use default if empty
-	logFormat := o.LogFormat
-	if logFormat == "" {
-		logFormat = "text"
-	}
-
-	var logger logr.Logger
-	if logFormat == "json" {
-		// Use zap with JSON encoder
-		zapConfig := zap.NewProductionConfig()
-		zapConfig.DisableStacktrace = true
-		zapLog, err := zapConfig.Build()
-		if err != nil {
-			return fmt.Errorf("failed to create JSON logger: %w", err)
-		}
-		logger = zapr.NewLogger(zapLog)
-	} else {
-		// Use default text logger
-		logger = textlogger.NewLogger(textlogger.NewConfig())
-	}
+	logger := newLogger(o.LogFormat, os.Stderr)
 
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {

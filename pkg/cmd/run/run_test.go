@@ -1,6 +1,8 @@
 package run
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,4 +61,30 @@ func TestOptionsValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestNewLogger(t *testing.T) {
+	t.Parallel()
+
+	t.Run("json format produces JSON logs", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		newLogger("json", &buf).Info("test message", "key", "value")
+
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
+		require.Equal(t, "test message", entry["msg"])
+		require.Equal(t, "value", entry["key"])
+	})
+
+	t.Run("text format produces non-JSON logs", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		newLogger("text", &buf).Info("test message", "key", "value")
+
+		require.Contains(t, buf.String(), "test message")
+		require.False(t, json.Valid(bytes.TrimSpace(buf.Bytes())), "text output should not be JSON")
+	})
 }
