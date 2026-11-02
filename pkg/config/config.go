@@ -144,6 +144,9 @@ type Config struct {
 	Patches []v1alpha1.Patch
 	// PatchMeta resolves strategic merge metadata on demand; see ApplyPatches.
 	PatchMeta PatchMetaResolver
+	// ResolvedBaseImage is the base image before the version tag is appended.
+	// It is kept out of MigrationConfig so it does not affect the migration hash.
+	ResolvedBaseImage string
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -156,7 +159,6 @@ type MigrationConfig struct {
 	DatastoreURI           string
 	SpannerCredsSecretRef  string
 	TargetSpiceDBImage     string
-	ResolvedBaseImage      string
 	EnvPrefix              string
 	SpiceDBCmd             string
 	DatastoreTLSSecretName string
@@ -290,7 +292,6 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	}
 
 	migrationConfig.SpiceDBVersion = targetSpiceDBVersion
-	migrationConfig.ResolvedBaseImage = baseImage
 	migrationConfig.TargetPhase = state.Phase
 	migrationConfig.TargetMigration = state.Migration
 	if len(migrationConfig.TargetMigration) == 0 {
@@ -562,9 +563,10 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	spiceConfig.Passthrough = passthroughConfig
 
 	out := &Config{
-		MigrationConfig: migrationConfig,
-		SpiceConfig:     spiceConfig,
-		PatchMeta:       resolver,
+		MigrationConfig:   migrationConfig,
+		SpiceConfig:       spiceConfig,
+		PatchMeta:         resolver,
+		ResolvedBaseImage: baseImage,
 	}
 	out.Patches = fixDeploymentPatches(out.Name, cluster.Spec.Patches)
 
