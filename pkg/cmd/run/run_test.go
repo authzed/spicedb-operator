@@ -76,6 +76,21 @@ func TestNewLogger(t *testing.T) {
 		require.NoError(t, json.Unmarshal(buf.Bytes(), &entry))
 		require.Equal(t, "test message", entry["msg"])
 		require.Equal(t, "value", entry["key"])
+		require.Contains(t, entry["caller"], "run_test.go")
+	})
+
+	t.Run("json format samples repeated messages", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		logger := newLogger("json", &buf)
+		for range 300 {
+			logger.Info("repeated message")
+		}
+
+		lines := bytes.Count(buf.Bytes(), []byte("\n"))
+		require.Positive(t, lines)
+		require.Less(t, lines, 300)
 	})
 
 	t.Run("text format produces non-JSON logs", func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -133,7 +134,8 @@ func newLogger(format string, w io.Writer) logr.Logger {
 	if format == "json" {
 		encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 		core := zapcore.NewCore(encoder, zapcore.AddSync(w), zapcore.InfoLevel)
-		return zapr.NewLogger(zap.New(core))
+		core = zapcore.NewSamplerWithOptions(core, time.Second, 100, 100)
+		return zapr.NewLogger(zap.New(core, zap.AddCaller()))
 	}
 	return textlogger.NewLogger(textlogger.NewConfig(textlogger.Output(w)))
 }
