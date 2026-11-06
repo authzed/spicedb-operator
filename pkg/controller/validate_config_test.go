@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"github.com/authzed/controller-idioms/handler"
+	"github.com/authzed/controller-idioms/hash"
 	"github.com/authzed/controller-idioms/queue/fake"
 
 	"github.com/authzed/spicedb-operator/pkg/apis/authzed/v1alpha1"
@@ -50,6 +51,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 				Status: v1alpha1.ClusterStatus{
 					Image:                "image:v1",
+					ResolvedBaseImage:    "image",
 					Migration:            "head",
 					TargetMigrationHash:  "69066f71d9cf4a1c",
 					CurrentMigrationHash: "69066f71d9cf4a1c",
@@ -257,6 +259,7 @@ func TestValidateConfigHandler(t *testing.T) {
 				},
 				Status: v1alpha1.ClusterStatus{
 					Image:                "image:v1",
+					ResolvedBaseImage:    "image",
 					Migration:            "head",
 					TargetMigrationHash:  "69066f71d9cf4a1c",
 					CurrentMigrationHash: "69066f71d9cf4a1c",
@@ -351,4 +354,51 @@ func TestValidateConfigHandler(t *testing.T) {
 			ExpectEvents(t, recorder, tt.expectEvents)
 		})
 	}
+}
+
+// TestMigrationHashWithoutBaseImage guards against fields that do not affect
+// migrations leaking into MigrationConfig, which would change the migration
+// hash of every existing cluster on operator upgrade and rerun migrations.
+func TestMigrationHashWithoutBaseImage(t *testing.T) {
+	t.Parallel()
+
+	cluster := &v1alpha1.SpiceDBCluster{
+		Spec: v1alpha1.ClusterSpec{
+			SecretRef: "test-secret",
+			Config: json.RawMessage(`{
+				"datastoreEngine": "cockroachdb",
+				"tlsSecretName":   "secret"
+			}`),
+		},
+		Status: v1alpha1.ClusterStatus{
+			CurrentVersion: &v1alpha1.SpiceDBVersion{Name: "v1", Channel: "cockroachdb"},
+		},
+	}
+	secrets := map[string]*corev1.Secret{
+		"test-secret": {
+			ObjectMeta: metav1.ObjectMeta{Name: "test-secret"},
+			Data: map[string][]byte{
+				"datastore_uri": []byte("uri"),
+				"preshared_key": []byte("testtest"),
+			},
+		},
+	}
+	operatorConfig := &config.OperatorConfig{
+		ImageName: "image",
+		UpdateGraph: updates.UpdateGraph{
+			Channels: []updates.Channel{
+				{
+					Name:     "cockroachdb",
+					Metadata: map[string]string{"datastore": "cockroachdb", "default": "true"},
+					Nodes:    []updates.State{{ID: "v1", Tag: "v1"}},
+					Edges:    map[string][]string{"v1": {}},
+				},
+			},
+		},
+	}
+
+	cfg, _, err := config.NewConfig(cluster, operatorConfig, secrets, nil)
+	require.NoError(t, err)
+	require.Equal(t, "image", cfg.ResolvedBaseImage)
+	require.Equal(t, "69066f71d9cf4a1c", hash.SecureObject(cfg.MigrationConfig))
 }

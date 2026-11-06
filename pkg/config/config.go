@@ -144,6 +144,9 @@ type Config struct {
 	Patches []v1alpha1.Patch
 	// PatchMeta resolves strategic merge metadata on demand; see ApplyPatches.
 	PatchMeta PatchMetaResolver
+	// ResolvedBaseImage is the base image before the version tag is appended.
+	// It is kept out of MigrationConfig so it does not affect the migration hash.
+	ResolvedBaseImage string
 }
 
 // MigrationConfig stores data that is relevant for running migrations
@@ -263,6 +266,25 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	// if there's a required edge from the current image, that edge is taken
 	// unless the current config is equal to the input.
 	image := imageKey.pop(config)
+
+	// Validate that baseImage does not contain a tag or digest
+	if cluster.Spec.BaseImage != "" {
+		if strings.Contains(cluster.Spec.BaseImage, "@") {
+			errs = append(errs, fmt.Errorf("baseImage must not contain a digest (@sha256:...) - version is determined by the update graph"))
+		} else {
+			// Check for tag - a tag appears after the last colon, but only if that colon
+			// isn't part of a port number. Port numbers are followed by a slash (path),
+			// while tags are at the end of the string.
+			lastColon := strings.LastIndex(cluster.Spec.BaseImage, ":")
+			if lastColon != -1 {
+				afterColon := cluster.Spec.BaseImage[lastColon+1:]
+				// If there's no slash after the colon, it's a tag (not a port)
+				if !strings.Contains(afterColon, "/") {
+					errs = append(errs, fmt.Errorf("baseImage must not contain a tag (:tag) - version is determined by the update graph. Use spec.version or spec.config.image instead"))
+				}
+			}
+		}
+	}
 
 	baseImage, targetSpiceDBVersion, state, err := globalConfig.ComputeTarget(globalConfig.ImageName, cluster.Spec.BaseImage, image, cluster.Spec.Version, cluster.Spec.Channel, datastoreEngine, cluster.Status.CurrentVersion, cluster.RolloutInProgress())
 	if err != nil {
@@ -541,9 +563,10 @@ func NewConfig(cluster *v1alpha1.SpiceDBCluster, globalConfig *OperatorConfig, s
 	spiceConfig.Passthrough = passthroughConfig
 
 	out := &Config{
-		MigrationConfig: migrationConfig,
-		SpiceConfig:     spiceConfig,
-		PatchMeta:       resolver,
+		MigrationConfig:   migrationConfig,
+		SpiceConfig:       spiceConfig,
+		PatchMeta:         resolver,
+		ResolvedBaseImage: baseImage,
 	}
 	out.Patches = fixDeploymentPatches(out.Name, cluster.Spec.Patches)
 
