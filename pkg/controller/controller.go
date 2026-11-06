@@ -681,17 +681,7 @@ func (c *Controller) secretAdopter(next ...handler.Handler) handler.Handler {
 					return secret, nil
 				},
 				func(ctx context.Context, err error) {
-					cluster := CtxCluster.MustValue(ctx)
-					status := &v1alpha1.SpiceDBCluster{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       v1alpha1.SpiceDBClusterKind,
-							APIVersion: v1alpha1.SchemeGroupVersion.String(),
-						},
-						ObjectMeta: metav1.ObjectMeta{Namespace: cluster.Namespace, Name: cluster.Name},
-						Status:     *cluster.Status.DeepCopy(),
-					}
-					status.Status.ObservedGeneration = cluster.GetGeneration()
-					status.SetStatusCondition(v1alpha1.NewMissingSecretCondition(CtxSecretNN.MustValue(ctx)))
+					status := missingSecretStatus(CtxCluster.MustValue(ctx), CtxSecretNN.MustValue(ctx))
 					if err := c.PatchStatus(ctx, status); err != nil {
 						QueueOps.RequeueAPIErr(ctx, err)
 						return
