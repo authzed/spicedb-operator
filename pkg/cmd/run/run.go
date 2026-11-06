@@ -2,8 +2,16 @@ package run
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
+	"time"
 
+	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -50,6 +58,9 @@ type Options struct {
 	MetricNamespace string
 
 	WatchNamespaces []string
+
+	// LogFormat specifies the log format: "text" or "json"
+	LogFormat string
 }
 
 // RecommendedOptions builds a new options config with default values
@@ -59,6 +70,7 @@ func RecommendedOptions() *Options {
 		DebugFlags:      ctrlmanageropts.RecommendedDebuggingOptions(),
 		DebugAddress:    ":8080",
 		MetricNamespace: "spicedb_operator",
+		LogFormat:       "text",
 	}
 }
 
@@ -91,6 +103,7 @@ func NewCmdRun(o *Options) *cobra.Command {
 	globalflag.AddGlobalFlags(globalFlags, cmd.Name())
 	globalFlags.StringVar(&o.OperatorConfigPath, "config", "", "set a path to the operator's config file (configure registries, image tags, etc)")
 	globalFlags.StringVar(&o.BaseImage, "base-image", "", "default base image for SpiceDB containers")
+	globalFlags.StringVar(&o.LogFormat, "log-format", o.LogFormat, "log format: text or json")
 
 	for _, f := range namedFlagSets.FlagSets {
 		cmd.Flags().AddFlagSet(f)
@@ -104,7 +117,27 @@ func NewCmdRun(o *Options) *cobra.Command {
 
 // Validate checks the set of flags provided by the user.
 func (o *Options) Validate() error {
-	return errors.NewAggregate(o.DebugFlags.Validate())
+	validationErrors := []error{}
+
+	// Allow empty string to use default
+	if o.LogFormat != "" && o.LogFormat != "text" && o.LogFormat != "json" {
+		validationErrors = append(validationErrors, fmt.Errorf("invalid log format %q: must be 'text' or 'json'", o.LogFormat))
+	}
+
+	validationErrors = append(validationErrors, o.DebugFlags.Validate()...)
+	return errors.NewAggregate(validationErrors)
+}
+
+// newLogger builds the operator logger for the given format, writing to w.
+// "json" produces structured JSON output; any other value uses the text logger.
+func newLogger(format string, w io.Writer) logr.Logger {
+	if format == "json" {
+		encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+		core := zapcore.NewCore(encoder, zapcore.AddSync(w), zapcore.InfoLevel)
+		core = zapcore.NewSamplerWithOptions(core, time.Second, 100, 100)
+		return zapr.NewLogger(zap.New(core, zap.AddCaller()))
+	}
+	return textlogger.NewLogger(textlogger.NewConfig(textlogger.Output(w)))
 }
 
 // Run performs the apply operation.
@@ -115,7 +148,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	DisableClientRateLimits(restConfig)
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
+	logger := newLogger(o.LogFormat, os.Stderr)
 
 	dclient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
@@ -161,7 +194,7 @@ func (o *Options) Run(ctx context.Context, f cmdutil.Factory) error {
 	}
 	patchMetaResolver := config.NewV3PatchMetaResolver(openapi3.NewRoot(openAPIV3Client))
 
-	ctrl, err := controller.NewController(ctx, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
+	ctrl, err := controller.NewController(ctx, logger, registry, dclient, kclient, patchMetaResolver, o.OperatorConfigPath, o.BaseImage, broadcaster, o.WatchNamespaces)
 	if err != nil {
 		return err
 	}
