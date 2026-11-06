@@ -166,18 +166,21 @@ var _ = Describe("SpiceDBClusters", func() {
 			ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 			DeferCleanup(cancel)
 			var condition *metav1.Condition
+			var generation int64
 			Watch(ctx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: cluster.Name, Namespace: testNamespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
 				condition = c.FindStatusCondition(v1alpha1.ConditionValidatingFailed)
 				logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
+				generation = c.Generation
 				return condition == nil
 			})
-			Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, credentials or secretName must be provided]"))))
+			Expect(condition).To(EqualCondition(v1alpha1.NewInvalidConfigCondition("", fmt.Errorf("[datastoreEngine is a required field, couldn't find channel for datastore \"\": no channel found for datastore \"\", no update found in channel, credentials or secretName must be provided]")), generation))
 		})
 	})
 
 	Describe("With missing secret", func() {
 		var condition *metav1.Condition
 		var rv string
+		var generation int64
 
 		BeforeEach(func() {
 			cluster.Spec.Config = []byte(`{"datastoreEngine": "memory"}`)
@@ -193,6 +196,7 @@ var _ = Describe("SpiceDBClusters", func() {
 				condition = c.FindStatusCondition(v1alpha1.ConditionTypePreconditionsFailed)
 				logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
 				rv = c.ResourceVersion
+				generation = c.Generation
 				return condition == nil
 			})
 		})
@@ -201,7 +205,7 @@ var _ = Describe("SpiceDBClusters", func() {
 			Expect(condition).To(EqualCondition(v1alpha1.NewMissingSecretCondition(ktypes.NamespacedName{
 				Namespace: testNamespace,
 				Name:      "nonexistent",
-			})))
+			}), generation))
 		})
 
 		Describe("when the secret is created", func() {
@@ -443,10 +447,10 @@ var _ = Describe("SpiceDBClusters", func() {
 					Expect(condition).To(
 						// different kube versions return different messages, this matches either
 						Or(
-							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH: unknown`)),
-							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH`)),
-							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH: unknown`)),
-							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH`)),
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH: unknown`), lastCluster.Generation),
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "badcmd": executable file not found in $PATH`), lastCluster.Generation),
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH: unknown`), lastCluster.Generation),
+							EqualCondition(v1alpha1.NewPodErrorCondition(`failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: exec: "badcmd": executable file not found in $PATH`), lastCluster.Generation),
 						),
 					)
 
