@@ -201,19 +201,21 @@ func AssertMigrationsCompletedFunc(ctx context.Context, namespace string, kclien
 		defer cancel()
 
 		var condition *metav1.Condition
+		var generation int64
 		Eventually(func(g Gomega) {
 			watchCtx, watchCancel := context.WithTimeout(ctx, 3*time.Minute)
 			defer watchCancel()
 			Watch(watchCtx, client, v1alpha1ClusterGVR, ktypes.NamespacedName{Name: name, Namespace: namespace}, "0", func(c *v1alpha1.SpiceDBCluster) bool {
 				condition = c.FindStatusCondition("Migrating")
 				logr.FromContextOrDiscard(ctx).Info("watch event", "status", c.Status)
+				generation = c.Generation
 				return condition == nil
 			})
 			// validate the specific migration if specified
 			if migration == "" {
 				g.Expect(condition).ToNot(BeNil())
 			} else {
-				g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, migration)))
+				g.Expect(condition).To(EqualCondition(v1alpha1.NewMigratingCondition(datastoreEngine, migration), generation))
 			}
 		}).Should(Succeed())
 

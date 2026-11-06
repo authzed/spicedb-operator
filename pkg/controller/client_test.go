@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
@@ -45,4 +46,34 @@ func TestPatchOmitsResourceVersion(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(payload, &patch))
 	require.NotContains(t, patch.Metadata, "resourceVersion")
+}
+
+func TestMissingSecretStatusKeepsObservedGeneration(t *testing.T) {
+	t.Parallel()
+
+	dclient := fake.NewSimpleDynamicClient(scheme.Scheme)
+	var payload []byte
+	dclient.PrependReactor("patch", "spicedbclusters", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		payload = action.(k8stesting.PatchAction).GetPatch()
+		return true, &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": v1alpha1.SchemeGroupVersion.String(),
+			"kind":       v1alpha1.SpiceDBClusterKind,
+		}}, nil
+	})
+	c := &Controller{client: dclient}
+
+	cluster := &v1alpha1.SpiceDBCluster{ObjectMeta: metav1.ObjectMeta{
+		Name:       "test",
+		Namespace:  "test",
+		Generation: 10,
+	}}
+	status := missingSecretStatus(cluster, types.NamespacedName{Namespace: "test", Name: "creds"})
+	require.NoError(t, c.PatchStatus(t.Context(), status))
+
+	var patch v1alpha1.SpiceDBCluster
+	require.NoError(t, json.Unmarshal(payload, &patch))
+	require.Equal(t, int64(10), patch.Status.ObservedGeneration)
+	require.Len(t, patch.Status.Conditions, 1)
+	require.Equal(t, v1alpha1.ConditionReasonMissingSecret, patch.Status.Conditions[0].Reason)
+	require.Equal(t, int64(10), patch.Status.Conditions[0].ObservedGeneration)
 }

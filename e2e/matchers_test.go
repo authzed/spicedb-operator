@@ -8,13 +8,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EqualCondition checks if conditions are equal except for their times
-func EqualCondition(expected metav1.Condition) types.GomegaMatcher {
+// EqualCondition checks that a condition is equal to expected, except for its
+// time. The observed generation of the condition must be at least generation.
+func EqualCondition(expected metav1.Condition, generation int64) types.GomegaMatcher {
 	now := metav1.Now()
 	expected.LastTransitionTime = now
-	setNow := func(c *metav1.Condition) *metav1.Condition {
-		c.LastTransitionTime = now
-		return c
+	expected.ObservedGeneration = 0
+	normalize := func(c *metav1.Condition) *metav1.Condition {
+		normalized := *c
+		normalized.LastTransitionTime = now
+		normalized.ObservedGeneration = 0
+		return &normalized
 	}
-	return gomega.And(gomega.Not(gomega.BeNil()), gomega.WithTransform(setNow, gomega.Equal(&expected)))
+	return gomega.And(
+		gomega.Not(gomega.BeNil()),
+		gomega.HaveField("ObservedGeneration", gomega.BeNumerically(">=", generation)),
+		gomega.WithTransform(normalize, gomega.Equal(&expected)),
+	)
 }
