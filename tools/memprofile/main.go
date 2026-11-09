@@ -53,6 +53,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/openapi3"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2/textlogger"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 
 	"github.com/authzed/controller-idioms/typed"
@@ -205,6 +206,7 @@ func (o *options) run(ctx context.Context, runOpts *run.Options) error {
 
 		ctrl, err := controller.NewController(
 			syncCtx,
+			textlogger.NewLogger(textlogger.NewConfig()),
 			typed.NewRegistry(),
 			dclient,
 			kclient,
